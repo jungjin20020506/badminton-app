@@ -36,9 +36,9 @@ const PLAYERS_PER_MATCH = 4;
 // ===================================================================================
 const generateId = (name) => name.replace(/\s+/g, '_');
 
-const getLevelColor = (level, isGuest) => {
-    if (isGuest) return '#00BFFF';
+const getLevelColor = (level) => {
     switch (level) {
+        case 'S조': return '#D1D5DB'; // S조 추가 (밝은 회색)
         case 'A조': return '#FF1744';
         case 'B조': return '#FF9100';
         case 'C조': return '#FFD600';
@@ -94,10 +94,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const playerNameClass = `player-name text-white text-[11px] font-bold whitespace-nowrap leading-tight`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
     
-    const levelColor = getLevelColor(player.level, player.isGuest);
-    
+    const levelColor = getLevelColor(player.level);
+    const isSLevel = player.level === 'S조';
+
     const levelStyle = {
-        color: levelColor,
+        color: isSLevel ? '#000000' : levelColor, // S조는 검정색 텍스트
+        backgroundColor: isSLevel ? levelColor : 'transparent', // S조는 배경색 적용
+        padding: isSLevel ? '0 3px' : '0',
+        borderRadius: isSLevel ? '3px' : '0',
         fontWeight: 'bold',
         fontSize: '14px',
     };
@@ -408,15 +412,15 @@ export default function App() {
     }, []);
 
     const handleEnter = useCallback(async (formData) => {
-        const { name, level, gender, isGuest } = formData;
+        const { name, level, gender } = formData;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' } }); return; }
         const id = generateId(name);
         try {
             const playerDocRef = doc(playersRef, id);
             let docSnap = await getDoc(playerDocRef);
             let playerData = docSnap.exists() 
-                ? { ...docSnap.data(), level, gender, isGuest }
-                : { id, name, level, gender, isGuest, gamesPlayed: 0, entryTime: new Date().toISOString(), isResting: false };
+                ? { ...docSnap.data(), level, gender, isGuest: false }
+                : { id, name, level, gender, isGuest: false, gamesPlayed: 0, entryTime: new Date().toISOString(), isResting: false };
             
             await setDoc(playerDocRef, playerData, { merge: true });
             setCurrentUser(playerData);
@@ -791,7 +795,7 @@ export default function App() {
 // Modals and Entry Page
 // ===================================================================================
 function EntryPage({ onEnter }) {
-    const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
+    const [formData, setFormData] = useState({ name: '', level: 'S조', gender: '남' });
 
     useEffect(() => {
         const savedUserId = localStorage.getItem('badminton-currentUser-id');
@@ -803,12 +807,12 @@ function EntryPage({ onEnter }) {
     }, []);
 
     const handleChange = (e) => { 
-        const { name, value, type, checked } = e.target;
-        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value })); 
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value })); 
     };
     const handleSubmit = (e) => { e.preventDefault(); onEnter(formData); };
     
-    const levelButtons = ['A조', 'B조', 'C조', 'D조'].map(level => (
+    const levelButtons = ['S조', 'A조', 'B조', 'C조', 'D조'].map(level => (
         <button
             key={level}
             type="button"
@@ -824,20 +828,14 @@ function EntryPage({ onEnter }) {
         <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center">NOERROR</h1>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-6">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-5 gap-2">
                         {levelButtons}
                     </div>
                     <div className="flex justify-around items-center text-lg">
                         <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
                         <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
-                    </div>
-                    <div className="text-center">
-                        <label className="flex items-center justify-center text-lg cursor-pointer">
-                            <input type="checkbox" name="isGuest" checked={formData.isGuest} onChange={handleChange} className="mr-2 h-4 w-4 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" />
-                            게스트
-                        </label>
                     </div>
                     <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
                 </form>
@@ -886,4 +884,3 @@ function EditGamesModal({ player, onSave, onCancel }) {
 }
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function MoveCourtModal({ sourceCourtIndex, courts, onSelect, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{sourceCourtIndex + 1}번 코트 경기 이동</h3><p className="text-gray-300 mb-6">어느 코트로 이동/교체할까요?</p><div className="flex flex-col gap-3">{courts.map((court, idx) => { if (idx === sourceCourtIndex) return null; return ( <button key={idx} onClick={() => onSelect(sourceCourtIndex, idx)} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition-colors">{idx + 1}번 코트</button> )})}</div><button onClick={onCancel} className="mt-6 w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button></div></div> ); }
-
