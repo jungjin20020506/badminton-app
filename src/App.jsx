@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, 
     collection, deleteDoc, updateDoc, writeBatch, runTransaction, query, addDoc, where, getDocs, serverTimestamp
@@ -44,17 +44,21 @@ const getLevelColor = (level) => {
 // 공용 UI 컴포넌트 (모달, 카드 등)
 // ===================================================================================
 
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, isCurrentUser, isPlaying = false, isSelected = false }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
+    const longPressTimer = useRef(null);
+    const handleMouseDown = () => { if(isAdmin) longPressTimer.current = setTimeout(() => onLongPress(player), 1000); };
+    const handleMouseUp = () => clearTimeout(longPressTimer.current);
+    const handleTouchStart = () => { if(isAdmin) longPressTimer.current = setTimeout(() => onLongPress(player), 1000); };
+    const handleTouchEnd = () => clearTimeout(longPressTimer.current);
+
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
-    const adminIcon = (SUPER_ADMIN_NAMES.includes(player.name) || context.isRoomCreator) ? '👑' : '';
+    const adminIcon = (SUPER_ADMIN_NAMES.includes(player.name) || context.isAdmin) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
     const cardStyle = {
         ...genderStyle,
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        borderColor: 'transparent',
+        border: '2px solid transparent',
         transition: 'all 0.2s ease-in-out',
         backgroundColor: '#2d3748',
         opacity: isPlaying || player.isResting ? 0.6 : 1,
@@ -64,20 +68,22 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     if (isSelected) {
         cardStyle.borderColor = '#34d399';
         cardStyle.transform = 'scale(1.05)';
-        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 10px rgba(52, 211, 153, 0.7)`;
+        cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.9)`;
     }
     if (isCurrentUser) {
         cardStyle.borderColor = '#FBBF24';
-        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 10px rgba(251, 191, 36, 0.7)`;
+        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
     }
     
-    const actionLabel = context.location === 'waiting' ? '대기자 명단에서 제외' : '대기자로 이동';
-
     return (
         <div 
             className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full cursor-pointer"
             style={cardStyle}
             onClick={isAdmin && onCardClick ? () => onCardClick(player) : null}
+            onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}
+            draggable={isAdmin} onDragStart={(e) => onDragStart(e, player.id)} onDragEnd={onDragEnd}
+            onDragOver={onDragOver} onDrop={(e) => onDrop(e, {type: 'player', id: player.id})}
         >
             <div>
                 <div className="player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter">{adminIcon}{player.name}</div>
@@ -87,7 +93,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                 </div>
             </div>
             {isAdmin && onAction && context.location !== 'court' && (
-                <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400" aria-label={actionLabel}>
+                <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
             )}
@@ -95,8 +101,9 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     );
 });
 
-const EmptySlot = ({ onSlotClick }) => ( 
-    <div onClick={onSlotClick} className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all">
+const EmptySlot = ({ onSlotClick, onDragOver, onDrop }) => ( 
+    <div onClick={onSlotClick} onDragOver={onDragOver} onDrop={onDrop}
+        className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all">
         <span className="text-xl font-bold">+</span>
     </div> 
 );
@@ -186,30 +193,41 @@ function SettingsModal({ roomData, onSave, onCancel, onSystemReset }) {
     );
 }
 
+function EditGamesModal({ player, onSave, onClose }) {
+    const [games, setGames] = useState(player.todayGames || 0);
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
+                <h3 className="text-xl font-bold text-yellow-400 mb-4">{player.name} 경기 수 조작</h3>
+                <div className="flex items-center justify-center gap-4 my-6">
+                    <button onClick={() => setGames(g => Math.max(0, g - 1))} className="w-12 h-12 bg-gray-600 rounded-full text-2xl arcade-button">-</button>
+                    <span className="text-4xl font-bold w-16 text-center arcade-font">{games}</span>
+                    <button onClick={() => setGames(g => g + 1)} className="w-12 h-12 bg-gray-600 rounded-full text-2xl arcade-button">+</button>
+                </div>
+                <div className="flex gap-4">
+                    <button onClick={onClose} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg">취소</button>
+                    <button onClick={() => onSave(player.id, games)} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
 // ===================================================================================
 // 페이지 컴포넌트
 // ===================================================================================
 
 function AuthPage() {
-    const [step, setStep] = useState(4);
-    const [formData, setFormData] = useState({ username: '', name: '', phone: '', level: 'A조', gender: '남', password: '' });
+    const [isLogin, setIsLogin] = useState(true);
+    const [formData, setFormData] = useState({ username: '', name: '', level: 'A조', gender: '남', password: '' });
     const [error, setError] = useState('');
-    const recaptchaContainerRef = useRef(null);
-
-    useEffect(() => {
-        if (recaptchaContainerRef.current && !window.recaptchaVerifier) {
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
-        }
-    }, []);
     
     const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
     const handleSignUp = async (e) => {
         e.preventDefault(); setError('');
-        if (!formData.username || !formData.name || !formData.password) {
-            setError('아이디, 닉네임, 비밀번호는 필수입니다.');
-            return;
-        }
+        if (!formData.username || !formData.name || !formData.password) { setError('아이디, 닉네임, 비밀번호는 필수입니다.'); return; }
         try {
             const q = query(collection(db, "users"), where("username", "==", formData.username));
             if (!(await getDocs(q)).empty) { setError('이미 사용중인 아이디입니다.'); return; }
@@ -218,7 +236,7 @@ function AuthPage() {
                 username: formData.username, name: formData.name, level: formData.level, gender: formData.gender,
             });
             alert(`가입 완료! 이제 로그인해주세요.`);
-            setStep(4);
+            setIsLogin(true);
         } catch (err) { setError(`가입 실패: ${err.message}`); }
     };
     const handleLogin = async (e) => {
@@ -230,17 +248,16 @@ function AuthPage() {
     
     return (
         <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
-            <div ref={recaptchaContainerRef}></div>
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">콕스타</h1>
                 {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-                {step === 4 ? (
+                {isLogin ? (
                     <form onSubmit={handleLogin} className="space-y-4">
                         <h2 className="text-xl font-bold text-center">로그인</h2>
                         <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
                         <input type="password" name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
                         <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
-                        <button type="button" onClick={() => setStep(3)} className="w-full text-center text-sm text-gray-400 mt-2">계정이 없으신가요? 회원가입</button>
+                        <button type="button" onClick={() => setIsLogin(false)} className="w-full text-center text-sm text-gray-400 mt-2">계정이 없으신가요? 회원가입</button>
                     </form>
                 ) : (
                     <form onSubmit={handleSignUp} className="space-y-4">
@@ -251,7 +268,7 @@ function AuthPage() {
                         <select name="level" value={formData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
                         <select name="gender" value={formData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select>
                         <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">가입 완료하기</button>
-                        <button type="button" onClick={() => setStep(4)} className="w-full text-center text-sm text-gray-400 mt-2">이미 계정이 있으신가요? 로그인</button>
+                        <button type="button" onClick={() => setIsLogin(true)} className="w-full text-center text-sm text-gray-400 mt-2">이미 계정이 있으신가요? 로그인</button>
                     </form>
                 )}
             </div>
@@ -262,6 +279,7 @@ function AuthPage() {
 function LobbyPage({ userData, setPage, setRoomId }) {
     const [rooms, setRooms] = useState([]);
     const [newRoomName, setNewRoomName] = useState('');
+    const [adminUsernames, setAdminUsernames] = useState('');
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -275,8 +293,10 @@ function LobbyPage({ userData, setPage, setRoomId }) {
         if (!newRoomName.trim()) return;
         setError('');
         try {
+            const adminUsernamesArray = adminUsernames.split(',').map(name => name.trim()).filter(Boolean);
             const roomRef = await addDoc(collection(db, "rooms"), {
                 name: newRoomName,
+                admins: adminUsernamesArray,
                 createdAt: serverTimestamp(),
                 createdBy: userData.uid,
                 numScheduledMatches: 4,
@@ -308,9 +328,10 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                 </div>
             </header>
             <div className="w-full max-w-lg bg-gray-800 p-4 rounded-lg">
-                <div className="flex gap-2 mb-4">
-                    <input type="text" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="새 방 이름" className="flex-grow bg-gray-700 p-2 rounded-lg" />
-                    <button onClick={handleCreateRoom} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
+                <div className="flex flex-col gap-2 mb-4">
+                    <input type="text" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="새 방 이름" className="bg-gray-700 p-2 rounded-lg" />
+                    <input type="text" value={adminUsernames} onChange={(e) => setAdminUsernames(e.target.value)} placeholder="관리자 아이디 (쉼표로 구분)" className="bg-gray-700 p-2 rounded-lg" />
+                    <button onClick={handleCreateRoom} className="arcade-button bg-yellow-500 text-black font-bold px-4 py-2 rounded-lg">방 만들기</button>
                 </div>
                 {error && <p className="text-red-500 text-center mb-2">{error}</p>}
                 <div className="space-y-2">{rooms.map(room => (<div key={room.id} className="flex justify-between items-center bg-gray-700 p-3 rounded-lg"><span className="font-semibold">{room.name}</span><button onClick={() => handleEnterRoom(room.id)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button></div>))}</div>
@@ -327,22 +348,14 @@ function ProfilePage({ userData, setPage }) {
 
     const handleSave = async () => {
         setMessage('');
-        if (!profileData.name) {
-            setMessage('닉네임을 입력해주세요.');
-            return;
-        }
+        if (!profileData.name) { setMessage('닉네임을 입력해주세요.'); return; }
         try {
             const userDocRef = doc(db, "users", userData.uid);
-            await updateDoc(userDocRef, {
-                name: profileData.name,
-                level: profileData.level,
-            });
+            await updateDoc(userDocRef, { name: profileData.name, level: profileData.level });
             setMessage('프로필이 성공적으로 저장되었습니다.');
             userData.name = profileData.name;
             userData.level = profileData.level;
-        } catch (error) {
-            setMessage('저장에 실패했습니다: ' + error.message);
-        }
+        } catch (error) { setMessage('저장에 실패했습니다: ' + error.message); }
     };
 
     return (
@@ -364,15 +377,18 @@ function ProfilePage({ userData, setPage }) {
     );
 }
 
-
 function GameRoomPage({ userData, roomId, setPage }) {
     const [roomData, setRoomData] = useState(null);
     const [players, setPlayers] = useState({});
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
     const [modal, setModal] = useState({ type: null, data: null });
     const [activeTab, setActiveTab] = useState('matching');
+    const [draggedPlayerId, setDraggedPlayerId] = useState(null);
 
-    const isAdmin = useMemo(() => roomData ? (SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid) : false, [userData, roomData]);
+    const isAdmin = useMemo(() => {
+        if (!roomData || !userData) return false;
+        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username);
+    }, [userData, roomData]);
 
     useEffect(() => {
         const unsubRoom = onSnapshot(doc(db, 'rooms', roomId), (doc) => doc.exists() ? setRoomData({ id: doc.id, ...doc.data() }) : setPage('lobby'));
@@ -387,10 +403,10 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 const roomDoc = await tx.get(doc(db, 'rooms', roomId));
                 if (!roomDoc.exists()) throw "Room not found";
                 const currentData = roomDoc.data();
-                const newData = updateLogic(currentData);
+                const newData = updateLogic(JSON.parse(JSON.stringify(currentData))); // Deep copy
                 tx.update(doc(db, 'rooms', roomId), newData);
             });
-        } catch (e) { setModal({ type: 'alert', data: { title: '오류', body: '작업에 실패했습니다: ' + e } }); }
+        } catch (e) { setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } }); }
     }, [roomId]);
     
     const playerLocations = useMemo(() => {
@@ -407,27 +423,16 @@ function GameRoomPage({ userData, roomId, setPage }) {
         return locations;
     }, [roomData, players]);
 
-    const waitingPlayers = useMemo(() => 
-        Object.values(players).filter(p => playerLocations[p.id]?.location === 'waiting')
-        .sort((a, b) => (LEVEL_ORDER[a.level] || 99) - (LEVEL_ORDER[b.level] || 99) || new Date(a.entryTime) - new Date(b.entryTime))
-    , [players, playerLocations]);
+    const waitingPlayers = useMemo(() =>  Object.values(players).filter(p => playerLocations[p.id]?.location === 'waiting').sort((a,b) => (LEVEL_ORDER[a.level]||99)-(LEVEL_ORDER[b.level]||99) || new Date(a.entryTime).getTime()-new Date(b.entryTime).getTime()), [players, playerLocations]);
+    const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
-    const inProgressPlayerIds = useMemo(() => new Set(
-        (roomData?.inProgressCourts || []).filter(c => c && c.players).flatMap(c => c.players).filter(Boolean)
-    ), [roomData]);
-
-    const handleCardClick = (player) => {
-        if (!isAdmin) return;
-        setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
-    };
-
+    const handleCardClick = (player) => { if (!isAdmin) return; setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]); };
     const handleAction = (player) => {
         const loc = playerLocations[player.id];
-        if (loc.location === 'schedule') {
+        if (loc && loc.location === 'schedule') {
              updateRoomState(data => {
-                const newData = JSON.parse(JSON.stringify(data));
-                newData.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
-                return newData;
+                data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
+                return data;
             });
         }
     };
@@ -435,19 +440,25 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleSlotClick = (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
         updateRoomState(data => {
-            const newData = JSON.parse(JSON.stringify(data));
+            let targetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+            const availableSlots = targetArray.filter(p => p === null).length;
+            if (selectedPlayerIds.length > availableSlots) {
+                // This will be caught by updateRoomState's catch block and show the alert modal.
+                throw new Error("자리가 없습니다.");
+            }
+            
             const playersToMove = [...selectedPlayerIds];
+            // Remove players from old positions
             playersToMove.forEach(pId => {
-                const loc = Object.values(newData.scheduledMatches).flatMap(m => m).includes(pId) ? 
-                    Object.entries(newData.scheduledMatches).find(([_,m]) => m.includes(pId)) : null;
-                if(loc) newData.scheduledMatches[loc[0]][loc[1].indexOf(pId)] = null;
+                const loc = playerLocations[pId];
+                if(loc && loc.location === 'schedule') data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
             });
-            let targetArray = newData.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+            // Add to new slots
             for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
                 if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
             }
-            newData.scheduledMatches[context.matchIndex] = targetArray;
-            return newData;
+            data.scheduledMatches[context.matchIndex] = targetArray;
+            return data;
         });
         setSelectedPlayerIds([]);
     };
@@ -456,44 +467,48 @@ function GameRoomPage({ userData, roomId, setPage }) {
         const match = roomData?.scheduledMatches?.[matchIndex] || [];
         if(match.filter(p=>p).length !== PLAYERS_PER_MATCH) return;
         
-        const emptyCourts = Array.from({length: roomData.numInProgressCourts}, (_,i) => i).filter(i => !roomData.inProgressCourts[i]);
+        const emptyCourts = Array.from({length: roomData.numInProgressCourts}, (_,i) => i).filter(i => !(roomData.inProgressCourts || [])[i]);
         if(emptyCourts.length === 0) { setModal({type:'alert', data:{title: "시작 불가", body: "빈 코트가 없습니다."}}); return; }
 
         const start = (courtIndex) => {
             updateRoomState(data => {
-                const newData = JSON.parse(JSON.stringify(data));
-                newData.inProgressCourts[courtIndex] = { players: newData.scheduledMatches[matchIndex], startTime: serverTimestamp() };
-                for(let i = matchIndex; i < data.numScheduledMatches - 1; i++) { newData.scheduledMatches[i] = newData.scheduledMatches[i+1] || Array(PLAYERS_PER_MATCH).fill(null); }
-                newData.scheduledMatches[data.numScheduledMatches-1] = Array(PLAYERS_PER_MATCH).fill(null);
-                return newData;
+                data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: serverTimestamp() };
+                for(let i = matchIndex; i < data.numScheduledMatches - 1; i++) { data.scheduledMatches[i] = data.scheduledMatches[i+1] || Array(PLAYERS_PER_MATCH).fill(null); }
+                data.scheduledMatches[data.numScheduledMatches-1] = Array(PLAYERS_PER_MATCH).fill(null);
+                return data;
             });
             setModal({type: null, data: null});
         };
         if(emptyCourts.length === 1) start(emptyCourts[0]);
         else setModal({type: 'courtSelection', data:{courts: emptyCourts, onSelect: start}});
     };
-
+    
     const handleEndMatch = (courtIndex) => {
-        const matchPlayers = roomData.inProgressCourts[courtIndex].players.map(pId => players[pId]).filter(Boolean);
+        const court = (roomData.inProgressCourts || [])[courtIndex];
+        if(!court) return;
+        const matchPlayers = court.players.map(pId => players[pId]).filter(Boolean);
         setModal({type:'resultInput', data: {courtIndex, players: matchPlayers, onResultSubmit: processMatchResult}});
     };
 
     const processMatchResult = async (courtIndex, winners) => {
         if (winners.length !== 2) return;
+        const court = (roomData.inProgressCourts || [])[courtIndex];
+        if(!court) return;
+
         const batch = writeBatch(db);
-        roomData.inProgressCourts[courtIndex].players.forEach(pId => {
+        court.players.forEach(pId => {
             const playerRef = doc(db, 'rooms', roomId, 'players', pId);
-            batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
+            batch.update(playerRef, { todayGames: (players[pId]?.todayGames || 0) + 1 });
         });
         await batch.commit();
+
         updateRoomState(data => { 
-            const newData = JSON.parse(JSON.stringify(data));
-            newData.inProgressCourts[courtIndex] = null; 
-            return newData; 
+            data.inProgressCourts[courtIndex] = null; 
+            return data; 
         });
         setModal({type:null, data:null});
     };
-    
+
     const handleToggleRest = () => {
         const playerRef = doc(db, 'rooms', roomId, 'players', userData.uid);
         updateDoc(playerRef, { isResting: !players[userData.uid]?.isResting });
@@ -509,16 +524,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
             setModal({type:null, data:null});
         }}});
     };
-    
+
     const handleSettingsSave = (settings) => {
-        updateRoomState(data => ({
-            ...data,
-            numScheduledMatches: settings.numScheduledMatches,
-            numInProgressCourts: settings.numInProgressCourts,
-        }));
+        updateRoomState(data => ({ ...data, ...settings }));
         setModal({type:null, data:null});
     };
-    
+
     const handleExitRoom = async () => {
         await deleteDoc(doc(db, 'rooms', roomId, 'players', userData.uid));
         setPage('lobby');
@@ -526,23 +537,57 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const handleClearScheduledMatches = () => {
         setModal({type:'confirm', data:{title:'전체 삭제', body:'모든 예정 경기를 삭제하시겠습니까?', onConfirm: () => {
-            updateRoomState(data => {
-                data.scheduledMatches = {};
-                return data;
-            });
+            updateRoomState(data => { data.scheduledMatches = {}; return data; });
             setModal({type:null, data:null});
         }}});
     };
+    
+    const handleLongPress = (player) => setModal({ type: 'editGames', data: player });
+    const handleSaveGames = async (playerId, games) => {
+        await updateDoc(doc(db, 'rooms', roomId, 'players', playerId), { todayGames: games });
+        setModal({ type: null, data: null });
+    };
+
+    const handleDragStart = (e, playerId) => { e.dataTransfer.setData("playerId", playerId); setDraggedPlayerId(playerId); };
+    const handleDragEnd = () => setDraggedPlayerId(null);
+    const handleDragOver = (e) => e.preventDefault();
+    const handleDrop = (e, target) => {
+        e.preventDefault();
+        const sourcePlayerId = e.dataTransfer.getData("playerId");
+        if (!sourcePlayerId || sourcePlayerId === target.id) return;
+
+        updateRoomState(data => {
+            // Re-calculate locations inside transaction for consistency
+            const locations = {};
+            Object.keys(players).forEach(pId => locations[pId] = { location: 'waiting' });
+            Object.keys(data.scheduledMatches || {}).forEach(mK => data.scheduledMatches[mK].forEach((pId, sI) => { if(pId) locations[pId] = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI }; }));
+            
+            const sourceLoc = locations[sourcePlayerId];
+            const targetLoc = target.type === 'player' ? locations[target.id] : { location: 'schedule', ...target };
+
+            if (sourceLoc.location === 'schedule') { data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = null; }
+            if (target.type === 'player' && targetLoc.location === 'schedule') { data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = null; }
+            
+            if (sourceLoc.location === 'schedule' && target.type === 'player' && targetLoc.location === 'schedule') {
+                data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = target.id;
+            }
+             data.scheduledMatches[targetLoc.matchIndex] = data.scheduledMatches[targetLoc.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+             data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = sourcePlayerId;
+
+            return data;
+        });
+        setDraggedPlayerId(null);
+    }
 
 
     if (!roomData) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING ROOM...</p></div>;
     
     const renderMatchingContent = () => (
-        <>
+        <div className="flex flex-col gap-4">
             <section className="bg-gray-800/50 rounded-lg p-3">
                 <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
                 <div className="grid grid-cols-5 gap-2">
-                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isRoomCreator: roomData.createdBy === p.uid }} isAdmin={isAdmin} onCardClick={handleCardClick} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} />)}
+                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onLongPress={handleLongPress} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
                 </div>
             </section>
             <section>
@@ -560,7 +605,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                 <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                         const pId = match[slotIndex];
-                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule'}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} />
+                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username)}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPress} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
                                     })}
                                 </div>
                                 <div className="flex-shrink-0 w-16 text-center">
@@ -571,7 +616,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     })}
                 </div>
             </section>
-        </>
+        </div>
     );
 
     const renderInProgressContent = () => (
@@ -579,12 +624,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <h2 className="text-lg font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
             <div className="flex flex-col gap-2">
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
-                    const court = roomData.inProgressCourts?.[courtIndex];
+                    const court = (roomData.inProgressCourts || [])[courtIndex];
                     return (
                          <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
                             <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center"><p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[9px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court' }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
+                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court', isAdmin: (roomData.admins || []).includes(players[pId].username) }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
                             </div>
                             <div className="flex-shrink-0 w-16 text-center">
                                 <button className={`arcade-button w-full py-2 px-1 rounded-md font-bold transition duration-300 text-xs ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
@@ -604,6 +649,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({type:null})} />}
             {modal.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal({type:null})} />}
             {modal.type === 'settings' && <SettingsModal roomData={roomData} onSave={handleSettingsSave} onCancel={() => setModal({type:null})} onSystemReset={handleSystemReset} />}
+            {modal.type === 'editGames' && <EditGamesModal player={modal.data} onSave={handleSaveGames} onClose={() => setModal({type:null})} />}
             
             <header className="flex-shrink-0 p-3 flex items-center justify-between gap-2 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
                 <h1 className="text-lg font-bold text-yellow-400 arcade-font flicker-text flex items-center"><span className="mr-2">⚡</span><span className="uppercase">{roomData.name}</span></h1>
@@ -625,6 +671,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             </div>
 
             <style>{`
+                html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
                 .arcade-font { font-family: 'Press Start 2P', cursive; }
                 .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; }
                 .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
