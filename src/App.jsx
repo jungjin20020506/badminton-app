@@ -9,13 +9,15 @@ import {
 // ===================================================================================
 // Firebase 설정
 // ===================================================================================
+
 const firebaseConfig = {
-  apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
-  authDomain: "project-104956788310687609.firebaseapp.com",
-  projectId: "project-104956788310687609",
-  storageBucket: "project-104956788310687609.firebasestorage.app",
-  messagingSenderId: "384562806148",
-  appId: "1:384956788310687609:web:d8bfb83b28928c13e671d1"
+  apiKey: "AIzaSyC-eeHazZ3kVj7aQicdtlnhEmLbbTJHgGE",
+  authDomain: "noerror-14ce3.firebaseapp.com",
+  projectId: "noerror-14ce3",
+  storageBucket: "noerror-14ce3.firebasestorage.app",
+  messagingSenderId: "279065154821",
+  appId: "1:279065154821:web:812570dde2bdde560a936c",
+  measurementId: "G-PFGZGHT9T4"
 };
 
 const app = initializeApp(firebaseConfig);
