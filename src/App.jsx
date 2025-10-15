@@ -223,7 +223,6 @@ function AuthPage({ setPage }) {
     const [error, setError] = useState('');
     
     useEffect(() => {
-        // Initialize RecaptchaVerifier on mount, and ensure it's cleared on unmount.
         const recaptchaContainer = document.getElementById('recaptcha-container');
         if (recaptchaContainer && !window.recaptchaVerifier) {
             try {
@@ -233,14 +232,8 @@ function AuthPage({ setPage }) {
                 setError("reCAPTCHA 초기화에 실패했습니다. 페이지를 새로고침 해주세요.");
             }
         }
-        return () => {
-            if (window.recaptchaVerifier) {
-                // This might cause issues if called too aggressively. Let's manage it carefully.
-            }
-        };
     }, []);
     
-    // Function to ensure verifier is ready before use.
     const ensureRecaptcha = () => {
         if (!window.recaptchaVerifier) {
             const recaptchaContainer = document.getElementById('recaptcha-container');
@@ -804,7 +797,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             
             const playersToMove = [...selectedPlayerIds];
             playersToMove.forEach(pId => {
-                const loc = Object.entries(data.scheduledMatches || {}).find(([_, match]) => match.includes(pId));
+                const loc = Object.entries(data.scheduledMatches || {}).find(([_, match]) => (match || []).includes(pId));
                 if(loc) data.scheduledMatches[loc[0]][loc[1].indexOf(pId)] = null;
             });
             for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
