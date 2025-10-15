@@ -26,7 +26,7 @@ const auth = getAuth(app);
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
-const SUPER_ADMIN_NAMES = ["관리자", "정형진"];
+const SUPER_ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
@@ -281,7 +281,7 @@ function SignUpForm({ setError, setMode }) {
     const [verificationId, setVerificationId] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [usernameStatus, setUsernameStatus] = useState({ status: 'idle', message: '' }); // idle, checking, valid, invalid
+    const [usernameStatus, setUsernameStatus] = useState({ status: 'idle', message: '' });
     const [passwordError, setPasswordError] = useState('');
 
     const handleChange = e => {
@@ -294,6 +294,7 @@ function SignUpForm({ setError, setMode }) {
 
     const handleCheckUsername = async () => {
         if (!formData.username) { setUsernameStatus({ status: 'invalid', message: '아이디를 입력해주세요.' }); return; }
+        if (formData.username === 'domain') { setUsernameStatus({ status: 'invalid', message: "'domain'은 사용할 수 없는 아이디입니다."}); return; }
         setUsernameStatus({ status: 'checking', message: '확인 중...' });
         const q = query(collection(db, "users"), where("username", "==", formData.username));
         const snapshot = await getDocs(q);
@@ -304,8 +305,8 @@ function SignUpForm({ setError, setMode }) {
     const handleNextStep = (e) => {
         e.preventDefault();
         setError(''); setPasswordError('');
-        if (formData.password !== formData.confirmPassword) { setPasswordError('비밀번호가 일치하지 않습니다.'); return; }
         if (formData.password.length < 6) { setPasswordError('비밀번호는 6자 이상이어야 합니다.'); return; }
+        if (formData.password !== formData.confirmPassword) { setPasswordError('비밀번호가 일치하지 않습니다.'); return; }
         if (usernameStatus.status !== 'valid') { setError('아이디 중복 확인을 통과해야 합니다.'); return; }
         setStep(2);
     };
@@ -911,7 +912,7 @@ export default function App() {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 const userDocRef = currentUser.email === 'domain@special.user'
-                    ? doc(db, "users", "domain_user_placeholder") // A dummy doc for the domain admin
+                    ? doc(db, "users", "domain_user_placeholder")
                     : doc(db, "users", currentUser.uid);
 
                 const userDoc = await getDoc(userDocRef);
