@@ -221,35 +221,29 @@ function EditGamesModal({ player, onSave, onClose }) {
 function AuthPage({ setPage }) {
     const [mode, setMode] = useState('login');
     const [error, setError] = useState('');
-    const recaptchaContainerRef = useRef(null);
-
-    useEffect(() => {
-        if (recaptchaContainerRef.current && !window.recaptchaVerifier) {
-            try {
-                window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
-            } catch (e) {
-                console.error("Recaptcha Verifier error:", e);
-                setError("reCAPTCHA 초기화에 실패했습니다. 페이지를 새로고침 해주세요.");
-            }
+    
+    // RecaptchaVerifier is now created on demand
+    const setupRecaptcha = () => {
+        if (window.recaptchaVerifier) {
+            window.recaptchaVerifier.clear();
         }
-        return () => {
-            if (window.recaptchaVerifier) {
-                window.recaptchaVerifier.clear();
-            }
-        };
-    }, []);
+        const recaptchaContainer = document.getElementById('recaptcha-container');
+        if (!recaptchaContainer) return;
+        
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, { 'size': 'invisible' });
+    };
 
     const renderForm = () => {
         switch (mode) {
-            case 'signup': return <SignUpForm setError={setError} setMode={setMode} />;
-            case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} />;
+            case 'signup': return <SignUpForm setError={setError} setMode={setMode} setupRecaptcha={setupRecaptcha} />;
+            case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} setupRecaptcha={setupRecaptcha} />;
             default: return <LoginForm setError={setError} setMode={setMode} />;
         }
     };
     
     return (
         <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
-            <div id="recaptcha-container" ref={recaptchaContainerRef}></div>
+            <div id="recaptcha-container"></div>
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">콕스타</h1>
                 {error && <p className="text-red-500 text-center mb-4 text-sm">{error}</p>}
@@ -282,7 +276,7 @@ function LoginForm({ setError, setMode }) {
     );
 }
 
-function SignUpForm({ setError, setMode }) {
+function SignUpForm({ setError, setMode, setupRecaptcha }) {
     const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
     const [step, setStep] = useState(1);
     const [verificationId, setVerificationId] = useState('');
@@ -290,6 +284,12 @@ function SignUpForm({ setError, setMode }) {
     const [showPassword, setShowPassword] = useState(false);
     const [usernameStatus, setUsernameStatus] = useState({ status: 'idle', message: '' });
     const [passwordError, setPasswordError] = useState('');
+
+    useEffect(() => {
+        if(step === 2) {
+            setupRecaptcha();
+        }
+    }, [step, setupRecaptcha]);
 
     const handleChange = e => {
         const { name, value } = e.target;
@@ -328,7 +328,8 @@ function SignUpForm({ setError, setMode }) {
                 if (!(await getDocs(q)).empty) { setError('이미 가입된 전화번호입니다.'); return; }
             }
             const phoneNumber = `+82${sanitizedPhone.substring(1)}`;
-            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            const verifier = window.recaptchaVerifier;
+            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
             setVerificationId(confirmationResult.verificationId);
             alert('인증번호가 발송되었습니다.');
         } catch (err) { setError(`인증번호 발송 실패: ${err.message}`); console.error(err) }
@@ -338,11 +339,7 @@ function SignUpForm({ setError, setMode }) {
         setError('');
         try {
             if (!verificationId || !verificationCode) { setError('인증번호를 입력해주세요.'); return; }
-            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
-            // Link the phone credential to the user being created.
             const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
-            // This linking step is complex and often requires a custom backend.
-            // For client-side simplicity, we'll just store the phone number in Firestore.
             await setDoc(doc(db, "users", userCredential.user.uid), {
                 name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone,
             });
@@ -408,7 +405,7 @@ function SignUpForm({ setError, setMode }) {
     );
 }
 
-function FindAccountForm({ setError, setMode }) {
+function FindAccountForm({ setError, setMode, setupRecaptcha }) {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({ name: '', phone: '' });
     const [foundUser, setFoundUser] = useState(null);
@@ -417,6 +414,12 @@ function FindAccountForm({ setError, setMode }) {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    
+    useEffect(() => {
+        if(step === 1 && foundUser) {
+            setupRecaptcha();
+        }
+    }, [step, foundUser, setupRecaptcha]);
 
     const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -438,7 +441,8 @@ function FindAccountForm({ setError, setMode }) {
         if (!foundUser) { setError("먼저 아이디를 찾아주세요."); return; }
         try {
             const phoneNumber = `+82${foundUser.phone.substring(1)}`;
-            const result = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            const verifier = window.recaptchaVerifier;
+            const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
             setConfirmationResult(result);
             setStep(2);
             alert("인증번호가 발송되었습니다.");
@@ -462,7 +466,7 @@ function FindAccountForm({ setError, setMode }) {
             if(auth.currentUser) {
                 await updatePassword(auth.currentUser, newPassword);
                 alert("비밀번호가 성공적으로 변경되었습니다. 다시 로그인해주세요.");
-                await signOut(auth); // Sign out temporary user
+                await signOut(auth);
                 setMode('login');
             } else {
                 setError("인증 세션이 만료되었습니다. 처음부터 다시 시도해주세요.");
@@ -552,7 +556,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
             const enteredPassword = prompt("비밀번호를 입력하세요:");
             if (enteredPassword === room.password) {
                 handleEnterRoom(room.id);
-            } else if (enteredPassword !== null) { // Handle cancel button
+            } else if (enteredPassword !== null) {
                 alert("비밀번호가 틀렸습니다.");
             }
         } else {
