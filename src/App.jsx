@@ -47,10 +47,17 @@ const getLevelColor = (level) => {
 
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
     const longPressTimer = useRef(null);
-    const handleMouseDown = (e) => { if(isAdmin) { e.preventDefault(); longPressTimer.current = setTimeout(() => onLongPress(player), 1000); }};
-    const handleMouseUp = () => clearTimeout(longPressTimer.current);
-    const handleTouchStart = (e) => { if(isAdmin) { e.preventDefault(); longPressTimer.current = setTimeout(() => onLongPress(player), 1000); }};
-    const handleTouchEnd = () => clearTimeout(longPressTimer.current);
+    
+    const handlePressStart = (e) => {
+        if (isAdmin) {
+            e.preventDefault(); // Prevent default touch behavior like text selection
+            longPressTimer.current = setTimeout(() => onLongPress(player), 1000);
+        }
+    };
+
+    const handlePressEnd = () => {
+        clearTimeout(longPressTimer.current);
+    };
 
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
     const adminIcon = (SUPER_ADMIN_NAMES.includes(player.name) || context.isAdmin) ? '👑' : '';
@@ -81,8 +88,12 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full cursor-pointer"
             style={cardStyle}
             onClick={isAdmin && onCardClick ? () => onCardClick(player) : null}
-            onMouseDown={handleMouseDown} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}
+            onMouseDown={handlePressStart} 
+            onMouseUp={handlePressEnd} 
+            onMouseLeave={handlePressEnd}
+            onTouchStart={handlePressStart} 
+            onTouchEnd={handlePressEnd} 
+            onTouchCancel={handlePressEnd}
             draggable={isAdmin} onDragStart={(e) => onDragStart(e, player.id)} onDragEnd={onDragEnd}
             onDragOver={onDragOver} onDrop={(e) => onDrop(e, {type: 'player', id: player.id})}
         >
@@ -1043,7 +1054,7 @@ export default function App() {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 const userDocRef = currentUser.email === 'domain@special.user'
-                    ? doc(db, "users", "domain_user_placeholder")
+                    ? doc(db, "users", "domain_user_placeholder") // Dummy doc for domain admin
                     : doc(db, "users", currentUser.uid);
 
                 const userDoc = await getDoc(userDocRef);
@@ -1055,7 +1066,10 @@ export default function App() {
                 else if (userDoc.exists()) {
                     setUserData({ uid: currentUser.uid, ...userDoc.data() });
                     if(page === 'auth') setPage('lobby');
-                } else { signOut(auth); }
+                } else { 
+                    // This can happen if a user is deleted from the backend but still has a valid token.
+                    signOut(auth); 
+                }
             } else {
                 setUserData(null);
                 setPage('auth');
