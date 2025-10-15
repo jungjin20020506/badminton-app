@@ -13,7 +13,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyC-eeHazZ3kVj7aQicdtlnhEmLbbTJHgGE",
   authDomain: "noerror-14ce3.firebaseapp.com",
   projectId: "noerror-14ce3",
-  storageBucket: "noerror-14ce3.appspot.com", // << [수정] 올바른 주소로 변경
+  storageBucket: "noerror-14ce3.appspot.com",
   messagingSenderId: "279065154821",
   appId: "1:279065154821:web:812570dde2bdde560a936c",
   measurementId: "G-PFGZGHT9T4"
@@ -26,7 +26,7 @@ const auth = getAuth(app);
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
-const SUPER_ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
+const SUPER_ADMIN_NAMES = ["관리자", "정형진"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
@@ -218,13 +218,17 @@ function EditGamesModal({ player, onSave, onClose }) {
 // ===================================================================================
 
 function AuthPage({ setPage }) {
-    const [mode, setMode] = useState('login'); // login, signup, findAccount
+    const [mode, setMode] = useState('login');
     const [error, setError] = useState('');
     const recaptchaContainerRef = useRef(null);
 
     useEffect(() => {
         if (recaptchaContainerRef.current && !window.recaptchaVerifier) {
-            window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
+            try {
+                window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
+            } catch (e) {
+                console.error("Recaptcha Verifier error:", e);
+            }
         }
     }, [mode]);
 
@@ -253,16 +257,10 @@ function LoginForm({ setError, setMode }) {
     const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleLogin = async (e) => {
         e.preventDefault(); setError('');
-        if (formData.username === 'domain') {
-            // "domain" user doesn't have a standard email format
-            try {
-                await signInWithEmailAndPassword(auth, 'domain@special.user', formData.password);
-            } catch (err) { setError('아이디 또는 비밀번호가 잘못되었습니다.'); }
-        } else {
-            try {
-                await signInWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
-            } catch (err) { setError('아이디 또는 비밀번호가 잘못되었습니다.'); }
-        }
+        const email = formData.username === 'domain' ? 'domain@special.user' : `${formData.username}@cockstar.app`;
+        try {
+            await signInWithEmailAndPassword(auth, email, formData.password);
+        } catch (err) { setError('아이디 또는 비밀번호가 잘못되었습니다.'); }
     };
     return (
         <form onSubmit={handleLogin} className="space-y-4">
@@ -279,24 +277,36 @@ function LoginForm({ setError, setMode }) {
 
 function SignUpForm({ setError, setMode }) {
     const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
-    const [step, setStep] = useState(1); // 1: info, 2: phone verification
+    const [step, setStep] = useState(1);
     const [verificationId, setVerificationId] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [usernameStatus, setUsernameStatus] = useState({ status: 'idle', message: '' }); // idle, checking, valid, invalid
+    const [passwordError, setPasswordError] = useState('');
 
-    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const handleChange = e => {
+        const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
+        if (name === 'username') setUsernameStatus({ status: 'idle', message: '' });
+        if (name === 'confirmPassword' && formData.password !== value) setPasswordError('비밀번호가 일치하지 않습니다.');
+        else if (name === 'confirmPassword') setPasswordError('');
+    };
 
     const handleCheckUsername = async () => {
-        if (!formData.username) { setError('아이디를 입력해주세요.'); return; }
+        if (!formData.username) { setUsernameStatus({ status: 'invalid', message: '아이디를 입력해주세요.' }); return; }
+        setUsernameStatus({ status: 'checking', message: '확인 중...' });
         const q = query(collection(db, "users"), where("username", "==", formData.username));
         const snapshot = await getDocs(q);
-        if (!snapshot.empty) { setError('이미 사용중인 아이디입니다.'); } else { setError('사용 가능한 아이디입니다.'); }
+        if (!snapshot.empty) { setUsernameStatus({ status: 'invalid', message: '이미 사용중인 아이디입니다.' }); } 
+        else { setUsernameStatus({ status: 'valid', message: '사용 가능한 아이디입니다.' }); }
     };
     
     const handleNextStep = (e) => {
         e.preventDefault();
-        setError('');
-        if (formData.password !== formData.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return; }
+        setError(''); setPasswordError('');
+        if (formData.password !== formData.confirmPassword) { setPasswordError('비밀번호가 일치하지 않습니다.'); return; }
+        if (formData.password.length < 6) { setPasswordError('비밀번호는 6자 이상이어야 합니다.'); return; }
+        if (usernameStatus.status !== 'valid') { setError('아이디 중복 확인을 통과해야 합니다.'); return; }
         setStep(2);
     };
 
@@ -304,17 +314,11 @@ function SignUpForm({ setError, setMode }) {
         setError('');
         try {
             const sanitizedPhone = formData.phone.replace(/[^0-9]/g, "");
-            if (!sanitizedPhone.startsWith("01") || sanitizedPhone.length < 10) {
-                setError("올바른 휴대폰 번호 형식(010...)으로 입력해주세요.");
-                return;
-            }
-
+            if (!sanitizedPhone.startsWith("01") || sanitizedPhone.length < 10) { setError("올바른 휴대폰 번호 형식(010...)으로 입력해주세요."); return; }
             const q = query(collection(db, "users"), where("phone", "==", formData.phone));
             if (!(await getDocs(q)).empty) { setError('이미 가입된 전화번호입니다.'); return; }
-
             const phoneNumber = `+82${sanitizedPhone.substring(1)}`;
             const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
-            
             setVerificationId(confirmationResult.verificationId);
             alert('인증번호가 발송되었습니다.');
         } catch (err) { setError(`인증번호 발송 실패: ${err.message}`); console.error(err) }
@@ -323,12 +327,7 @@ function SignUpForm({ setError, setMode }) {
     const handleSignUp = async () => {
         setError('');
         try {
-            if (!verificationId) { setError('전화번호 인증을 먼저 완료해주세요.'); return; }
-            // This is a simplified confirmation. In a real app, you'd use:
-            // const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
-            // await signInWithCredential(auth, credential);
-            // But for this project, we'll proceed if verification ID exists.
-
+            if (!verificationId || !verificationCode) { setError('인증번호를 입력해주세요.'); return; }
             const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
             await setDoc(doc(db, "users", userCredential.user.uid), {
                 name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone,
@@ -339,6 +338,13 @@ function SignUpForm({ setError, setMode }) {
     };
     
     const birthYears = Array.from({length: 70}, (_, i) => new Date().getFullYear() - i - 15);
+
+    const checkBtnClass = {
+        idle: 'bg-gray-600',
+        checking: 'bg-yellow-600',
+        valid: 'bg-green-600',
+        invalid: 'bg-red-600',
+    }[usernameStatus.status];
 
     if (step === 2) {
         return (
@@ -356,23 +362,32 @@ function SignUpForm({ setError, setMode }) {
     }
 
     return (
-        <form onSubmit={handleNextStep} className="space-y-4">
+        <form onSubmit={handleNextStep} className="space-y-3">
             <h2 className="text-xl font-bold text-center">회원가입</h2>
             <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-            <div className="flex gap-2">
-                <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                <button type="button" onClick={handleCheckUsername} className="arcade-button bg-gray-600 text-white font-bold px-3 text-sm">중복확인</button>
+            <div>
+                <div className="flex gap-2">
+                    <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    <button type="button" onClick={handleCheckUsername} className={`arcade-button text-white font-bold px-3 text-xs whitespace-nowrap ${checkBtnClass}`}>중복확인</button>
+                </div>
+                {usernameStatus.message && <p className={`text-xs mt-1 px-1 ${usernameStatus.status === 'valid' ? 'text-green-400' : 'text-red-400'}`}>{usernameStatus.message}</p>}
             </div>
-             <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-             <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+             <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호 (6자 이상)" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+             <div>
+                <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                {passwordError && <p className="text-xs mt-1 px-1 text-red-400">{passwordError}</p>}
+             </div>
             <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             <div className="grid grid-cols-2 gap-2">
                 <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
                 <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
             </div>
-            <select name="birthYear" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg">
-                {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
-            </select>
+            <div>
+                <label className="text-xs text-gray-400 px-1">출생년도</label>
+                <select name="birthYear" onChange={handleChange} defaultValue="2000" className="w-full bg-gray-700 p-3 rounded-lg">
+                    {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+            </div>
             <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
             <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 mt-2">로그인 화면으로</button>
         </form>
@@ -605,7 +620,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 const roomDoc = await tx.get(doc(db, 'rooms', roomId));
                 if (!roomDoc.exists()) throw "Room not found";
                 const currentData = roomDoc.data();
-                const newData = updateLogic(JSON.parse(JSON.stringify(currentData))); // Deep copy
+                const newData = updateLogic(JSON.parse(JSON.stringify(currentData)));
                 tx.update(doc(db, 'rooms', roomId), newData);
             });
         } catch (e) { setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } }); }
@@ -895,8 +910,17 @@ export default function App() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
-                const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-                if (userDoc.exists()) {
+                const userDocRef = currentUser.email === 'domain@special.user'
+                    ? doc(db, "users", "domain_user_placeholder") // A dummy doc for the domain admin
+                    : doc(db, "users", currentUser.uid);
+
+                const userDoc = await getDoc(userDocRef);
+                
+                if (currentUser.email === 'domain@special.user') {
+                     setUserData({ uid: 'domain_user_placeholder', username: 'domain', name: 'Domain Admin'});
+                     if (page === 'auth') setPage('lobby');
+                }
+                else if (userDoc.exists()) {
                     setUserData({ uid: currentUser.uid, ...userDoc.data() });
                     if(page === 'auth') setPage('lobby');
                 } else { signOut(auth); }
