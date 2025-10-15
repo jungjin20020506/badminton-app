@@ -29,6 +29,7 @@ const auth = getAuth(app);
 const SUPER_ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
+const TEST_PHONE_NUMBER = "01012345678";
 
 const getLevelColor = (level) => {
     switch (level) {
@@ -126,7 +127,7 @@ const CourtTimer = ({ court }) => {
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
-function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
+function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6 whitespace-pre-line">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -316,8 +317,10 @@ function SignUpForm({ setError, setMode }) {
         try {
             const sanitizedPhone = formData.phone.replace(/[^0-9]/g, "");
             if (!sanitizedPhone.startsWith("01") || sanitizedPhone.length < 10) { setError("올바른 휴대폰 번호 형식(010...)으로 입력해주세요."); return; }
-            const q = query(collection(db, "users"), where("phone", "==", formData.phone));
-            if (!(await getDocs(q)).empty) { setError('이미 가입된 전화번호입니다.'); return; }
+            if (sanitizedPhone !== TEST_PHONE_NUMBER.replace(/[^0-9]/g, "")) {
+                const q = query(collection(db, "users"), where("phone", "==", formData.phone));
+                if (!(await getDocs(q)).empty) { setError('이미 가입된 전화번호입니다.'); return; }
+            }
             const phoneNumber = `+82${sanitizedPhone.substring(1)}`;
             const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
             setVerificationId(confirmationResult.verificationId);
@@ -399,7 +402,7 @@ function FindAccountForm({ setError, setMode }) {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState({ name: '', phone: '' });
     const [foundUser, setFoundUser] = useState(null);
-    const [verificationId, setVerificationId] = useState('');
+    const [confirmationResult, setConfirmationResult] = useState(null);
     const [verificationCode, setVerificationCode] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -425,8 +428,8 @@ function FindAccountForm({ setError, setMode }) {
         if (!foundUser) { setError("먼저 아이디를 찾아주세요."); return; }
         try {
             const phoneNumber = `+82${foundUser.phone.substring(1)}`;
-            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
-            setVerificationId(confirmationResult.verificationId);
+            const result = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            setConfirmationResult(result);
             setStep(2);
             alert("인증번호가 발송되었습니다.");
         } catch(err) { setError(`인증번호 발송에 실패했습니다: ${err.message}`); }
@@ -436,12 +439,7 @@ function FindAccountForm({ setError, setMode }) {
         setError('');
         if (!verificationCode) { setError("인증번호를 입력해주세요."); return; }
         try {
-            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
-            // We don't actually sign in, just prepare for re-authentication if needed
-            // This step is mainly to validate the user.
-            // A better flow would involve re-authenticating the user before password change,
-            // but for simplicity, we proceed if the code is valid (which we can't truly check client-side without signing in).
-            // Let's assume the user is now verified.
+            await confirmationResult.confirm(verificationCode);
             setStep(3);
         } catch (err) { setError("인증번호가 잘못되었습니다."); }
     };
@@ -451,14 +449,10 @@ function FindAccountForm({ setError, setMode }) {
         if (newPassword.length < 6) { setError("비밀번호는 6자 이상이어야 합니다."); return; }
         if (newPassword !== confirmPassword) { setError("비밀번호가 일치하지 않습니다."); return; }
         try {
-            // Re-authentication would be needed here in a production app.
-            // Since we can't easily do that without complex state management,
-            // this function will fail if the user's session has expired.
-            // The error from `updatePassword` will be shown to the user.
             if(auth.currentUser) {
                 await updatePassword(auth.currentUser, newPassword);
                 alert("비밀번호가 성공적으로 변경되었습니다. 다시 로그인해주세요.");
-                signOut(auth);
+                await signOut(auth); // Sign out temporary user
                 setMode('login');
             } else {
                 setError("인증 세션이 만료되었습니다. 처음부터 다시 시도해주세요.");
@@ -474,7 +468,7 @@ function FindAccountForm({ setError, setMode }) {
             <input type={showPassword ? "text" : "password"} placeholder="새 비밀번호 확인" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" />
             <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             <button onClick={handleResetPassword} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">변경하기</button>
-            <button type="button" onClick={() => setStep(1)} className="w-full text-center text-sm text-gray-400 mt-2">처음으로</button>
+            <button type="button" onClick={() => { setStep(1); setError(''); }} className="w-full text-center text-sm text-gray-400 mt-2">처음으로</button>
         </div>);
     }
 
@@ -483,7 +477,7 @@ function FindAccountForm({ setError, setMode }) {
             <h2 className="text-xl font-bold text-center">인증번호 입력</h2>
             <input type="text" placeholder="인증번호" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" />
             <button onClick={handleVerifyCode} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">확인</button>
-            <button type="button" onClick={() => setStep(1)} className="w-full text-center text-sm text-gray-400 mt-2">이전으로</button>
+            <button type="button" onClick={() => { setStep(1); setError(''); }} className="w-full text-center text-sm text-gray-400 mt-2">이전으로</button>
         </div>);
     }
     
@@ -555,6 +549,17 @@ function LobbyPage({ userData, setPage, setRoomId }) {
             handleEnterRoom(room.id);
         }
     };
+    
+    const handleCreateRoomClick = () => {
+        if (userData.username === 'domain') {
+            setModal({type: 'room', data: {}});
+        } else {
+            setModal({type: 'alert', data: {
+                title: "방 만들기 안내",
+                body: "방 만들기를 원할 경우 아래 연락처로 연락주세요!\n010-2245-9369 정형진"
+            }});
+        }
+    };
 
     const handleEnterRoom = async (roomId) => {
         const playerDocRef = doc(db, 'rooms', roomId, 'players', userData.uid);
@@ -568,6 +573,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
     return (
          <div className="bg-black text-white min-h-screen flex flex-col items-center p-4">
             {modal.type === 'room' && <RoomModal data={modal.data} onSave={handleCreateOrUpdateRoom} onClose={() => setModal({type:null})} onDelete={handleDeleteRoom} isSuperAdmin={userData.username === 'domain'} />}
+            {modal.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({type:null})} />}
             <header className="w-full max-w-2xl flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold arcade-font flicker-text text-yellow-400">로비</h1>
                 <div>
@@ -578,7 +584,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
             <div className="w-full max-w-2xl bg-gray-800 p-4 rounded-lg">
                 <div className="flex gap-2 mb-4">
                     <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="방 이름 검색..." className="flex-grow bg-gray-700 p-2 rounded-lg" />
-                    <button onClick={() => setModal({type: 'room', data: {}})} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
+                    <button onClick={handleCreateRoomClick} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
                 </div>
                 <div className="space-y-2">
                     {filteredRooms.map(room => (
@@ -597,9 +603,9 @@ function LobbyPage({ userData, setPage, setRoomId }) {
 }
 
 function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
-    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, ...data });
+    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, isPublicAdmin: false, ...data });
     const [showPassword, setShowPassword] = useState(false);
-    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, ...data }), [data]);
+    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, isPublicAdmin: false, ...data }), [data]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -609,14 +615,19 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
     const handleAdminChange = (index, value) => {
         const newAdmins = [...roomData.admins];
         newAdmins[index] = value;
-        setRoomData(d => ({ ...d, admins: newAdmins }));
+        setRoomData(d => ({ ...d, admins: newAdmins, isPublicAdmin: false }));
     };
-    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''] }));
+    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''], isPublicAdmin: false }));
+
+    const handleSetPublicAdmin = () => {
+        setRoomData(d => ({...d, isPublicAdmin: true, admins: [] }));
+    }
 
     const handleSave = () => {
         const finalData = {
             name: roomData.name,
-            admins: roomData.admins.map(a => a.trim()).filter(Boolean),
+            admins: roomData.isPublicAdmin ? [] : roomData.admins.map(a => a.trim()).filter(Boolean),
+            isPublicAdmin: roomData.isPublicAdmin || false,
             password: roomData.usePassword ? roomData.password : ''
         };
         onSave(finalData);
@@ -633,11 +644,14 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
                     <label className="text-xs flex items-center gap-2 mt-1"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
                 </div>}
                 <div>
-                    <label className="block mb-2">관리자 아이디</label>
-                    {roomData.admins.map((admin, index) => (
+                    <div className="flex justify-between items-center mb-2">
+                        <label>관리자 아이디</label>
+                        <button onClick={handleSetPublicAdmin} className={`arcade-button text-xs px-2 py-1 ${roomData.isPublicAdmin ? 'bg-green-500 text-black' : 'bg-gray-600'}`}>모두</button>
+                    </div>
+                    {!roomData.isPublicAdmin && roomData.admins.map((admin, index) => (
                         <input key={index} type="text" value={admin} onChange={(e) => handleAdminChange(index, e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2" />
                     ))}
-                    <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>
+                    {!roomData.isPublicAdmin && <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>}
                 </div>
                 <div className="flex gap-4 mt-4">
                     <button onClick={onClose} className="w-full arcade-button bg-gray-600">취소</button>
@@ -717,7 +731,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
-        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
+        return roomData.isPublicAdmin || SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
     }, [userData, roomData]);
 
     useEffect(() => {
@@ -960,7 +974,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                          <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
                             <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center"><p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[9px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court', isAdmin: (roomData.admins || []).includes(players[pId].username) }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
+                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court', isAdmin: roomData.isPublicAdmin || (roomData.admins || []).includes(players[pId].username) }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
                             </div>
                             <div className="flex-shrink-0 w-16 text-center">
                                 <button className={`arcade-button w-full py-2 px-1 rounded-md font-bold transition duration-300 text-xs ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
