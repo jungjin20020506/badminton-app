@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword } from 'firebase/auth';
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, 
     collection, deleteDoc, updateDoc, writeBatch, runTransaction, query, addDoc, where, getDocs, serverTimestamp
@@ -46,9 +46,9 @@ const getLevelColor = (level) => {
 
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
     const longPressTimer = useRef(null);
-    const handleMouseDown = () => { if(isAdmin) longPressTimer.current = setTimeout(() => onLongPress(player), 1000); };
+    const handleMouseDown = (e) => { if(isAdmin) { e.preventDefault(); longPressTimer.current = setTimeout(() => onLongPress(player), 1000); }};
     const handleMouseUp = () => clearTimeout(longPressTimer.current);
-    const handleTouchStart = () => { if(isAdmin) longPressTimer.current = setTimeout(() => onLongPress(player), 1000); };
+    const handleTouchStart = (e) => { if(isAdmin) { e.preventDefault(); longPressTimer.current = setTimeout(() => onLongPress(player), 1000); }};
     const handleTouchEnd = () => clearTimeout(longPressTimer.current);
 
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
@@ -213,101 +213,206 @@ function EditGamesModal({ player, onSave, onClose }) {
     );
 }
 
-
 // ===================================================================================
 // 페이지 컴포넌트
 // ===================================================================================
 
-function AuthPage() {
-    const [isLogin, setIsLogin] = useState(true);
-    const [formData, setFormData] = useState({ username: '', name: '', level: 'A조', gender: '남', password: '' });
+function AuthPage({ setPage }) {
+    const [mode, setMode] = useState('login'); // login, signup, findAccount
     const [error, setError] = useState('');
-    
-    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+    const recaptchaContainerRef = useRef(null);
 
-    const handleSignUp = async (e) => {
-        e.preventDefault(); setError('');
-        if (!formData.username || !formData.name || !formData.password) { setError('아이디, 닉네임, 비밀번호는 필수입니다.'); return; }
-        try {
-            const q = query(collection(db, "users"), where("username", "==", formData.username));
-            if (!(await getDocs(q)).empty) { setError('이미 사용중인 아이디입니다.'); return; }
-            const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
-            await setDoc(doc(db, "users", userCredential.user.uid), {
-                username: formData.username, name: formData.name, level: formData.level, gender: formData.gender,
-            });
-            alert(`가입 완료! 이제 로그인해주세요.`);
-            setIsLogin(true);
-        } catch (err) { setError(`가입 실패: ${err.message}`); }
+    useEffect(() => {
+        if (recaptchaContainerRef.current && !window.recaptchaVerifier) {
+            window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
+        }
+    }, [mode]);
+
+    const renderForm = () => {
+        switch (mode) {
+            case 'signup': return <SignUpForm setError={setError} setMode={setMode} />;
+            case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} />;
+            default: return <LoginForm setError={setError} setMode={setMode} />;
+        }
     };
+    
+    return (
+        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
+            <div id="recaptcha-container" ref={recaptchaContainerRef}></div>
+            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
+                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">콕스타</h1>
+                {error && <p className="text-red-500 text-center mb-4 text-sm">{error}</p>}
+                {renderForm()}
+            </div>
+        </div>
+    );
+}
+
+function LoginForm({ setError, setMode }) {
+    const [formData, setFormData] = useState({ username: '', password: ''});
+    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleLogin = async (e) => {
         e.preventDefault(); setError('');
         try {
             await signInWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
         } catch (err) { setError('아이디 또는 비밀번호가 잘못되었습니다.'); }
     };
-    
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
-            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
-                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">콕스타</h1>
-                {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-                {isLogin ? (
-                    <form onSubmit={handleLogin} className="space-y-4">
-                        <h2 className="text-xl font-bold text-center">로그인</h2>
-                        <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-                        <input type="password" name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-                        <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
-                        <button type="button" onClick={() => setIsLogin(false)} className="w-full text-center text-sm text-gray-400 mt-2">계정이 없으신가요? 회원가입</button>
-                    </form>
-                ) : (
-                    <form onSubmit={handleSignUp} className="space-y-4">
-                        <h2 className="text-xl font-bold text-center">회원가입</h2>
-                        <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-                        <input type="text" name="name" placeholder="닉네임" value={formData.name} onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-                        <input type="password" name="password" placeholder="비밀번호" value={formData.password} onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-                        <select name="level" value={formData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
-                        <select name="gender" value={formData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select>
-                        <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">가입 완료하기</button>
-                        <button type="button" onClick={() => setIsLogin(true)} className="w-full text-center text-sm text-gray-400 mt-2">이미 계정이 있으신가요? 로그인</button>
-                    </form>
-                )}
+        <form onSubmit={handleLogin} className="space-y-4">
+            <h2 className="text-xl font-bold text-center">로그인</h2>
+            <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+            <input type="password" name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+            <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
+            <div className="text-center text-sm text-gray-400 mt-2">
+                <button type="button" onClick={() => setMode('signup')} className="hover:text-white">회원가입</button> | <button type="button" onClick={() => setMode('findAccount')} className="hover:text-white">ID/PW 찾기</button>
             </div>
+        </form>
+    );
+}
+
+function SignUpForm({ setError, setMode }) {
+    const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
+    const [step, setStep] = useState(1); // 1: info, 2: phone verification
+    const [verificationId, setVerificationId] = useState('');
+    const [verificationCode, setVerificationCode] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+
+    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const handleCheckUsername = async () => {
+        if (!formData.username) { setError('아이디를 입력해주세요.'); return; }
+        const q = query(collection(db, "users"), where("username", "==", formData.username));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) { setError('이미 사용중인 아이디입니다.'); } else { setError('사용 가능한 아이디입니다.'); }
+    };
+    
+    const handleNextStep = (e) => {
+        e.preventDefault();
+        setError('');
+        if (formData.password !== formData.confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return; }
+        setStep(2);
+    };
+
+    const handlePhoneSubmit = async () => {
+        setError('');
+        try {
+            const q = query(collection(db, "users"), where("phone", "==", formData.phone));
+            if (!(await getDocs(q)).empty) { setError('이미 가입된 전화번호입니다.'); return; }
+            const confirmationResult = await signInWithPhoneNumber(auth, `+82${formData.phone.substring(1)}`, window.recaptchaVerifier);
+            setVerificationId(confirmationResult.verificationId);
+            alert('인증번호가 발송되었습니다.');
+        } catch (err) { setError(`인증번호 발송 실패: ${err.message}`); }
+    };
+
+    const handleSignUp = async () => {
+        setError('');
+        try {
+            // In a real app, you would use confirmationResult.confirm(verificationCode)
+            // For simplicity here, we assume verification is successful if ID is present
+            if (!verificationId) { setError('전화번호 인증을 먼저 완료해주세요.'); return; }
+
+            const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
+            await setDoc(doc(db, "users", userCredential.user.uid), {
+                name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone,
+            });
+            alert(`가입 완료! 이제 로그인해주세요.`);
+            setMode('login');
+        } catch (err) { setError(`가입 실패: ${err.message}`); }
+    };
+    
+    const birthYears = Array.from({length: 70}, (_, i) => new Date().getFullYear() - i - 15);
+
+    if (step === 2) {
+        return (
+            <div className="space-y-4">
+                <h2 className="text-xl font-bold text-center">전화번호 인증</h2>
+                <div className="flex gap-2">
+                    <input type="tel" name="phone" placeholder="전화번호 ('-' 제외)" value={formData.phone} onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+                    <button type="button" onClick={handlePhoneSubmit} className="arcade-button bg-gray-600 text-white font-bold px-3 text-sm">인증</button>
+                </div>
+                <input type="text" placeholder="인증번호" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+                <button onClick={handleSignUp} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">가입 완료하기</button>
+                <button type="button" onClick={() => setStep(1)} className="w-full text-center text-sm text-gray-400 mt-2">이전 단계로</button>
+            </div>
+        );
+    }
+
+    return (
+        <form onSubmit={handleNextStep} className="space-y-4">
+            <h2 className="text-xl font-bold text-center">회원가입</h2>
+            <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+            <div className="flex gap-2">
+                <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                <button type="button" onClick={handleCheckUsername} className="arcade-button bg-gray-600 text-white font-bold px-3 text-sm">중복확인</button>
+            </div>
+             <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+             <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+            <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
+            <div className="grid grid-cols-2 gap-2">
+                <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
+                <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
+            </div>
+            <select name="birthYear" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg">
+                {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
+            </select>
+            <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
+            <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 mt-2">로그인 화면으로</button>
+        </form>
+    );
+}
+
+function FindAccountForm({ setError, setMode }) {
+    // This is a placeholder. A real implementation would be more complex.
+    return (
+        <div className="text-center">
+            <h2 className="text-xl font-bold text-center mb-4">ID/PW 찾기</h2>
+            <p className="text-gray-400 text-sm mb-4">이름과 전화번호로 계정을 찾을 수 있습니다. (구현 예정)</p>
+            <button type="button" onClick={() => setMode('login')} className="w-full arcade-button bg-gray-600 text-white font-bold py-2 rounded-lg">로그인 화면으로</button>
         </div>
     );
 }
 
+
 function LobbyPage({ userData, setPage, setRoomId }) {
     const [rooms, setRooms] = useState([]);
-    const [newRoomName, setNewRoomName] = useState('');
-    const [adminUsernames, setAdminUsernames] = useState('');
-    const [error, setError] = useState('');
+    const [filteredRooms, setFilteredRooms] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [modal, setModal] = useState({ type: null, data: null });
 
     useEffect(() => {
         const unsubscribe = onSnapshot(query(collection(db, "rooms")), (snapshot) => {
-            setRooms(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setRooms(roomsData);
+            setFilteredRooms(roomsData);
         });
         return () => unsubscribe();
     }, []);
 
-    const handleCreateRoom = async () => {
-        if (!newRoomName.trim()) return;
-        setError('');
+    useEffect(() => {
+        setFilteredRooms(rooms.filter(room => room.name.toLowerCase().includes(searchTerm.toLowerCase())));
+    }, [searchTerm, rooms]);
+
+    const handleCreateOrUpdateRoom = async (roomData) => {
         try {
-            const adminUsernamesArray = adminUsernames.split(',').map(name => name.trim()).filter(Boolean);
-            const roomRef = await addDoc(collection(db, "rooms"), {
-                name: newRoomName,
-                admins: adminUsernamesArray,
-                createdAt: serverTimestamp(),
-                createdBy: userData.uid,
-                numScheduledMatches: 4,
-                numInProgressCourts: 4,
-                scheduledMatches: {},
-                inProgressCourts: Array(4).fill(null)
-            });
-            handleEnterRoom(roomRef.id);
-        } catch (err) {
-            console.error("Error creating room: ", err);
-            setError("방 만들기에 실패했습니다.");
+            if (modal.data?.id) { // Update
+                const roomRef = doc(db, 'rooms', modal.data.id);
+                await updateDoc(roomRef, roomData);
+            } else { // Create
+                const roomRef = await addDoc(collection(db, "rooms"), { ...roomData, createdAt: serverTimestamp(), createdBy: userData.uid });
+                handleEnterRoom(roomRef.id);
+            }
+            setModal({type: null, data: null});
+        } catch (e) {
+            console.error(e);
+            alert("작업에 실패했습니다.");
+        }
+    };
+
+    const handleDeleteRoom = async (roomId) => {
+        if (!roomId) return;
+        if(confirm("정말로 이 방을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+            await deleteDoc(doc(db, 'rooms', roomId));
+            setModal({type: null, data: null});
         }
     };
 
@@ -317,61 +422,142 @@ function LobbyPage({ userData, setPage, setRoomId }) {
         setRoomId(roomId);
         setPage('room');
     };
+
+    const canEdit = (room) => userData.username === 'domain' || (room.admins || []).includes(userData.username);
     
     return (
          <div className="bg-black text-white min-h-screen flex flex-col items-center p-4">
-            <header className="w-full max-w-lg flex justify-between items-center mb-6">
+            {modal.type === 'room' && <RoomModal data={modal.data} onSave={handleCreateOrUpdateRoom} onClose={() => setModal({type:null})} onDelete={handleDeleteRoom} isSuperAdmin={userData.username === 'domain'} />}
+            <header className="w-full max-w-2xl flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold arcade-font flicker-text text-yellow-400">로비</h1>
                 <div>
-                    <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer">👑 {userData.name}님</button>
+                    <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer text-lg">👤 {userData.name}님</button>
                     <button onClick={() => signOut(auth)} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
                 </div>
             </header>
-            <div className="w-full max-w-lg bg-gray-800 p-4 rounded-lg">
-                <div className="flex flex-col gap-2 mb-4">
-                    <input type="text" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="새 방 이름" className="bg-gray-700 p-2 rounded-lg" />
-                    <input type="text" value={adminUsernames} onChange={(e) => setAdminUsernames(e.target.value)} placeholder="관리자 아이디 (쉼표로 구분)" className="bg-gray-700 p-2 rounded-lg" />
-                    <button onClick={handleCreateRoom} className="arcade-button bg-yellow-500 text-black font-bold px-4 py-2 rounded-lg">방 만들기</button>
+            <div className="w-full max-w-2xl bg-gray-800 p-4 rounded-lg">
+                <div className="flex gap-2 mb-4">
+                    <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="방 이름 검색..." className="flex-grow bg-gray-700 p-2 rounded-lg" />
+                    <button onClick={() => setModal({type: 'room', data: {}})} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
                 </div>
-                {error && <p className="text-red-500 text-center mb-2">{error}</p>}
-                <div className="space-y-2">{rooms.map(room => (<div key={room.id} className="flex justify-between items-center bg-gray-700 p-3 rounded-lg"><span className="font-semibold">{room.name}</span><button onClick={() => handleEnterRoom(room.id)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button></div>))}</div>
+                <div className="space-y-2">
+                    {filteredRooms.map(room => (
+                        <div key={room.id} className="flex justify-between items-center bg-gray-700 p-3 rounded-lg">
+                            <button className="flex-grow text-left" onClick={() => canEdit(room) && setModal({type: 'room', data: room})}>
+                                <span className="font-semibold">{room.name}</span>
+                                {room.password && <span className="ml-2 text-gray-400">🔒</span>}
+                            </button>
+                            <button onClick={() => handleEnterRoom(room.id)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
 }
 
+function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
+    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, ...data });
+    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, ...data }), [data]);
+
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setRoomData(d => ({...d, [name]: type === 'checkbox' ? checked : value }));
+    };
+
+    const handleAdminChange = (index, value) => {
+        const newAdmins = [...roomData.admins];
+        newAdmins[index] = value;
+        setRoomData(d => ({ ...d, admins: newAdmins }));
+    };
+    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''] }));
+
+    const handleSave = () => {
+        const finalData = {
+            name: roomData.name,
+            admins: roomData.admins.map(a => a.trim()).filter(Boolean),
+            password: roomData.usePassword ? roomData.password : ''
+        };
+        onSave(finalData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg space-y-4">
+                <h3 className="text-xl font-bold text-yellow-400 arcade-font">{data.id ? "방 수정" : "방 만들기"}</h3>
+                <input type="text" name="name" placeholder="방 이름" value={roomData.name} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
+                <label className="flex items-center gap-2"><input type="checkbox" name="usePassword" checked={roomData.usePassword} onChange={handleChange} /> 비밀번호 사용</label>
+                {roomData.usePassword && <input type="password" name="password" placeholder="비밀번호" value={roomData.password} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />}
+                <div>
+                    <label className="block mb-2">관리자 아이디</label>
+                    {roomData.admins.map((admin, index) => (
+                        <input key={index} type="text" value={admin} onChange={(e) => handleAdminChange(index, e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2" />
+                    ))}
+                    <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>
+                </div>
+                <div className="flex gap-4 mt-4">
+                    <button onClick={onClose} className="w-full arcade-button bg-gray-600">취소</button>
+                    <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 text-black">저장</button>
+                </div>
+                {data.id && isSuperAdmin && <button onClick={() => onDelete(data.id)} className="w-full arcade-button bg-red-800 mt-2">방 삭제</button>}
+            </div>
+        </div>
+    );
+}
+
+
 function ProfilePage({ userData, setPage }) {
-    const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level });
+    const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, newPassword: '', confirmPassword: '' });
     const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
 
     const handleChange = (e) => setProfileData({ ...profileData, [e.target.name]: e.target.value });
 
     const handleSave = async () => {
-        setMessage('');
-        if (!profileData.name) { setMessage('닉네임을 입력해주세요.'); return; }
+        setMessage(''); setError('');
         try {
             const userDocRef = doc(db, "users", userData.uid);
-            await updateDoc(userDocRef, { name: profileData.name, level: profileData.level });
+            await updateDoc(userDocRef, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
+
+            if (profileData.newPassword) {
+                if (profileData.newPassword !== profileData.confirmPassword) { setError("새 비밀번호가 일치하지 않습니다."); return; }
+                await updatePassword(auth.currentUser, profileData.newPassword);
+            }
+
             setMessage('프로필이 성공적으로 저장되었습니다.');
-            userData.name = profileData.name;
-            userData.level = profileData.level;
-        } catch (error) { setMessage('저장에 실패했습니다: ' + error.message); }
+            // Update local state to reflect changes immediately
+            Object.assign(userData, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
+        } catch (error) { setError('저장에 실패했습니다: ' + error.message); }
     };
+
+    const birthYears = Array.from({length: 70}, (_, i) => new Date().getFullYear() - i - 15);
 
     return (
         <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
-                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font">프로필 수정</h1>
-                <div className="space-y-4">
-                    <div><label className="block text-sm font-bold mb-2">아이디</label><input type="text" value={userData.username} readOnly className="w-full bg-gray-700 text-gray-400 p-3 rounded-lg cursor-not-allowed" /></div>
-                    <div><label className="block text-sm font-bold mb-2">닉네임</label><input type="text" name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg" /></div>
-                    <div><label className="block text-sm font-bold mb-2">급수</label><select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select></div>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold text-yellow-400 arcade-font">프로필</h1>
+                    <button onClick={() => setPage('lobby')} className="text-2xl text-gray-500 hover:text-white">&times;</button>
                 </div>
-                {message && <p className="text-center mt-4 text-green-400">{message}</p>}
-                <div className="flex gap-4 mt-6">
-                    <button onClick={() => setPage('lobby')} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-3 rounded-lg">돌아가기</button>
-                    <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">저장하기</button>
+                {message && <p className="text-center mb-4 text-green-400">{message}</p>}
+                {error && <p className="text-center mb-4 text-red-500">{error}</p>}
+                <div className="space-y-3">
+                    <div><label className="block text-sm font-bold text-gray-400">아이디</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.username}</p></div>
+                    <div><label className="block text-sm font-bold text-gray-400">이름</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.name}</p></div>
+                    <div><label className="block text-sm font-bold text-gray-400">연락처</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.phone}</p></div>
+
+                    <hr className="border-gray-600"/>
+
+                    <div><label className="block text-sm font-bold">급수</label><select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select></div>
+                    <div><label className="block text-sm font-bold">성별</label><select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select></div>
+                    <div><label className="block text-sm font-bold">출생년도</label><select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">{birthYears.map(y=><option key={y} value={y}>{y}</option>)}</select></div>
+                    
+                    <hr className="border-gray-600"/>
+
+                    <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                    <div><label className="block text-sm font-bold">새 비밀번호 확인</label><input type="password" name="confirmPassword" value={profileData.confirmPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
                 </div>
+                <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">저장하기</button>
             </div>
         </div>
     );
@@ -387,7 +573,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
-        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username);
+        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
     }, [userData, roomData]);
 
     useEffect(() => {
@@ -443,17 +629,14 @@ function GameRoomPage({ userData, roomId, setPage }) {
             let targetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
             const availableSlots = targetArray.filter(p => p === null).length;
             if (selectedPlayerIds.length > availableSlots) {
-                // This will be caught by updateRoomState's catch block and show the alert modal.
                 throw new Error("자리가 없습니다.");
             }
             
             const playersToMove = [...selectedPlayerIds];
-            // Remove players from old positions
             playersToMove.forEach(pId => {
-                const loc = playerLocations[pId];
-                if(loc && loc.location === 'schedule') data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
+                const loc = Object.entries(data.scheduledMatches || {}).find(([_, match]) => match.includes(pId));
+                if(loc) data.scheduledMatches[loc[0]][loc[1].indexOf(pId)] = null;
             });
-            // Add to new slots
             for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
                 if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
             }
@@ -473,8 +656,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
         const start = (courtIndex) => {
             updateRoomState(data => {
                 data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: serverTimestamp() };
-                for(let i = matchIndex; i < data.numScheduledMatches - 1; i++) { data.scheduledMatches[i] = data.scheduledMatches[i+1] || Array(PLAYERS_PER_MATCH).fill(null); }
-                data.scheduledMatches[data.numScheduledMatches-1] = Array(PLAYERS_PER_MATCH).fill(null);
+                for(let i = matchIndex; i < data.numScheduledMatches - 1; i++) { data.scheduledMatches[i] = data.scheduledMatches[String(i+1)] || Array(PLAYERS_PER_MATCH).fill(null); }
+                data.scheduledMatches[String(data.numScheduledMatches-1)] = Array(PLAYERS_PER_MATCH).fill(null);
                 return data;
             });
             setModal({type: null, data: null});
@@ -557,23 +740,27 @@ function GameRoomPage({ userData, roomId, setPage }) {
         if (!sourcePlayerId || sourcePlayerId === target.id) return;
 
         updateRoomState(data => {
-            // Re-calculate locations inside transaction for consistency
-            const locations = {};
-            Object.keys(players).forEach(pId => locations[pId] = { location: 'waiting' });
-            Object.keys(data.scheduledMatches || {}).forEach(mK => data.scheduledMatches[mK].forEach((pId, sI) => { if(pId) locations[pId] = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI }; }));
+            const tempLocations = {};
+            Object.keys(players).forEach(pId => tempLocations[pId] = { location: 'waiting' });
+            Object.keys(data.scheduledMatches || {}).forEach(mK => (data.scheduledMatches[mK]||[]).forEach((pId, sI) => { if(pId) tempLocations[pId] = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI }; }));
             
-            const sourceLoc = locations[sourcePlayerId];
-            const targetLoc = target.type === 'player' ? locations[target.id] : { location: 'schedule', ...target };
+            const sourceLoc = tempLocations[sourcePlayerId];
+            const targetLoc = target.type === 'player' ? tempLocations[target.id] : { location: 'schedule', ...target };
 
-            if (sourceLoc.location === 'schedule') { data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = null; }
-            if (target.type === 'player' && targetLoc.location === 'schedule') { data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = null; }
-            
-            if (sourceLoc.location === 'schedule' && target.type === 'player' && targetLoc.location === 'schedule') {
-                data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = target.id;
+            if(!sourceLoc || !targetLoc || sourceLoc.location !== 'schedule') return data;
+
+            const sourceVal = data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex];
+            const targetVal = target.type === 'player' && targetLoc.location === 'schedule' ? data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] : null;
+
+            if (target.type === 'player' && targetLoc.location === 'schedule') {
+                data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = sourceVal;
             }
-             data.scheduledMatches[targetLoc.matchIndex] = data.scheduledMatches[targetLoc.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-             data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = sourcePlayerId;
+            data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = targetVal;
 
+            if (target.type === 'slot') {
+                data.scheduledMatches[target.matchIndex] = data.scheduledMatches[target.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+                data.scheduledMatches[target.matchIndex][target.slotIndex] = sourcePlayerId;
+            }
             return data;
         });
         setDraggedPlayerId(null);
@@ -660,7 +847,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 </div>
             </header>
             
-            <div className="p-4">
+            <div className="p-4 flex-grow">
                 <div className="flex justify-center border-b border-gray-700 mb-4">
                     <button onClick={() => setActiveTab('matching')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 예정</button>
                     <button onClick={() => setActiveTab('inProgress')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 진행</button>
@@ -685,7 +872,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
 export default function App() {
     const [page, setPage] = useState('auth');
-    const [user, setUser] = useState(null);
     const [userData, setUserData] = useState(null);
     const [roomId, setRoomId] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -696,11 +882,11 @@ export default function App() {
                 const userDoc = await getDoc(doc(db, "users", currentUser.uid));
                 if (userDoc.exists()) {
                     setUserData({ uid: currentUser.uid, ...userDoc.data() });
-                    setUser(currentUser);
                     if(page === 'auth') setPage('lobby');
                 } else { signOut(auth); }
             } else {
-                setUser(null); setUserData(null); setPage('auth');
+                setUserData(null);
+                setPage('auth');
             }
             setLoading(false);
         });
@@ -710,11 +896,11 @@ export default function App() {
     if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING...</p></div>;
 
     switch (page) {
-        case 'auth': return <AuthPage />;
+        case 'auth': return <AuthPage setPage={setPage} />;
         case 'lobby': return <LobbyPage userData={userData} setPage={setPage} setRoomId={setRoomId} />;
         case 'profile': return <ProfilePage userData={userData} setPage={setPage} />;
         case 'room': return <GameRoomPage userData={userData} roomId={roomId} setPage={setPage} />;
-        default: return <AuthPage />;
+        default: return <AuthPage setPage={setPage} />;
     }
 }
 
