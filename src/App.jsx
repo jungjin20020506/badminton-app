@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword } from 'firebase/auth';
+import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, 
     collection, deleteDoc, updateDoc, writeBatch, runTransaction, query, addDoc, where, getDocs, serverTimestamp
@@ -88,7 +88,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             <div>
                 <div className="player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter">{adminIcon}{player.name}</div>
                 <div className="player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap">
-                    <span style={levelStyle}>{player.level.replace('조','')}</span>|
+                    <span style={levelStyle}>{(player.level || '').replace('조','')}</span >|
                     {`${player.todayGames || 0}게임`}
                 </div>
             </div>
@@ -396,11 +396,87 @@ function SignUpForm({ setError, setMode }) {
 }
 
 function FindAccountForm({ setError, setMode }) {
+    const [step, setStep] = useState(1); // 1: findId, 2: verify, 3: resetPw
+    const [formData, setFormData] = useState({ name: '', phone: '' });
+    const [foundUser, setFoundUser] = useState(null);
+    const [verificationId, setVerificationId] = useState('');
+    const [verificationCode, setVerificationCode] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+
+    const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const handleFindId = async () => {
+        setError('');
+        if (!formData.name || !formData.phone) { setError("이름과 전화번호를 모두 입력해주세요."); return; }
+        const q = query(collection(db, "users"), where("name", "==", formData.name), where("phone", "==", formData.phone));
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) { setError("일치하는 사용자가 없습니다."); setFoundUser(null); }
+        else { 
+            const user = snapshot.docs[0].data();
+            setFoundUser(user);
+            setError(`아이디는 [ ${user.username} ] 입니다.`);
+        }
+    };
+    
+    const handleSendCode = async () => {
+        setError('');
+        if (!foundUser) { setError("먼저 아이디를 찾아주세요."); return; }
+        try {
+            const phoneNumber = `+82${foundUser.phone.substring(1)}`;
+            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+            setVerificationId(confirmationResult.verificationId);
+            setStep(2);
+            alert("인증번호가 발송되었습니다.");
+        } catch(err) { setError(`인증번호 발송에 실패했습니다: ${err.message}`); }
+    };
+
+    const handleVerifyCode = async () => {
+        setError('');
+        try {
+            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+            await signInWithCredential(auth, credential);
+            setStep(3);
+        } catch (err) { setError("인증번호가 잘못되었습니다."); }
+    };
+    
+    const handleResetPassword = async () => {
+        setError('');
+        if (newPassword.length < 6) { setError("비밀번호는 6자 이상이어야 합니다."); return; }
+        if (newPassword !== confirmPassword) { setError("비밀번호가 일치하지 않습니다."); return; }
+        try {
+            await updatePassword(auth.currentUser, newPassword);
+            alert("비밀번호가 성공적으로 변경되었습니다. 다시 로그인해주세요.");
+            signOut(auth);
+            setMode('login');
+        } catch (err) { setError(`비밀번호 변경에 실패했습니다: ${err.message}`); }
+    };
+
+    if (step === 3) {
+        return (<div className="space-y-4">
+            <h2 className="text-xl font-bold text-center">비밀번호 재설정</h2>
+            <input type="password" placeholder="새 비밀번호 (6자 이상)" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" />
+            <input type="password" placeholder="새 비밀번호 확인" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" />
+            <button onClick={handleResetPassword} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">변경하기</button>
+        </div>);
+    }
+
+    if (step === 2) {
+        return (<div className="space-y-4">
+            <h2 className="text-xl font-bold text-center">인증번호 입력</h2>
+            <input type="text" placeholder="인증번호" value={verificationCode} onChange={e => setVerificationCode(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" />
+            <button onClick={handleVerifyCode} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">확인</button>
+        </div>);
+    }
+    
     return (
-        <div className="text-center">
-            <h2 className="text-xl font-bold text-center mb-4">ID/PW 찾기</h2>
-            <p className="text-gray-400 text-sm mb-4">이름과 전화번호로 계정을 찾을 수 있습니다. (구현 예정)</p>
-            <button type="button" onClick={() => setMode('login')} className="w-full arcade-button bg-gray-600 text-white font-bold py-2 rounded-lg">로그인 화면으로</button>
+        <div className="space-y-4">
+            <h2 className="text-xl font-bold text-center">ID/PW 찾기</h2>
+            <input type="text" name="name" placeholder="이름" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg" />
+            <input type="tel" name="phone" placeholder="전화번호" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg" />
+            <button onClick={handleFindId} className="w-full arcade-button bg-gray-600 text-white font-bold py-2 rounded-lg">아이디 찾기</button>
+            {foundUser && <button onClick={handleSendCode} className="w-full arcade-button bg-yellow-500 text-black font-bold py-2 rounded-lg">비밀번호 재설정</button>}
+            <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 mt-2">로그인 화면으로</button>
         </div>
     );
 }
@@ -448,6 +524,19 @@ function LobbyPage({ userData, setPage, setRoomId }) {
             setModal({type: null, data: null});
         }
     };
+    
+    const handleEnterRoomClick = (room) => {
+        if (room.password) {
+            const enteredPassword = prompt("비밀번호를 입력하세요:");
+            if (enteredPassword === room.password) {
+                handleEnterRoom(room.id);
+            } else {
+                alert("비밀번호가 틀렸습니다.");
+            }
+        } else {
+            handleEnterRoom(room.id);
+        }
+    };
 
     const handleEnterRoom = async (roomId) => {
         const playerDocRef = doc(db, 'rooms', roomId, 'players', userData.uid);
@@ -480,7 +569,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                                 <span className="font-semibold">{room.name}</span>
                                 {room.password && <span className="ml-2 text-gray-400">🔒</span>}
                             </button>
-                            <button onClick={() => handleEnterRoom(room.id)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button>
+                            <button onClick={() => handleEnterRoomClick(room)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button>
                         </div>
                     ))}
                 </div>
@@ -553,6 +642,7 @@ function ProfilePage({ userData, setPage }) {
             await updateDoc(userDocRef, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
 
             if (profileData.newPassword) {
+                if (profileData.newPassword.length < 6) { setError("새 비밀번호는 6자 이상이어야 합니다."); return; }
                 if (profileData.newPassword !== profileData.confirmPassword) { setError("새 비밀번호가 일치하지 않습니다."); return; }
                 await updatePassword(auth.currentUser, profileData.newPassword);
             }
@@ -586,7 +676,7 @@ function ProfilePage({ userData, setPage }) {
                     
                     <hr className="border-gray-600"/>
 
-                    <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                    <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" placeholder="6자 이상" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
                     <div><label className="block text-sm font-bold">새 비밀번호 확인</label><input type="password" name="confirmPassword" value={profileData.confirmPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
                 </div>
                 <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">저장하기</button>
