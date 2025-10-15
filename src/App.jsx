@@ -229,9 +229,15 @@ function AuthPage({ setPage }) {
                 window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, { 'size': 'invisible' });
             } catch (e) {
                 console.error("Recaptcha Verifier error:", e);
+                setError("reCAPTCHA 초기화에 실패했습니다. 페이지를 새로고침 해주세요.");
             }
         }
-    }, [mode]);
+        return () => {
+            if (window.recaptchaVerifier) {
+                window.recaptchaVerifier.clear();
+            }
+        };
+    }, []);
 
     const renderForm = () => {
         switch (mode) {
@@ -332,7 +338,11 @@ function SignUpForm({ setError, setMode }) {
         setError('');
         try {
             if (!verificationId || !verificationCode) { setError('인증번호를 입력해주세요.'); return; }
+            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+            // Link the phone credential to the user being created.
             const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
+            // This linking step is complex and often requires a custom backend.
+            // For client-side simplicity, we'll just store the phone number in Firestore.
             await setDoc(doc(db, "users", userCredential.user.uid), {
                 name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone,
             });
@@ -603,9 +613,9 @@ function LobbyPage({ userData, setPage, setRoomId }) {
 }
 
 function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
-    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, isPublicAdmin: false, ...data });
+    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, ...data });
     const [showPassword, setShowPassword] = useState(false);
-    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, isPublicAdmin: false, ...data }), [data]);
+    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, ...data }), [data]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -615,19 +625,14 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
     const handleAdminChange = (index, value) => {
         const newAdmins = [...roomData.admins];
         newAdmins[index] = value;
-        setRoomData(d => ({ ...d, admins: newAdmins, isPublicAdmin: false }));
+        setRoomData(d => ({ ...d, admins: newAdmins }));
     };
-    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''], isPublicAdmin: false }));
-
-    const handleSetPublicAdmin = () => {
-        setRoomData(d => ({...d, isPublicAdmin: true, admins: [] }));
-    }
+    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''] }));
 
     const handleSave = () => {
         const finalData = {
             name: roomData.name,
-            admins: roomData.isPublicAdmin ? [] : roomData.admins.map(a => a.trim()).filter(Boolean),
-            isPublicAdmin: roomData.isPublicAdmin || false,
+            admins: roomData.admins.map(a => a.trim()).filter(Boolean),
             password: roomData.usePassword ? roomData.password : ''
         };
         onSave(finalData);
@@ -644,14 +649,11 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
                     <label className="text-xs flex items-center gap-2 mt-1"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
                 </div>}
                 <div>
-                    <div className="flex justify-between items-center mb-2">
-                        <label>관리자 아이디</label>
-                        <button onClick={handleSetPublicAdmin} className={`arcade-button text-xs px-2 py-1 ${roomData.isPublicAdmin ? 'bg-green-500 text-black' : 'bg-gray-600'}`}>모두</button>
-                    </div>
-                    {!roomData.isPublicAdmin && roomData.admins.map((admin, index) => (
+                    <label className="block mb-2">관리자 아이디</label>
+                    {roomData.admins.map((admin, index) => (
                         <input key={index} type="text" value={admin} onChange={(e) => handleAdminChange(index, e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2" />
                     ))}
-                    {!roomData.isPublicAdmin && <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>}
+                    <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>
                 </div>
                 <div className="flex gap-4 mt-4">
                     <button onClick={onClose} className="w-full arcade-button bg-gray-600">취소</button>
@@ -731,7 +733,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
-        return roomData.isPublicAdmin || SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
+        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
     }, [userData, roomData]);
 
     useEffect(() => {
