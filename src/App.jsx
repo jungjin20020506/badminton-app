@@ -45,12 +45,12 @@ const getLevelColor = (level) => {
 // 공용 UI 컴포넌트 (모달, 카드 등)
 // ===================================================================================
 
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop, isFirstSelection }) => {
     const longPressTimer = useRef(null);
     
     const handlePressStart = (e) => {
         if (isAdmin) {
-            e.preventDefault(); // Prevent default touch behavior like text selection
+            e.preventDefault();
             longPressTimer.current = setTimeout(() => onLongPress(player), 1000);
         }
     };
@@ -78,6 +78,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         cardStyle.transform = 'scale(1.05)';
         cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.9)`;
     }
+    if (isFirstSelection) {
+        cardStyle.borderColor = '#60A5FA';
+        cardStyle.transform = 'scale(1.05)';
+        cardStyle.boxShadow = `0 0 15px 5px rgba(96, 165, 250, 0.9)`;
+    }
     if (isCurrentUser) {
         cardStyle.borderColor = '#FBBF24';
         cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
@@ -104,7 +109,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                     {`${player.todayGames || 0}게임`}
                 </div>
             </div>
-            {isAdmin && onAction && context.location !== 'court' && (
+            {isAdmin && onAction && (context.location === 'schedule' || context.location === 'waiting') && (
                 <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
@@ -135,22 +140,22 @@ const CourtTimer = ({ court }) => {
             return () => clearInterval(timerId);
         } else { setTime('00:00'); }
     }, [court]);
-    return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
+    return <div className="text-center text-[10px] font-mono text-white mt-0.5 tracking-wider">{time}</div>;
 };
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6 whitespace-pre-line">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
-function CourtSelectionModal({ courts, onSelect, onCancel }) {
+function CourtSelectionModal({ title = "코트 선택", buttonText = "{index}번 코트", courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
     return ( 
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">코트 선택</h3>
-                <p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p>
+                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{title}</h3>
+                <p className="text-gray-300 mb-6">경기를 시작하거나 이동할 코트를 선택해주세요.</p>
                 <div className="flex flex-col gap-3">
                     {courts.map(courtIdx => ( 
                         <button key={courtIdx} onClick={() => { setIsProcessing(true); onSelect(courtIdx); }} disabled={isProcessing} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isProcessing ? '처리 중...' : `${courtIdx + 1}번 코트`}
+                            {isProcessing ? '처리 중...' : buttonText.replace('{index}', courtIdx + 1)}
                         </button> 
                     ))}
                 </div>
@@ -588,12 +593,18 @@ function LobbyPage({ userData, setPage, setRoomId }) {
     const handleEnterRoom = async (roomId) => {
         const playerDocRef = doc(db, 'rooms', roomId, 'players', userData.uid);
         await setDoc(playerDocRef, { ...userData, todayGames: 0, isResting: false, entryTime: new Date().toISOString() });
+        localStorage.setItem('lastRoomId', roomId);
         setRoomId(roomId);
         setPage('room');
     };
 
     const canEdit = (room) => userData.username === 'domain' || (room.admins || []).includes(userData.username);
     
+    const handleLogout = () => {
+        localStorage.removeItem('lastRoomId');
+        signOut(auth);
+    };
+
     return (
          <div className="bg-black text-white min-h-screen flex flex-col items-center p-4">
             {modal.type === 'room' && <RoomModal data={modal.data} onSave={handleCreateOrUpdateRoom} onClose={() => setModal({type:null})} onDelete={handleDeleteRoom} isSuperAdmin={userData.username === 'domain'} />}
@@ -602,7 +613,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                 <h1 className="text-2xl font-bold arcade-font flicker-text text-yellow-400">로비</h1>
                 <div>
                     <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer text-lg">👤 {userData.name}님</button>
-                    <button onClick={() => signOut(auth)} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
+                    <button onClick={handleLogout} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
                 </div>
             </header>
             <div className="w-full max-w-2xl bg-gray-800 p-4 rounded-lg">
@@ -741,9 +752,11 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const [roomData, setRoomData] = useState(null);
     const [players, setPlayers] = useState({});
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
+    const [firstSwapSelection, setFirstSwapSelection] = useState(null); // For swapping
     const [modal, setModal] = useState({ type: null, data: null });
     const [activeTab, setActiveTab] = useState('matching');
     const [draggedPlayerId, setDraggedPlayerId] = useState(null);
+    const isMounted = useRef(false);
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
@@ -757,14 +770,32 @@ function GameRoomPage({ userData, roomId, setPage }) {
         });
         return () => { unsubRoom(); unsubPlayers(); };
     }, [roomId, setPage]);
+
+    useEffect(() => {
+        if (isMounted.current) {
+            if (roomData && userData && !players[userData.uid]) {
+                setModal({ type: 'alert', data: { 
+                    title: '연결 종료', 
+                    body: '방에서 퇴장되었거나 연결이 끊어졌습니다.\n로비로 이동합니다.',
+                    onClose: () => {
+                        localStorage.removeItem('lastRoomId');
+                        setPage('lobby');
+                    }
+                }});
+            }
+        } else {
+            isMounted.current = true;
+        }
+    }, [players, roomData, userData, setPage, roomId]);
     
     const updateRoomState = useCallback(async (updateLogic) => {
         try { await runTransaction(db, async tx => {
-                const roomDoc = await tx.get(doc(db, 'rooms', roomId));
+                const roomDocRef = doc(db, 'rooms', roomId);
+                const roomDoc = await tx.get(roomDocRef);
                 if (!roomDoc.exists()) throw "Room not found";
                 const currentData = roomDoc.data();
                 const newData = updateLogic(JSON.parse(JSON.stringify(currentData)));
-                tx.update(doc(db, 'rooms', roomId), newData);
+                tx.update(roomDocRef, newData);
             });
         } catch (e) { setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } }); }
     }, [roomId]);
@@ -786,13 +817,55 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const waitingPlayers = useMemo(() =>  Object.values(players).filter(p => playerLocations[p.id]?.location === 'waiting').sort((a,b) => (LEVEL_ORDER[a.level]||99)-(LEVEL_ORDER[b.level]||99) || new Date(a.entryTime).getTime()-new Date(b.entryTime).getTime()), [players, playerLocations]);
     const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
-    const handleCardClick = (player) => { if (!isAdmin) return; setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]); };
+    const handleCardClick = (player) => {
+        if (!isAdmin) return;
+        const clickedPlayerLoc = playerLocations[player.id];
+
+        if (clickedPlayerLoc.location === 'waiting') {
+            setFirstSwapSelection(null);
+            setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
+        } else if (clickedPlayerLoc.location === 'schedule') {
+            setSelectedPlayerIds([]);
+            if (!firstSwapSelection) {
+                setFirstSwapSelection({ playerId: player.id, ...clickedPlayerLoc });
+            } else {
+                if (firstSwapSelection.playerId === player.id) {
+                    setFirstSwapSelection(null); // Deselect
+                } else {
+                    // Perform swap
+                    updateRoomState(data => {
+                        const firstVal = data.scheduledMatches[firstSwapSelection.matchIndex][firstSwapSelection.slotIndex];
+                        const secondVal = data.scheduledMatches[clickedPlayerLoc.matchIndex][clickedPlayerLoc.slotIndex];
+                        data.scheduledMatches[firstSwapSelection.matchIndex][firstSwapSelection.slotIndex] = secondVal;
+                        data.scheduledMatches[clickedPlayerLoc.matchIndex][clickedPlayerLoc.slotIndex] = firstVal;
+                        return data;
+                    });
+                    setFirstSwapSelection(null);
+                }
+            }
+        }
+    };
+
     const handleAction = (player) => {
         const loc = playerLocations[player.id];
-        if (loc && loc.location === 'schedule') {
+        if (!loc) return;
+
+        if (loc.location === 'schedule') {
              updateRoomState(data => {
                 data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
                 return data;
+            });
+        } else if (loc.location === 'waiting') {
+            setModal({
+                type: 'confirm',
+                data: {
+                    title: '선수 내보내기',
+                    body: `[${player.name}] 님을 방에서 내보내시겠습니까?`,
+                    onConfirm: () => {
+                        deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
+                        setModal({type: null, data: null});
+                    }
+                }
             });
         }
     };
@@ -818,6 +891,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             return data;
         });
         setSelectedPlayerIds([]);
+        setFirstSwapSelection(null);
     };
 
     const handleStartMatch = (matchIndex) => {
@@ -829,15 +903,29 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const start = (courtIndex) => {
             updateRoomState(data => {
+                if (!data.inProgressCourts || !Array.isArray(data.inProgressCourts)) {
+                    data.inProgressCourts = Array(data.numInProgressCourts).fill(null);
+                }
                 data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: serverTimestamp() };
-                for(let i = matchIndex; i < data.numScheduledMatches - 1; i++) { data.scheduledMatches[i] = data.scheduledMatches[String(i+1)] || Array(PLAYERS_PER_MATCH).fill(null); }
-                data.scheduledMatches[String(data.numScheduledMatches-1)] = Array(PLAYERS_PER_MATCH).fill(null);
+                
+                const remainingMatches = [];
+                for (let i = 0; i < data.numScheduledMatches; i++) {
+                    if (i !== matchIndex && data.scheduledMatches[String(i)]) {
+                        remainingMatches.push(data.scheduledMatches[String(i)]);
+                    }
+                }
+                const newScheduledMatches = {};
+                remainingMatches.forEach((match, index) => {
+                    newScheduledMatches[String(index)] = match;
+                });
+                data.scheduledMatches = newScheduledMatches;
                 return data;
             });
             setModal({type: null, data: null});
         };
+
         if(emptyCourts.length === 1) start(emptyCourts[0]);
-        else setModal({type: 'courtSelection', data:{courts: emptyCourts, onSelect: start}});
+        else setModal({type: 'courtSelection', data:{ title: "경기 시작", courts: emptyCourts, onSelect: start}});
     };
     
     const handleEndMatch = (courtIndex) => {
@@ -854,8 +942,10 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const batch = writeBatch(db);
         court.players.forEach(pId => {
-            const playerRef = doc(db, 'rooms', roomId, 'players', pId);
-            batch.update(playerRef, { todayGames: (players[pId]?.todayGames || 0) + 1 });
+            if (players[pId]) { // Check if player exists before updating
+                const playerRef = doc(db, 'rooms', roomId, 'players', pId);
+                batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
+            }
         });
         await batch.commit();
 
@@ -888,6 +978,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleExitRoom = async () => {
+        localStorage.removeItem('lastRoomId');
         await deleteDoc(doc(db, 'rooms', roomId, 'players', userData.uid));
         setPage('lobby');
     };
@@ -895,11 +986,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleClearScheduledMatches = () => {
         setModal({type:'confirm', data:{title:'전체 삭제', body:'모든 예정 경기를 삭제하시겠습니까?', onConfirm: () => {
             updateRoomState(data => { data.scheduledMatches = {}; return data; });
+            setFirstSwapSelection(null);
             setModal({type:null, data:null});
         }}});
     };
     
-    const handleLongPress = (player) => setModal({ type: 'editGames', data: player });
+    const handleLongPressPlayer = (player) => setModal({ type: 'editGames', data: player });
     const handleSaveGames = async (playerId, games) => {
         await updateDoc(doc(db, 'rooms', roomId, 'players', playerId), { todayGames: games });
         setModal({ type: null, data: null });
@@ -939,6 +1031,33 @@ function GameRoomPage({ userData, roomId, setPage }) {
         });
         setDraggedPlayerId(null);
     }
+    
+    const handleCourtLongPress = (sourceIndex) => {
+        const otherCourts = (roomData.inProgressCourts || [])
+            .map((court, index) => ({ court, index }))
+            .filter(item => item.index !== sourceIndex && item.court);
+
+        if (otherCourts.length === 0) return;
+        
+        setModal({
+            type: 'courtSelection',
+            data: {
+                title: `${sourceIndex + 1}번 코트 이동`,
+                buttonText: '{index}번 코트와 교환',
+                courts: otherCourts.map(item => item.index),
+                onSelect: (targetIndex) => {
+                    updateRoomState(data => {
+                        const temp = data.inProgressCourts[sourceIndex];
+                        data.inProgressCourts[sourceIndex] = data.inProgressCourts[targetIndex];
+                        data.inProgressCourts[targetIndex] = temp;
+                        return data;
+                    });
+                    setModal({ type: null });
+                },
+                onCancel: () => setModal({ type: null })
+            }
+        });
+    };
 
 
     if (!roomData) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING ROOM...</p></div>;
@@ -947,8 +1066,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
         <div className="flex flex-col gap-4">
             <section className="bg-gray-800/50 rounded-lg p-3">
                 <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
-                <div className="grid grid-cols-5 gap-2">
-                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onLongPress={handleLongPress} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
+                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
+                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
                 </div>
             </section>
             <section>
@@ -962,15 +1081,15 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         const playerCount = match.filter(p => p).length;
                         return (
                             <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
-                                <p className="flex-shrink-0 w-8 text-center font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
+                                <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
                                 <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                         const pId = match[slotIndex];
-                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username)}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPress} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username)}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} isFirstSelection={firstSwapSelection?.playerId === pId} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
                                     })}
                                 </div>
-                                <div className="flex-shrink-0 w-16 text-center">
-                                    <button className={`arcade-button w-full py-2 px-1 rounded-md font-bold transition duration-300 text-xs ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                                <div className="flex-shrink-0 w-14 text-center">
+                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[11px] whitespace-nowrap ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                                 </div>
                             </div>
                         );
@@ -987,13 +1106,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
                     return (
-                         <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
-                            <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center"><p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[9px] text-gray-400">코트</p></div>
+                         <div key={`court-${courtIndex}`} onMouseDown={() => isAdmin && handleCourtLongPress(courtIndex)} className={`flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 ${isAdmin && court ? 'cursor-grab' : ''}`}>
+                            <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court', isAdmin: roomData.isPublicAdmin || (roomData.admins || []).includes(players[pId].username) }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
                             </div>
-                            <div className="flex-shrink-0 w-16 text-center">
-                                <button className={`arcade-button w-full py-2 px-1 rounded-md font-bold transition duration-300 text-xs ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
+                            <div className="flex-shrink-0 w-14 text-center">
+                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[11px] whitespace-nowrap ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                                 <CourtTimer court={court} />
                             </div>
                         </div>
@@ -1005,7 +1124,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-            {modal.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({type:null})} />}
+            {modal.type === 'alert' && <AlertModal {...modal.data} onClose={modal.data.onClose || (() => setModal({type:null}))} />}
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({type:null})} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({type:null})} />}
             {modal.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal({type:null})} />}
@@ -1021,7 +1140,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 </div>
             </header>
             
-            <div className="p-4 flex-grow">
+            <div className="p-2 sm:p-4 flex-grow">
                 <div className="flex justify-center border-b border-gray-700 mb-4">
                     <button onClick={() => setActiveTab('matching')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 예정</button>
                     <button onClick={() => setActiveTab('inProgress')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 진행</button>
@@ -1054,25 +1173,42 @@ export default function App() {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 const userDocRef = currentUser.email === 'domain@special.user'
-                    ? doc(db, "users", "domain_user_placeholder") // Dummy doc for domain admin
+                    ? doc(db, "users", "domain_user_placeholder")
                     : doc(db, "users", currentUser.uid);
-
-                const userDoc = await getDoc(userDocRef);
                 
+                const userDoc = await getDoc(userDocRef);
+                let loadedUserData = null;
+
                 if (currentUser.email === 'domain@special.user') {
-                     setUserData({ uid: 'domain_user_placeholder', username: 'domain', name: 'Domain Admin'});
-                     if (page === 'auth') setPage('lobby');
+                     loadedUserData = { uid: 'domain_user_placeholder', username: 'domain', name: 'Domain Admin'};
+                } else if (userDoc.exists()) {
+                    loadedUserData = { uid: currentUser.uid, ...userDoc.data() };
+                } else {
+                    signOut(auth);
+                    setLoading(false);
+                    return;
                 }
-                else if (userDoc.exists()) {
-                    setUserData({ uid: currentUser.uid, ...userDoc.data() });
+                
+                setUserData(loadedUserData);
+                
+                const lastRoomId = localStorage.getItem('lastRoomId');
+                if (lastRoomId) {
+                    const playerInRoomRef = doc(db, 'rooms', lastRoomId, 'players', currentUser.uid);
+                    const playerInRoomDoc = await getDoc(playerInRoomRef);
+                    if (playerInRoomDoc.exists()) {
+                        setRoomId(lastRoomId);
+                        setPage('room');
+                    } else {
+                        localStorage.removeItem('lastRoomId');
+                        if(page === 'auth') setPage('lobby');
+                    }
+                } else {
                     if(page === 'auth') setPage('lobby');
-                } else { 
-                    // This can happen if a user is deleted from the backend but still has a valid token.
-                    signOut(auth); 
                 }
             } else {
                 setUserData(null);
                 setPage('auth');
+                localStorage.removeItem('lastRoomId');
             }
             setLoading(false);
         });
@@ -1089,4 +1225,3 @@ export default function App() {
         default: return <AuthPage setPage={setPage} />;
     }
 }
-
