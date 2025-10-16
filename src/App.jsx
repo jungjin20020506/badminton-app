@@ -66,7 +66,9 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 
     const cardStyle = {
         ...genderStyle,
-        border: '2px solid transparent',
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: 'transparent',
         transition: 'all 0.2s ease-in-out',
         backgroundColor: '#2d3748',
         opacity: isPlaying || player.isResting ? 0.6 : 1,
