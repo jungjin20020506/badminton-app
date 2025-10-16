@@ -29,7 +29,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const KAKAO_JAVASCRIPT_KEY = "4bebedd2921e9ecf2412417b5b35762e"; // 이 부분을 실제 키 값으로 변경해주세요!
+const KAKAO_JAVASCRIPT_KEY = "YOUR_KAKAO_JAVASCRIPT_KEY"; // 이 부분을 실제 키 값으로 변경해주세요!
 
 // ===================================================================================
 // 상수 및 Helper 함수
@@ -255,19 +255,14 @@ function AuthPage({ setPage }) {
     const handleKakaoLogin = async () => {
         setError('');
         try {
-            // 1. 카카오 SDK 초기화
-            if (!window.Kakao.isInitialized()) {
-                window.Kakao.init(KAKAO_JAVASCRIPT_KEY);
-            }
-
-            // 2. Firebase OIDC 공급자 설정
+            // 1. Firebase OIDC 공급자 설정
             const provider = new OAuthProvider('oidc.Kakao');
 
-            // 3. 팝업으로 로그인 시도
+            // 2. 팝업으로 로그인 시도
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            // 4. Firestore에 사용자 정보 저장 또는 업데이트
+            // 3. Firestore에 사용자 정보 저장 또는 업데이트
             const userDocRef = doc(db, 'users', user.uid);
             const userDoc = await getDoc(userDocRef);
 
