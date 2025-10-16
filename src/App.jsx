@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword, PhoneAuthProvider, signInWithCredential, OAuthProvider, signInWithPopup } from 'firebase/auth';
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, 
     collection, deleteDoc, updateDoc, writeBatch, runTransaction, query, addDoc, where, getDocs, serverTimestamp
@@ -26,10 +26,11 @@ const auth = getAuth(app);
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
-const SUPER_ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
+const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 const TEST_PHONE_NUMBER = "01012345678";
+const KAKAO_JAVASCRIPT_KEY = "YOUR_KAKAO_JAVASCRIPT_KEY"; // IMPORTANT: Replace with your actual Kakao JavaScript Key from Step 1
 
 const getLevelColor = (level) => {
     switch (level) {
@@ -60,7 +61,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
 
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
-    const adminIcon = (SUPER_ADMIN_NAMES.includes(player.name) || context.isAdmin) ? '👑' : '';
+    const adminIcon = (SUPER_ADMIN_USERNAMES.includes(player.username)) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
@@ -166,25 +167,6 @@ function CourtSelectionModal({ title = "코트 선택", buttonText = "{index}번
         </div> 
     ); 
 }
-function ResultInputModal({ courtIndex, players, onResultSubmit, onClose }) {
-    const [winners, setWinners] = useState([]);
-    const handlePlayerClick = (playerId) => setWinners(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : (prev.length < 2 ? [...prev, playerId] : prev));
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font flicker-text">승리팀 선택</h3>
-                <p className="text-gray-300 mb-6">승리한 선수 2명을 선택하세요.</p>
-                <div className="grid grid-cols-4 gap-2">
-                    {players.map(p => ( <PlayerCard key={p.id} player={p} context={{}} isAdmin={true} onCardClick={() => handlePlayerClick(p.id)} isSelected={winners.includes(p.id)} /> ))}
-                </div>
-                <div className="flex gap-4 mt-6">
-                    <button onClick={onClose} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg">취소</button>
-                    <button onClick={() => onResultSubmit(courtIndex, winners)} disabled={winners.length !== 2} className="w-full arcade-button bg-green-500 hover:bg-green-600 text-black font-bold py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">결과 확정</button>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 function SettingsModal({ roomData, onSave, onCancel, onSystemReset }) {
     const [settings, setSettings] = useState({
@@ -250,6 +232,10 @@ function AuthPage({ setPage }) {
                 setError("reCAPTCHA 초기화에 실패했습니다. 페이지를 새로고침 해주세요.");
             }
         }
+
+        if (window.Kakao && !window.Kakao.isInitialized()) {
+            window.Kakao.init(KAKAO_JAVASCRIPT_KEY);
+        }
     }, []);
     
     const ensureRecaptcha = () => {
@@ -261,12 +247,42 @@ function AuthPage({ setPage }) {
         }
         return window.recaptchaVerifier;
     }
+    
+    const handleKakaoLogin = async () => {
+        setError('');
+        try {
+            const provider = new OAuthProvider('oidc.kakao');
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists()) {
+                // New user, create a document in Firestore
+                await setDoc(userDocRef, {
+                    name: user.displayName || 'Kakao User',
+                    username: `kakao_${user.uid.substring(0, 10)}`, // Create a unique username
+                    level: 'D조', // Default level
+                    gender: '미설정', // Default gender
+                    birthYear: '2000', // Default birth year
+                    phone: user.phoneNumber || '',
+                    email: user.email,
+                });
+            }
+            // User will be redirected to lobby via onAuthStateChanged
+        } catch (error) {
+            setError(`카카오 로그인 실패: ${error.message}`);
+            console.error(error);
+        }
+    };
+
 
     const renderForm = () => {
         switch (mode) {
-            case 'signup': return <SignUpForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
+            case 'signup': return <SignUpForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} handleKakaoLogin={handleKakaoLogin} />;
             case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
-            default: return <LoginForm setError={setError} setMode={setMode} />;
+            default: return <LoginForm setError={setError} setMode={setMode} handleKakaoLogin={handleKakaoLogin} />;
         }
     };
     
@@ -282,8 +298,9 @@ function AuthPage({ setPage }) {
     );
 }
 
-function LoginForm({ setError, setMode }) {
+function LoginForm({ setError, setMode, handleKakaoLogin }) {
     const [formData, setFormData] = useState({ username: '', password: ''});
+    const [showPassword, setShowPassword] = useState(false);
     const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
     const handleLogin = async (e) => {
         e.preventDefault(); setError('');
@@ -296,8 +313,15 @@ function LoginForm({ setError, setMode }) {
         <form onSubmit={handleLogin} className="space-y-4">
             <h2 className="text-xl font-bold text-center">로그인</h2>
             <input type="text" name="username" placeholder="아이디" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
-            <input type="password" name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+            <div>
+                <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" onChange={handleChange} required className="w-full bg-gray-700 text-white p-3 rounded-lg" />
+                <label className="text-xs flex items-center gap-2 mt-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
+            </div>
             <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
+             <button type="button" onClick={handleKakaoLogin} className="w-full arcade-button kakao-button text-black font-bold py-3 rounded-lg relative flex items-center justify-center">
+                <svg className="w-6 h-6 absolute left-4" viewBox="0 0 32 32"><path fill="currentColor" d="M16 4.64c-6.96 0-12.64 4.48-12.64 10.08 0 3.52 2.32 6.56 5.68 8.48l-1.92 7.04 7.44-3.84c.48.08 1.04.08 1.52.08 6.96 0 12.64-4.48 12.64-10.16S22.96 4.56 16 4.64z"></path></svg>
+                카카오 로그인
+            </button>
             <div className="text-center text-sm text-gray-400 mt-2">
                 <button type="button" onClick={() => setMode('signup')} className="hover:text-white">회원가입</button> | <button type="button" onClick={() => setMode('findAccount')} className="hover:text-white">ID/PW 찾기</button>
             </div>
@@ -305,7 +329,7 @@ function LoginForm({ setError, setMode }) {
     );
 }
 
-function SignUpForm({ setError, setMode, ensureRecaptcha }) {
+function SignUpForm({ setError, setMode, ensureRecaptcha, handleKakaoLogin }) {
     const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
     const [step, setStep] = useState(1);
     const [verificationId, setVerificationId] = useState('');
@@ -396,35 +420,48 @@ function SignUpForm({ setError, setMode, ensureRecaptcha }) {
     }
 
     return (
-        <form onSubmit={handleNextStep} className="space-y-3">
+        <div className="space-y-3">
             <h2 className="text-xl font-bold text-center">회원가입</h2>
-            <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-            <div>
-                <div className="flex gap-2">
-                    <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                    <button type="button" onClick={handleCheckUsername} className={`arcade-button text-white font-bold px-3 text-xs whitespace-nowrap ${checkBtnClass}`}>중복확인</button>
+             <button type="button" onClick={handleKakaoLogin} className="w-full arcade-button kakao-button-signup text-black font-bold py-3 rounded-lg relative flex items-center justify-center">
+                <svg className="w-6 h-6 absolute left-4" viewBox="0 0 32 32"><path fill="#3A1D1D" d="M16 4.64c-6.96 0-12.64 4.48-12.64 10.08 0 3.52 2.32 6.56 5.68 8.48l-1.92 7.04 7.44-3.84c.48.08 1.04.08 1.52.08 6.96 0 12.64-4.48 12.64-10.16S22.96 4.56 16 4.64z"></path></svg>
+                카카오 간편 회원가입
+            </button>
+            <div className="flex items-center text-gray-500 my-4">
+                <hr className="flex-grow border-gray-600"/>
+                <span className="px-2 text-sm">또는</span>
+                <hr className="flex-grow border-gray-600"/>
+            </div>
+            <form onSubmit={handleNextStep}>
+                <div className="space-y-3">
+                    <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    <div>
+                        <div className="flex gap-2">
+                            <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                            <button type="button" onClick={handleCheckUsername} className={`arcade-button text-white font-bold px-3 text-xs whitespace-nowrap ${checkBtnClass}`}>중복확인</button>
+                        </div>
+                        {usernameStatus.message && <p className={`text-xs mt-1 px-1 ${usernameStatus.status === 'valid' ? 'text-green-400' : 'text-red-400'}`}>{usernameStatus.message}</p>}
+                    </div>
+                    <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호 (6자 이상)" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    <div>
+                        <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        {passwordError && <p className="text-xs mt-1 px-1 text-red-400">{passwordError}</p>}
+                    </div>
+                    <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
+                    <div className="grid grid-cols-2 gap-2">
+                        <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
+                        <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-400 px-1">출생년도</label>
+                        <select name="birthYear" onChange={handleChange} defaultValue="2000" className="w-full bg-gray-700 p-3 rounded-lg">
+                            {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
+                        </select>
+                    </div>
+                    <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
                 </div>
-                {usernameStatus.message && <p className={`text-xs mt-1 px-1 ${usernameStatus.status === 'valid' ? 'text-green-400' : 'text-red-400'}`}>{usernameStatus.message}</p>}
-            </div>
-             <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호 (6자 이상)" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-             <div>
-                <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                {passwordError && <p className="text-xs mt-1 px-1 text-red-400">{passwordError}</p>}
-             </div>
-            <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
-            <div className="grid grid-cols-2 gap-2">
-                <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
-                <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
-            </div>
-            <div>
-                <label className="text-xs text-gray-400 px-1">출생년도</label>
-                <select name="birthYear" onChange={handleChange} defaultValue="2000" className="w-full bg-gray-700 p-3 rounded-lg">
-                    {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
-                </select>
-            </div>
-            <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
+            </form>
             <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 mt-2">로그인 화면으로</button>
-        </form>
+        </div>
     );
 }
 
@@ -762,7 +799,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
-        return SUPER_ADMIN_NAMES.includes(userData.name) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username) || userData.username === 'domain';
+        return SUPER_ADMIN_USERNAMES.includes(userData.username) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username);
     }, [userData, roomData]);
 
     useEffect(() => {
@@ -932,21 +969,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
         else setModal({type: 'courtSelection', data:{ title: "경기 시작", courts: emptyCourts, onSelect: start}});
     };
     
-    const handleEndMatch = (courtIndex) => {
-        const court = (roomData.inProgressCourts || [])[courtIndex];
-        if(!court) return;
-        const matchPlayers = court.players.map(pId => players[pId]).filter(Boolean);
-        setModal({type:'resultInput', data: {courtIndex, players: matchPlayers, onResultSubmit: processMatchResult}});
-    };
-
-    const processMatchResult = async (courtIndex, winners) => {
-        if (winners.length !== 2) return;
+    const processMatchResult = async (courtIndex) => {
         const court = (roomData.inProgressCourts || [])[courtIndex];
         if(!court) return;
 
         const batch = writeBatch(db);
         court.players.forEach(pId => {
-            if (players[pId]) { // Check if player exists before updating
+            if (players[pId]) {
                 const playerRef = doc(db, 'rooms', roomId, 'players', pId);
                 batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
             }
@@ -954,10 +983,17 @@ function GameRoomPage({ userData, roomId, setPage }) {
         await batch.commit();
 
         updateRoomState(data => { 
-            data.inProgressCourts[courtIndex] = null; 
+            if (data.inProgressCourts && data.inProgressCourts[courtIndex]) {
+                data.inProgressCourts[courtIndex] = null; 
+            }
             return data; 
         });
-        setModal({type:null, data:null});
+    };
+
+    const handleEndMatch = (courtIndex) => {
+        const court = (roomData.inProgressCourts || [])[courtIndex];
+        if (!court) return;
+        processMatchResult(courtIndex);
     };
 
     const handleToggleRest = () => {
@@ -1071,7 +1107,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <section className="bg-gray-800/50 rounded-lg p-3">
                 <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
-                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
+                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting' }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
                 </div>
             </section>
             <section>
@@ -1089,7 +1125,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                 <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                         const pId = match[slotIndex];
-                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username)}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} isFirstSelection={firstSwapSelection?.playerId === pId} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule'}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} isFirstSelection={firstSwapSelection?.playerId === pId} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
                                     })}
                                 </div>
                                 <div className="flex-shrink-0 w-14 text-center">
@@ -1113,7 +1149,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                          <div key={`court-${courtIndex}`} onMouseDown={() => isAdmin && handleCourtLongPress(courtIndex)} className={`flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 ${isAdmin && court ? 'cursor-grab' : ''}`}>
                             <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court', isAdmin: roomData.isPublicAdmin || (roomData.admins || []).includes(players[pId].username) }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
+                                {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court' }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
                                 <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[11px] whitespace-nowrap ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
@@ -1131,7 +1167,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
             {modal.type === 'alert' && <AlertModal {...modal.data} onClose={modal.data.onClose || (() => setModal({type:null}))} />}
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({type:null})} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({type:null})} />}
-            {modal.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal({type:null})} />}
             {modal.type === 'settings' && <SettingsModal roomData={roomData} onSave={handleSettingsSave} onCancel={() => setModal({type:null})} onSystemReset={handleSystemReset} />}
             {modal.type === 'editGames' && <EditGamesModal player={modal.data} onSave={handleSaveGames} onClose={() => setModal({type:null})} />}
             
@@ -1161,6 +1196,15 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
                 @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
                 .flicker-text { animation: flicker 1.5s infinite; }
+                .kakao-button { background-color: #FEE500; color: #191919; }
+                .kakao-button-signup {
+                    background-color: #FEE500;
+                    color: #181600;
+                    font-weight: bold;
+                    animation: flicker 1.5s infinite;
+                    border-color: #FEE500;
+                    box-shadow: 0 0 8px #FEE500, inset 0 0 5px #fff;
+                }
             `}</style>
         </div>
     );
@@ -1188,9 +1232,26 @@ export default function App() {
                 } else if (userDoc.exists()) {
                     loadedUserData = { uid: currentUser.uid, ...userDoc.data() };
                 } else {
-                    signOut(auth);
-                    setLoading(false);
-                    return;
+                    // This could be a new Kakao user if the doc doesn't exist yet after signInWithPopup
+                    // Let's check if there is display name - a hint for new user
+                    if (currentUser.displayName) {
+                         const newUserData = {
+                            uid: currentUser.uid,
+                            name: currentUser.displayName,
+                            username: `kakao_${currentUser.uid.substring(0, 10)}`,
+                            level: 'D조',
+                            gender: '미설정',
+                            birthYear: '2000',
+                            phone: currentUser.phoneNumber || '',
+                            email: currentUser.email,
+                        };
+                        await setDoc(doc(db, "users", currentUser.uid), newUserData);
+                        loadedUserData = newUserData;
+                    } else {
+                        signOut(auth);
+                        setLoading(false);
+                        return;
+                    }
                 }
                 
                 setUserData(loadedUserData);
