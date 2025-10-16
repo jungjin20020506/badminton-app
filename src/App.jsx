@@ -906,7 +906,9 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 if (!data.inProgressCourts || !Array.isArray(data.inProgressCourts)) {
                     data.inProgressCourts = Array(data.numInProgressCourts).fill(null);
                 }
-                data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: serverTimestamp() };
+                // Firestore serverTimestamp() error fix: Use client-side new Date() instead.
+                // It will be converted to a Firestore Timestamp upon write, which is valid in a transaction.
+                data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: new Date() };
                 
                 const remainingMatches = [];
                 for (let i = 0; i < data.numScheduledMatches; i++) {
@@ -1225,3 +1227,4 @@ export default function App() {
         default: return <AuthPage setPage={setPage} />;
     }
 }
+
