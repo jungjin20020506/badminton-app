@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, updatePassword, PhoneAuthProvider, signInWithCredential, OAuthProvider, signInWithPopup } from 'firebase/auth';
+import { 
+    getAuth, RecaptchaVerifier, onAuthStateChanged, signOut, 
+    createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+    signInWithPhoneNumber, updatePassword, PhoneAuthProvider, 
+    signInWithCredential, OAuthProvider, signInWithPopup 
+} from 'firebase/auth';
 import { 
     getFirestore, doc, getDoc, setDoc, onSnapshot, 
-    collection, deleteDoc, updateDoc, writeBatch, runTransaction, query, addDoc, where, getDocs, serverTimestamp
+    collection, deleteDoc, updateDoc, writeBatch, 
+    runTransaction, query, addDoc, where, getDocs, serverTimestamp
 } from 'firebase/firestore';
 
 // ===================================================================================
-// Firebase 설정 (콕스타 - noerror-14ce3 프로젝트)
+// Firebase & Kakao 설정
 // ===================================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyC-eeHazZ3kVj7aQicdtlnhEmLbbTJHgGE",
@@ -23,6 +29,8 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+const KAKAO_JAVASCRIPT_KEY = "4bebedd2921e9ecf2412417b5b35762e"; // 이 부분을 실제 키 값으로 변경해주세요!
+
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
@@ -30,7 +38,6 @@ const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 const TEST_PHONE_NUMBER = "01012345678";
-const KAKAO_JAVASCRIPT_KEY = "YOUR_KAKAO_JAVASCRIPT_KEY"; // IMPORTANT: Replace with your actual Kakao JavaScript Key from Step 1
 
 const getLevelColor = (level) => {
     switch (level) {
@@ -45,12 +52,11 @@ const getLevelColor = (level) => {
 // ===================================================================================
 // 공용 UI 컴포넌트 (모달, 카드 등)
 // ===================================================================================
-
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop, isFirstSelection }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
     const longPressTimer = useRef(null);
     
     const handlePressStart = (e) => {
-        if (isAdmin) {
+        if (isAdmin && onLongPress) {
             e.preventDefault();
             longPressTimer.current = setTimeout(() => onLongPress(player), 1000);
         }
@@ -61,7 +67,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
 
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
-    const adminIcon = (SUPER_ADMIN_USERNAMES.includes(player.username)) ? '👑' : '';
+    const adminIcon = SUPER_ADMIN_USERNAMES.includes(player.username) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
@@ -81,9 +87,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         cardStyle.transform = 'scale(1.05)';
         cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.9)`;
     }
-    if (isFirstSelection) {
-        cardStyle.borderColor = '#60A5FA';
-        cardStyle.transform = 'scale(1.05)';
+    if (context.isSwapTarget) {
+        cardStyle.borderColor = '#60A5FA'; // 파란색 테두리로 교환 대상 표시
         cardStyle.boxShadow = `0 0 15px 5px rgba(96, 165, 250, 0.9)`;
     }
     if (isCurrentUser) {
@@ -102,8 +107,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             onTouchStart={handlePressStart} 
             onTouchEnd={handlePressEnd} 
             onTouchCancel={handlePressEnd}
-            draggable={isAdmin} onDragStart={(e) => onDragStart(e, player.id)} onDragEnd={onDragEnd}
-            onDragOver={onDragOver} onDrop={(e) => onDrop(e, {type: 'player', id: player.id})}
+            draggable={isAdmin && context.location === 'schedule'} 
+            onDragStart={(e) => onDragStart(e, player.id)} 
+            onDragEnd={onDragEnd}
+            onDragOver={onDragOver} 
+            onDrop={(e) => onDrop(e, {type: 'player', id: player.id})}
         >
             <div>
                 <div className="player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter">{adminIcon}{player.name}</div>
@@ -112,7 +120,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                     {`${player.todayGames || 0}게임`}
                 </div>
             </div>
-            {isAdmin && onAction && (context.location === 'schedule' || context.location === 'waiting') && (
+            {isAdmin && onAction && (
                 <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
@@ -134,7 +142,7 @@ const CourtTimer = ({ court }) => {
         if (court && court.startTime) {
             const timerId = setInterval(() => {
                 const now = new Date();
-                const startTime = court.startTime.toDate();
+                const startTime = new Date(court.startTime); // ISO 문자열을 Date 객체로 변환
                 const diff = Math.floor((now - startTime) / 1000);
                 const minutes = String(Math.floor(diff / 60)).padStart(2, '0');
                 const seconds = String(diff % 60).padStart(2, '0');
@@ -143,22 +151,22 @@ const CourtTimer = ({ court }) => {
             return () => clearInterval(timerId);
         } else { setTime('00:00'); }
     }, [court]);
-    return <div className="text-center text-[10px] font-mono text-white mt-0.5 tracking-wider">{time}</div>;
+    return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6 whitespace-pre-line">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
-function CourtSelectionModal({ title = "코트 선택", buttonText = "{index}번 코트", courts, onSelect, onCancel }) {
+function CourtSelectionModal({ courts, onSelect, onCancel, title = "코트 선택", description = "경기를 시작할 코트를 선택해주세요." }) {
     const [isProcessing, setIsProcessing] = useState(false);
     return ( 
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
                 <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{title}</h3>
-                <p className="text-gray-300 mb-6">경기를 시작하거나 이동할 코트를 선택해주세요.</p>
+                <p className="text-gray-300 mb-6">{description}</p>
                 <div className="flex flex-col gap-3">
-                    {courts.map(courtIdx => ( 
-                        <button key={courtIdx} onClick={() => { setIsProcessing(true); onSelect(courtIdx); }} disabled={isProcessing} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isProcessing ? '처리 중...' : buttonText.replace('{index}', courtIdx + 1)}
+                    {courts.map(court => ( 
+                        <button key={court.index} onClick={() => { setIsProcessing(true); onSelect(court.index); }} disabled={isProcessing} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
+                            {isProcessing ? '처리 중...' : court.label}
                         </button> 
                     ))}
                 </div>
@@ -232,12 +240,8 @@ function AuthPage({ setPage }) {
                 setError("reCAPTCHA 초기화에 실패했습니다. 페이지를 새로고침 해주세요.");
             }
         }
-
-        if (window.Kakao && !window.Kakao.isInitialized()) {
-            window.Kakao.init(KAKAO_JAVASCRIPT_KEY);
-        }
     }, []);
-    
+
     const ensureRecaptcha = () => {
         if (!window.recaptchaVerifier) {
             const recaptchaContainer = document.getElementById('recaptcha-container');
@@ -247,40 +251,50 @@ function AuthPage({ setPage }) {
         }
         return window.recaptchaVerifier;
     }
-    
+
     const handleKakaoLogin = async () => {
         setError('');
         try {
-            const provider = new OAuthProvider('oidc.kakao');
+            // 1. 카카오 SDK 초기화
+            if (!window.Kakao.isInitialized()) {
+                window.Kakao.init(KAKAO_JAVASCRIPT_KEY);
+            }
+
+            // 2. Firebase OIDC 공급자 설정
+            const provider = new OAuthProvider('oidc.Kakao');
+
+            // 3. 팝업으로 로그인 시도
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            const userDocRef = doc(db, "users", user.uid);
+            // 4. Firestore에 사용자 정보 저장 또는 업데이트
+            const userDocRef = doc(db, 'users', user.uid);
             const userDoc = await getDoc(userDocRef);
 
             if (!userDoc.exists()) {
-                // New user, create a document in Firestore
+                // 새로운 사용자 정보 생성 (카카오 프로필 정보 사용)
                 await setDoc(userDocRef, {
-                    name: user.displayName || 'Kakao User',
-                    username: `kakao_${user.uid.substring(0, 10)}`, // Create a unique username
-                    level: 'D조', // Default level
-                    gender: '미설정', // Default gender
-                    birthYear: '2000', // Default birth year
-                    phone: user.phoneNumber || '',
-                    email: user.email,
+                    name: user.displayName || '이름없음',
+                    username: `kakao:${user.uid}`, // 카카오 UID 기반으로 고유 username 생성
+                    level: 'D조', // 기본값
+                    gender: '남', // 기본값
+                    birthYear: '2000', // 기본값
+                    phone: user.phoneNumber || '', // 제공될 경우
+                    isKakaoUser: true
                 });
             }
-            // User will be redirected to lobby via onAuthStateChanged
-        } catch (error) {
-            setError(`카카오 로그인 실패: ${error.message}`);
-            console.error(error);
+            // 이미 존재하는 사용자는 별도 업데이트 없이 로그인 처리
+            
+        } catch (err) {
+            console.error("카카오 로그인 실패:", err);
+            setError(`카카오 로그인에 실패했습니다: ${err.message}`);
         }
     };
 
 
     const renderForm = () => {
         switch (mode) {
-            case 'signup': return <SignUpForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} handleKakaoLogin={handleKakaoLogin} />;
+            case 'signup': return <SignUpForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
             case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
             default: return <LoginForm setError={setError} setMode={setMode} handleKakaoLogin={handleKakaoLogin} />;
         }
@@ -318,18 +332,21 @@ function LoginForm({ setError, setMode, handleKakaoLogin }) {
                 <label className="text-xs flex items-center gap-2 mt-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             </div>
             <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
-             <button type="button" onClick={handleKakaoLogin} className="w-full arcade-button kakao-button text-black font-bold py-3 rounded-lg relative flex items-center justify-center">
-                <svg className="w-6 h-6 absolute left-4" viewBox="0 0 32 32"><path fill="currentColor" d="M16 4.64c-6.96 0-12.64 4.48-12.64 10.08 0 3.52 2.32 6.56 5.68 8.48l-1.92 7.04 7.44-3.84c.48.08 1.04.08 1.52.08 6.96 0 12.64-4.48 12.64-10.16S22.96 4.56 16 4.64z"></path></svg>
-                카카오 로그인
-            </button>
             <div className="text-center text-sm text-gray-400 mt-2">
                 <button type="button" onClick={() => setMode('signup')} className="hover:text-white">회원가입</button> | <button type="button" onClick={() => setMode('findAccount')} className="hover:text-white">ID/PW 찾기</button>
             </div>
+            <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-600"></span></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-gray-800 px-2 text-gray-500">Or</span></div>
+            </div>
+            <button type="button" onClick={handleKakaoLogin} className="w-full kakao-button">
+                <i className="fas fa-comment"></i> 카카오 간편인증 회원가입
+            </button>
         </form>
     );
 }
 
-function SignUpForm({ setError, setMode, ensureRecaptcha, handleKakaoLogin }) {
+function SignUpForm({ setError, setMode, ensureRecaptcha }) {
     const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
     const [step, setStep] = useState(1);
     const [verificationId, setVerificationId] = useState('');
@@ -348,7 +365,7 @@ function SignUpForm({ setError, setMode, ensureRecaptcha, handleKakaoLogin }) {
 
     const handleCheckUsername = async () => {
         if (!formData.username) { setUsernameStatus({ status: 'invalid', message: '아이디를 입력해주세요.' }); return; }
-        if (formData.username === 'domain') { setUsernameStatus({ status: 'invalid', message: "'domain'은 사용할 수 없는 아이디입니다."}); return; }
+        if (formData.username === 'domain' || formData.username.startsWith('kakao:')) { setUsernameStatus({ status: 'invalid', message: "사용할 수 없는 아이디입니다."}); return; }
         setUsernameStatus({ status: 'checking', message: '확인 중...' });
         const q = query(collection(db, "users"), where("username", "==", formData.username));
         const snapshot = await getDocs(q);
@@ -388,7 +405,7 @@ function SignUpForm({ setError, setMode, ensureRecaptcha, handleKakaoLogin }) {
             if (!verificationId || !verificationCode) { setError('인증번호를 입력해주세요.'); return; }
             const userCredential = await createUserWithEmailAndPassword(auth, `${formData.username}@cockstar.app`, formData.password);
             await setDoc(doc(db, "users", userCredential.user.uid), {
-                name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone,
+                name: formData.name, username: formData.username, level: formData.level, gender: formData.gender, birthYear: formData.birthYear, phone: formData.phone, isKakaoUser: false
             });
             alert(`가입 완료! 이제 로그인해주세요.`);
             setMode('login');
@@ -420,48 +437,35 @@ function SignUpForm({ setError, setMode, ensureRecaptcha, handleKakaoLogin }) {
     }
 
     return (
-        <div className="space-y-3">
+        <form onSubmit={handleNextStep} className="space-y-3">
             <h2 className="text-xl font-bold text-center">회원가입</h2>
-             <button type="button" onClick={handleKakaoLogin} className="w-full arcade-button kakao-button-signup text-black font-bold py-3 rounded-lg relative flex items-center justify-center">
-                <svg className="w-6 h-6 absolute left-4" viewBox="0 0 32 32"><path fill="#3A1D1D" d="M16 4.64c-6.96 0-12.64 4.48-12.64 10.08 0 3.52 2.32 6.56 5.68 8.48l-1.92 7.04 7.44-3.84c.48.08 1.04.08 1.52.08 6.96 0 12.64-4.48 12.64-10.16S22.96 4.56 16 4.64z"></path></svg>
-                카카오 간편 회원가입
-            </button>
-            <div className="flex items-center text-gray-500 my-4">
-                <hr className="flex-grow border-gray-600"/>
-                <span className="px-2 text-sm">또는</span>
-                <hr className="flex-grow border-gray-600"/>
-            </div>
-            <form onSubmit={handleNextStep}>
-                <div className="space-y-3">
-                    <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                    <div>
-                        <div className="flex gap-2">
-                            <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                            <button type="button" onClick={handleCheckUsername} className={`arcade-button text-white font-bold px-3 text-xs whitespace-nowrap ${checkBtnClass}`}>중복확인</button>
-                        </div>
-                        {usernameStatus.message && <p className={`text-xs mt-1 px-1 ${usernameStatus.status === 'valid' ? 'text-green-400' : 'text-red-400'}`}>{usernameStatus.message}</p>}
-                    </div>
-                    <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호 (6자 이상)" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                    <div>
-                        <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
-                        {passwordError && <p className="text-xs mt-1 px-1 text-red-400">{passwordError}</p>}
-                    </div>
-                    <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
-                    <div className="grid grid-cols-2 gap-2">
-                        <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
-                        <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-400 px-1">출생년도</label>
-                        <select name="birthYear" onChange={handleChange} defaultValue="2000" className="w-full bg-gray-700 p-3 rounded-lg">
-                            {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
-                        </select>
-                    </div>
-                    <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
+            <input type="text" name="name" placeholder="이름" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+            <div>
+                <div className="flex gap-2">
+                    <input type="text" name="username" placeholder="아이디" value={formData.username} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    <button type="button" onClick={handleCheckUsername} className={`arcade-button text-white font-bold px-3 text-xs whitespace-nowrap ${checkBtnClass}`}>중복확인</button>
                 </div>
-            </form>
+                {usernameStatus.message && <p className={`text-xs mt-1 px-1 ${usernameStatus.status === 'valid' ? 'text-green-400' : 'text-red-400'}`}>{usernameStatus.message}</p>}
+            </div>
+             <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호 (6자 이상)" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+             <div>
+                <input type={showPassword ? "text" : "password"} name="confirmPassword" placeholder="비밀번호 확인" onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                {passwordError && <p className="text-xs mt-1 px-1 text-red-400">{passwordError}</p>}
+             </div>
+            <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
+            <div className="grid grid-cols-2 gap-2">
+                <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
+                <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
+            </div>
+            <div>
+                <label className="text-xs text-gray-400 px-1">출생년도</label>
+                <select name="birthYear" onChange={handleChange} defaultValue="2000" className="w-full bg-gray-700 p-3 rounded-lg">
+                    {birthYears.map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+            </div>
+            <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">다음</button>
             <button type="button" onClick={() => setMode('login')} className="w-full text-center text-sm text-gray-400 mt-2">로그인 화면으로</button>
-        </div>
+        </form>
     );
 }
 
@@ -480,7 +484,7 @@ function FindAccountForm({ setError, setMode, ensureRecaptcha }) {
     const handleFindId = async () => {
         setError('');
         if (!formData.name || !formData.phone) { setError("이름과 전화번호를 모두 입력해주세요."); return; }
-        const q = query(collection(db, "users"), where("name", "==", formData.name), where("phone", "==", formData.phone));
+        const q = query(collection(db, "users"), where("name", "==", formData.name), where("phone", "==", formData.phone), where("isKakaoUser", "==", false));
         const snapshot = await getDocs(q);
         if (snapshot.empty) { setError("일치하는 사용자가 없습니다."); setFoundUser(null); }
         else { 
@@ -552,6 +556,7 @@ function FindAccountForm({ setError, setMode, ensureRecaptcha }) {
     return (
         <div className="space-y-4">
             <h2 className="text-xl font-bold text-center">ID/PW 찾기</h2>
+            <p className="text-xs text-center text-gray-400">카카오 가입 계정은 찾을 수 없습니다.</p>
             <input type="text" name="name" placeholder="이름" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg" />
             <input type="tel" name="phone" placeholder="전화번호" onChange={handleChange} className="w-full bg-gray-700 p-3 rounded-lg" />
             <button onClick={handleFindId} className="w-full arcade-button bg-gray-600 text-white font-bold py-2 rounded-lg">아이디 찾기</button>
@@ -560,7 +565,6 @@ function FindAccountForm({ setError, setMode, ensureRecaptcha }) {
         </div>
     );
 }
-
 
 function LobbyPage({ userData, setPage, setRoomId }) {
     const [rooms, setRooms] = useState([]);
@@ -587,7 +591,15 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                 const roomRef = doc(db, 'rooms', modal.data.id);
                 await updateDoc(roomRef, roomData);
             } else { // Create
-                const roomRef = await addDoc(collection(db, "rooms"), { ...roomData, createdAt: serverTimestamp(), createdBy: userData.uid });
+                const roomRef = await addDoc(collection(db, "rooms"), { 
+                    ...roomData, 
+                    createdAt: serverTimestamp(), 
+                    createdBy: userData.uid,
+                    numScheduledMatches: 5,
+                    numInProgressCourts: 3,
+                    scheduledMatches: {},
+                    inProgressCourts: []
+                });
                 handleEnterRoom(roomRef.id);
             }
             setModal({type: null, data: null});
@@ -619,12 +631,12 @@ function LobbyPage({ userData, setPage, setRoomId }) {
     };
     
     const handleCreateRoomClick = () => {
-        if (userData.username === 'domain') {
+        if (SUPER_ADMIN_USERNAMES.includes(userData.username)) {
             setModal({type: 'room', data: {}});
         } else {
             setModal({type: 'alert', data: {
                 title: "방 만들기 안내",
-                body: "방 만들기를 원할 경우 아래 연락처로 연락주세요!\n010-2245-9369 정형진"
+                body: "방 만들기는 관리자만 가능합니다.\n방 만들기를 원할 경우 아래 연락처로 연락주세요!\n010-2245-9369 정형진"
             }});
         }
     };
@@ -632,27 +644,22 @@ function LobbyPage({ userData, setPage, setRoomId }) {
     const handleEnterRoom = async (roomId) => {
         const playerDocRef = doc(db, 'rooms', roomId, 'players', userData.uid);
         await setDoc(playerDocRef, { ...userData, todayGames: 0, isResting: false, entryTime: new Date().toISOString() });
-        localStorage.setItem('lastRoomId', roomId);
+        localStorage.setItem('cockstar_lastRoomId', roomId);
         setRoomId(roomId);
         setPage('room');
     };
 
-    const canEdit = (room) => userData.username === 'domain' || (room.admins || []).includes(userData.username);
+    const canEdit = (room) => SUPER_ADMIN_USERNAMES.includes(userData.username) || (room.admins || []).includes(userData.username);
     
-    const handleLogout = () => {
-        localStorage.removeItem('lastRoomId');
-        signOut(auth);
-    };
-
     return (
          <div className="bg-black text-white min-h-screen flex flex-col items-center p-4">
-            {modal.type === 'room' && <RoomModal data={modal.data} onSave={handleCreateOrUpdateRoom} onClose={() => setModal({type:null})} onDelete={handleDeleteRoom} isSuperAdmin={userData.username === 'domain'} />}
+            {modal.type === 'room' && <RoomModal data={modal.data} onSave={handleCreateOrUpdateRoom} onClose={() => setModal({type:null})} onDelete={handleDeleteRoom} isSuperAdmin={SUPER_ADMIN_USERNAMES.includes(userData.username)} />}
             {modal.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({type:null})} />}
             <header className="w-full max-w-2xl flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold arcade-font flicker-text text-yellow-400">로비</h1>
                 <div>
                     <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer text-lg">👤 {userData.name}님</button>
-                    <button onClick={handleLogout} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
+                    <button onClick={() => { localStorage.removeItem('cockstar_lastRoomId'); signOut(auth); }} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
                 </div>
             </header>
             <div className="w-full max-w-2xl bg-gray-800 p-4 rounded-lg">
@@ -729,7 +736,6 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
     );
 }
 
-
 function ProfilePage({ userData, setPage }) {
     const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, newPassword: '', confirmPassword: '' });
     const [message, setMessage] = useState('');
@@ -767,8 +773,16 @@ function ProfilePage({ userData, setPage }) {
                 {error && <p className="text-center mb-4 text-red-500">{error}</p>}
                 <div className="space-y-3">
                     <div><label className="block text-sm font-bold text-gray-400">아이디</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.username}</p></div>
-                    <div><label className="block text-sm font-bold text-gray-400">이름</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.name}</p></div>
-                    <div><label className="block text-sm font-bold text-gray-400">연락처</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.phone}</p></div>
+                    {userData.isKakaoUser ? (
+                        <>
+                            <div><label className="block text-sm font-bold text-gray-400">이름</label><input name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                        </>
+                    ) : (
+                        <>
+                            <div><label className="block text-sm font-bold text-gray-400">이름</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.name}</p></div>
+                            <div><label className="block text-sm font-bold text-gray-400">연락처</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.phone}</p></div>
+                        </>
+                    )}
 
                     <hr className="border-gray-600"/>
 
@@ -776,10 +790,11 @@ function ProfilePage({ userData, setPage }) {
                     <div><label className="block text-sm font-bold">성별</label><select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select></div>
                     <div><label className="block text-sm font-bold">출생년도</label><select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">{birthYears.map(y=><option key={y} value={y}>{y}</option>)}</select></div>
                     
-                    <hr className="border-gray-600"/>
-
-                    <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" placeholder="6자 이상" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
-                    <div><label className="block text-sm font-bold">새 비밀번호 확인</label><input type="password" name="confirmPassword" value={profileData.confirmPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                    {!userData.isKakaoUser && <>
+                        <hr className="border-gray-600"/>
+                        <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" placeholder="6자 이상" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                        <div><label className="block text-sm font-bold">새 비밀번호 확인</label><input type="password" name="confirmPassword" value={profileData.confirmPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
+                    </>}
                 </div>
                 <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">저장하기</button>
             </div>
@@ -791,11 +806,10 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const [roomData, setRoomData] = useState(null);
     const [players, setPlayers] = useState({});
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
-    const [firstSwapSelection, setFirstSwapSelection] = useState(null); // For swapping
+    const [swapTargetId, setSwapTargetId] = useState(null);
     const [modal, setModal] = useState({ type: null, data: null });
     const [activeTab, setActiveTab] = useState('matching');
     const [draggedPlayerId, setDraggedPlayerId] = useState(null);
-    const isMounted = useRef(false);
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
@@ -803,38 +817,38 @@ function GameRoomPage({ userData, roomId, setPage }) {
     }, [userData, roomData]);
 
     useEffect(() => {
-        const unsubRoom = onSnapshot(doc(db, 'rooms', roomId), (doc) => doc.exists() ? setRoomData({ id: doc.id, ...doc.data() }) : setPage('lobby'));
+        const unsubRoom = onSnapshot(doc(db, 'rooms', roomId), (doc) => {
+            if (doc.exists()) {
+                setRoomData({ id: doc.id, ...doc.data() });
+            } else {
+                localStorage.removeItem('cockstar_lastRoomId');
+                setPage('lobby');
+                alert("방이 존재하지 않거나 삭제되었습니다.");
+            }
+        });
         const unsubPlayers = onSnapshot(collection(db, 'rooms', roomId, 'players'), (snapshot) => {
-            setPlayers(snapshot.docs.reduce((acc, doc) => ({...acc, [doc.id]: { id: doc.id, ...doc.data() } }), {}));
+             const currentPlayers = snapshot.docs.reduce((acc, doc) => ({...acc, [doc.id]: { id: doc.id, ...doc.data() } }), {});
+             setPlayers(currentPlayers);
+             if (!currentPlayers[userData.uid]) {
+                setModal({type: 'alert', data: { title: '강퇴 알림', body: '방에서 강퇴되었습니다.', onClose: () => {
+                    localStorage.removeItem('cockstar_lastRoomId');
+                    setPage('lobby');
+                }}});
+             }
         });
         return () => { unsubRoom(); unsubPlayers(); };
-    }, [roomId, setPage]);
-
-    useEffect(() => {
-        if (isMounted.current) {
-            if (roomData && userData && !players[userData.uid]) {
-                setModal({ type: 'alert', data: { 
-                    title: '연결 종료', 
-                    body: '방에서 퇴장되었거나 연결이 끊어졌습니다.\n로비로 이동합니다.',
-                    onClose: () => {
-                        localStorage.removeItem('lastRoomId');
-                        setPage('lobby');
-                    }
-                }});
-            }
-        } else {
-            isMounted.current = true;
-        }
-    }, [players, roomData, userData, setPage, roomId]);
+    }, [roomId, setPage, userData.uid]);
     
     const updateRoomState = useCallback(async (updateLogic) => {
         try { await runTransaction(db, async tx => {
-                const roomDocRef = doc(db, 'rooms', roomId);
-                const roomDoc = await tx.get(roomDocRef);
+                const roomRef = doc(db, 'rooms', roomId);
+                const roomDoc = await tx.get(roomRef);
                 if (!roomDoc.exists()) throw "Room not found";
+                
                 const currentData = roomDoc.data();
-                const newData = updateLogic(JSON.parse(JSON.stringify(currentData)));
-                tx.update(roomDocRef, newData);
+                const newData = updateLogic(JSON.parse(JSON.stringify(currentData))); // Deep copy
+                
+                tx.update(roomRef, newData);
             });
         } catch (e) { setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } }); }
     }, [roomId]);
@@ -858,53 +872,43 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const handleCardClick = (player) => {
         if (!isAdmin) return;
-        const clickedPlayerLoc = playerLocations[player.id];
+        const loc = playerLocations[player.id];
 
-        if (clickedPlayerLoc.location === 'waiting') {
-            setFirstSwapSelection(null);
+        if (loc.location === 'waiting') {
             setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
-        } else if (clickedPlayerLoc.location === 'schedule') {
-            setSelectedPlayerIds([]);
-            if (!firstSwapSelection) {
-                setFirstSwapSelection({ playerId: player.id, ...clickedPlayerLoc });
-            } else {
-                if (firstSwapSelection.playerId === player.id) {
-                    setFirstSwapSelection(null); // Deselect
+        } else if (loc.location === 'schedule') {
+            if (swapTargetId) { // 두 번째 선택 (교환 실행)
+                if (swapTargetId === player.id) { // 같은 카드 다시 클릭
+                    setSwapTargetId(null);
                 } else {
-                    // Perform swap
+                    const sourceLoc = playerLocations[swapTargetId];
+                    const targetLoc = loc;
                     updateRoomState(data => {
-                        const firstVal = data.scheduledMatches[firstSwapSelection.matchIndex][firstSwapSelection.slotIndex];
-                        const secondVal = data.scheduledMatches[clickedPlayerLoc.matchIndex][clickedPlayerLoc.slotIndex];
-                        data.scheduledMatches[firstSwapSelection.matchIndex][firstSwapSelection.slotIndex] = secondVal;
-                        data.scheduledMatches[clickedPlayerLoc.matchIndex][clickedPlayerLoc.slotIndex] = firstVal;
+                        const temp = data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex];
+                        data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex];
+                        data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = temp;
                         return data;
                     });
-                    setFirstSwapSelection(null);
+                    setSwapTargetId(null);
                 }
+            } else { // 첫 번째 선택
+                setSwapTargetId(player.id);
             }
         }
     };
-
-    const handleAction = (player) => {
+    
+    const handleAction = (player) => { // X 버튼 클릭
         const loc = playerLocations[player.id];
-        if (!loc) return;
-
-        if (loc.location === 'schedule') {
+        if(loc.location === 'waiting'){
+             setModal({type:'confirm', data:{title:'선수 내보내기', body:`'${player.name}'님을 방에서 내보내시겠습니까?`, onConfirm: async () => {
+                await deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
+                setModal({type:null});
+             }}});
+        }
+        else if (loc && loc.location === 'schedule') {
              updateRoomState(data => {
                 data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
                 return data;
-            });
-        } else if (loc.location === 'waiting') {
-            setModal({
-                type: 'confirm',
-                data: {
-                    title: '선수 내보내기',
-                    body: `[${player.name}] 님을 방에서 내보내시겠습니까?`,
-                    onConfirm: () => {
-                        deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
-                        setModal({type: null, data: null});
-                    }
-                }
             });
         }
     };
@@ -912,25 +916,25 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleSlotClick = (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
         updateRoomState(data => {
-            let targetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-            const availableSlots = targetArray.filter(p => p === null).length;
-            if (selectedPlayerIds.length > availableSlots) {
-                throw new Error("자리가 없습니다.");
-            }
-            
             const playersToMove = [...selectedPlayerIds];
+            setSelectedPlayerIds([]); // 상태를 먼저 비움
+            
+            // 이동할 플레이어들을 기존 위치에서 제거
             playersToMove.forEach(pId => {
-                const loc = Object.entries(data.scheduledMatches || {}).find(([_, match]) => (match || []).includes(pId));
-                if(loc) data.scheduledMatches[loc[0]][loc[1].indexOf(pId)] = null;
+                Object.keys(data.scheduledMatches).forEach(mIdx => {
+                    const sIdx = data.scheduledMatches[mIdx].indexOf(pId);
+                    if (sIdx > -1) data.scheduledMatches[mIdx][sIdx] = null;
+                });
             });
+
+            // 새로운 위치에 플레이어 배치
+            let targetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
             for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
                 if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
             }
             data.scheduledMatches[context.matchIndex] = targetArray;
             return data;
         });
-        setSelectedPlayerIds([]);
-        setFirstSwapSelection(null);
     };
 
     const handleStartMatch = (matchIndex) => {
@@ -942,40 +946,47 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const start = (courtIndex) => {
             updateRoomState(data => {
-                if (!data.inProgressCourts || !Array.isArray(data.inProgressCourts)) {
-                    data.inProgressCourts = Array(data.numInProgressCourts).fill(null);
-                }
-                // Firestore serverTimestamp() error fix: Use client-side new Date() instead.
-                // It will be converted to a Firestore Timestamp upon write, which is valid in a transaction.
-                data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: new Date() };
+                if (!data.inProgressCourts) data.inProgressCourts = [];
+                while(data.inProgressCourts.length < data.numInProgressCourts) { data.inProgressCourts.push(null); }
+                data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: new Date().toISOString() };
                 
-                const remainingMatches = [];
+                // 경기 예정 당기기
+                const newScheduled = {};
+                let newIndex = 0;
                 for (let i = 0; i < data.numScheduledMatches; i++) {
-                    if (i !== matchIndex && data.scheduledMatches[String(i)]) {
-                        remainingMatches.push(data.scheduledMatches[String(i)]);
+                    if (i === matchIndex) continue; // 시작한 경기는 제외
+                    if (data.scheduledMatches[i] && data.scheduledMatches[i].some(p => p)) {
+                       newScheduled[newIndex] = data.scheduledMatches[i];
+                       newIndex++;
                     }
                 }
-                const newScheduledMatches = {};
-                remainingMatches.forEach((match, index) => {
-                    newScheduledMatches[String(index)] = match;
-                });
-                data.scheduledMatches = newScheduledMatches;
+                data.scheduledMatches = newScheduled;
+
                 return data;
             });
             setModal({type: null, data: null});
         };
-
+        
         if(emptyCourts.length === 1) start(emptyCourts[0]);
-        else setModal({type: 'courtSelection', data:{ title: "경기 시작", courts: emptyCourts, onSelect: start}});
+        else setModal({type: 'courtSelection', data:{courts: emptyCourts.map(i => ({index: i, label: `${i+1}번 코트`})), onSelect: start}});
     };
     
+    const handleEndMatch = (courtIndex) => {
+        const court = (roomData.inProgressCourts || [])[courtIndex];
+        if(!court) return;
+        setModal({type:'confirm', data:{title:'경기 종료', body:`${courtIndex + 1}번 코트의 경기를 종료하시겠습니까?`, onConfirm: () => {
+            processMatchResult(courtIndex);
+            setModal({type:null});
+        }}});
+    };
+
     const processMatchResult = async (courtIndex) => {
         const court = (roomData.inProgressCourts || [])[courtIndex];
         if(!court) return;
 
         const batch = writeBatch(db);
         court.players.forEach(pId => {
-            if (players[pId]) {
+            if (players[pId]) { // 플레이어가 존재하는지 확인
                 const playerRef = doc(db, 'rooms', roomId, 'players', pId);
                 batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
             }
@@ -983,17 +994,9 @@ function GameRoomPage({ userData, roomId, setPage }) {
         await batch.commit();
 
         updateRoomState(data => { 
-            if (data.inProgressCourts && data.inProgressCourts[courtIndex]) {
-                data.inProgressCourts[courtIndex] = null; 
-            }
+            data.inProgressCourts[courtIndex] = null; 
             return data; 
         });
-    };
-
-    const handleEndMatch = (courtIndex) => {
-        const court = (roomData.inProgressCourts || [])[courtIndex];
-        if (!court) return;
-        processMatchResult(courtIndex);
     };
 
     const handleToggleRest = () => {
@@ -1013,20 +1016,27 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleSettingsSave = (settings) => {
-        updateRoomState(data => ({ ...data, ...settings }));
+        updateRoomState(data => {
+             const courtsDiff = settings.numInProgressCourts - (data.numInProgressCourts || 0);
+             if (courtsDiff > 0) {
+                 data.inProgressCourts = [...(data.inProgressCourts || []), ...Array(courtsDiff).fill(null)];
+             } else if (courtsDiff < 0) {
+                 data.inProgressCourts = (data.inProgressCourts || []).slice(0, settings.numInProgressCourts);
+             }
+             return { ...data, ...settings };
+        });
         setModal({type:null, data:null});
     };
 
     const handleExitRoom = async () => {
-        localStorage.removeItem('lastRoomId');
         await deleteDoc(doc(db, 'rooms', roomId, 'players', userData.uid));
+        localStorage.removeItem('cockstar_lastRoomId');
         setPage('lobby');
     };
 
     const handleClearScheduledMatches = () => {
         setModal({type:'confirm', data:{title:'전체 삭제', body:'모든 예정 경기를 삭제하시겠습니까?', onConfirm: () => {
             updateRoomState(data => { data.scheduledMatches = {}; return data; });
-            setFirstSwapSelection(null);
             setModal({type:null, data:null});
         }}});
     };
@@ -1035,6 +1045,31 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleSaveGames = async (playerId, games) => {
         await updateDoc(doc(db, 'rooms', roomId, 'players', playerId), { todayGames: games });
         setModal({ type: null, data: null });
+    };
+
+    const handleLongPressCourt = (sourceCourtIndex) => {
+        const availableTargets = Array.from({ length: roomData.numInProgressCourts }, (_, i) => i)
+            .filter(i => i !== sourceCourtIndex);
+        
+        if (availableTargets.length === 0) return;
+
+        setModal({
+            type: 'courtSelection',
+            data: {
+                courts: availableTargets.map(i => ({index: i, label: `${i+1}번 코트`})),
+                onSelect: (targetCourtIndex) => {
+                    updateRoomState(data => {
+                        const tempCourt = data.inProgressCourts[sourceCourtIndex];
+                        data.inProgressCourts[sourceCourtIndex] = data.inProgressCourts[targetCourtIndex];
+                        data.inProgressCourts[targetCourtIndex] = tempCourt;
+                        return data;
+                    });
+                    setModal({type: null, data: null});
+                },
+                title: "코트 교환",
+                description: `${sourceCourtIndex + 1}번 코트와 교환할 코트를 선택하세요.`
+            }
+        });
     };
 
     const handleDragStart = (e, playerId) => { e.dataTransfer.setData("playerId", playerId); setDraggedPlayerId(playerId); };
@@ -1071,34 +1106,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
         });
         setDraggedPlayerId(null);
     }
-    
-    const handleCourtLongPress = (sourceIndex) => {
-        const otherCourts = (roomData.inProgressCourts || [])
-            .map((court, index) => ({ court, index }))
-            .filter(item => item.index !== sourceIndex && item.court);
-
-        if (otherCourts.length === 0) return;
-        
-        setModal({
-            type: 'courtSelection',
-            data: {
-                title: `${sourceIndex + 1}번 코트 이동`,
-                buttonText: '{index}번 코트와 교환',
-                courts: otherCourts.map(item => item.index),
-                onSelect: (targetIndex) => {
-                    updateRoomState(data => {
-                        const temp = data.inProgressCourts[sourceIndex];
-                        data.inProgressCourts[sourceIndex] = data.inProgressCourts[targetIndex];
-                        data.inProgressCourts[targetIndex] = temp;
-                        return data;
-                    });
-                    setModal({ type: null });
-                },
-                onCancel: () => setModal({ type: null })
-            }
-        });
-    };
-
 
     if (!roomData) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING ROOM...</p></div>;
     
@@ -1107,7 +1114,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <section className="bg-gray-800/50 rounded-lg p-3">
                 <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
-                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting' }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />)}
+                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} />)}
                 </div>
             </section>
             <section>
@@ -1120,16 +1127,16 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         const match = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                         const playerCount = match.filter(p => p).length;
                         return (
-                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
+                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1.5 gap-1.5">
                                 <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
-                                <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
+                                <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                         const pId = match[slotIndex];
-                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule'}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} isFirstSelection={firstSwapSelection?.playerId === pId} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
                                     })}
                                 </div>
                                 <div className="flex-shrink-0 w-14 text-center">
-                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[11px] whitespace-nowrap ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                                 </div>
                             </div>
                         );
@@ -1146,13 +1153,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
                     return (
-                         <div key={`court-${courtIndex}`} onMouseDown={() => isAdmin && handleCourtLongPress(courtIndex)} className={`flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 ${isAdmin && court ? 'cursor-grab' : ''}`}>
+                         <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1.5 gap-1.5 cursor-pointer" onMouseDown={(e) => { e.preventDefault(); if(isAdmin) { const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000); e.target.addEventListener('mouseup', () => clearTimeout(timer), {once: true}); e.target.addEventListener('mouseleave', () => clearTimeout(timer), {once: true}) }}}>
                             <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
-                            <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
+                            <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court' }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
-                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[11px] whitespace-nowrap ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
+                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                                 <CourtTimer court={court} />
                             </div>
                         </div>
@@ -1181,8 +1188,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
             
             <div className="p-2 sm:p-4 flex-grow">
                 <div className="flex justify-center border-b border-gray-700 mb-4">
-                    <button onClick={() => setActiveTab('matching')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 예정</button>
-                    <button onClick={() => setActiveTab('inProgress')} className={`py-2 px-6 font-bold text-lg ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 진행</button>
+                    <button onClick={() => setActiveTab('matching')} className={`py-2 px-6 font-bold text-base sm:text-lg ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 예정</button>
+                    <button onClick={() => setActiveTab('inProgress')} className={`py-2 px-6 font-bold text-base sm:text-lg ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-500'}`}>경기 진행</button>
                 </div>
                 <main className="flex flex-col gap-4">
                     {activeTab === 'matching' ? renderMatchingContent() : renderInProgressContent()}
@@ -1196,20 +1203,26 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
                 @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
                 .flicker-text { animation: flicker 1.5s infinite; }
-                .kakao-button { background-color: #FEE500; color: #191919; }
-                .kakao-button-signup {
+                .kakao-button {
                     background-color: #FEE500;
-                    color: #181600;
+                    color: #191919;
                     font-weight: bold;
-                    animation: flicker 1.5s infinite;
-                    border-color: #FEE500;
-                    box-shadow: 0 0 8px #FEE500, inset 0 0 5px #fff;
+                    padding: 0.75rem;
+                    border-radius: 0.5rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.5rem;
+                    border: 2px solid #222; 
+                    box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 15px 5px rgba(254, 229, 0, 0.7);
+                    text-shadow: 0 0 8px rgba(254, 229, 0, 1);
+                    animation: flicker 2s infinite;
                 }
+                .kakao-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
             `}</style>
         </div>
     );
 }
-
 
 export default function App() {
     const [page, setPage] = useState('auth');
@@ -1220,60 +1233,38 @@ export default function App() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
-                const userDocRef = currentUser.email === 'domain@special.user'
-                    ? doc(db, "users", "domain_user_placeholder")
-                    : doc(db, "users", currentUser.uid);
-                
+                const userDocRef = doc(db, "users", currentUser.uid);
                 const userDoc = await getDoc(userDocRef);
-                let loadedUserData = null;
-
-                if (currentUser.email === 'domain@special.user') {
-                     loadedUserData = { uid: 'domain_user_placeholder', username: 'domain', name: 'Domain Admin'};
-                } else if (userDoc.exists()) {
-                    loadedUserData = { uid: currentUser.uid, ...userDoc.data() };
-                } else {
-                    // This could be a new Kakao user if the doc doesn't exist yet after signInWithPopup
-                    // Let's check if there is display name - a hint for new user
-                    if (currentUser.displayName) {
-                         const newUserData = {
-                            uid: currentUser.uid,
-                            name: currentUser.displayName,
-                            username: `kakao_${currentUser.uid.substring(0, 10)}`,
-                            level: 'D조',
-                            gender: '미설정',
-                            birthYear: '2000',
-                            phone: currentUser.phoneNumber || '',
-                            email: currentUser.email,
-                        };
-                        await setDoc(doc(db, "users", currentUser.uid), newUserData);
-                        loadedUserData = newUserData;
-                    } else {
-                        signOut(auth);
-                        setLoading(false);
-                        return;
-                    }
-                }
                 
-                setUserData(loadedUserData);
-                
-                const lastRoomId = localStorage.getItem('lastRoomId');
-                if (lastRoomId) {
-                    const playerInRoomRef = doc(db, 'rooms', lastRoomId, 'players', currentUser.uid);
-                    const playerInRoomDoc = await getDoc(playerInRoomRef);
-                    if (playerInRoomDoc.exists()) {
+                if (userDoc.exists()) {
+                    const fetchedUserData = { uid: currentUser.uid, ...userDoc.data() };
+                    setUserData(fetchedUserData);
+                    const lastRoomId = localStorage.getItem('cockstar_lastRoomId');
+                    if (lastRoomId) {
                         setRoomId(lastRoomId);
                         setPage('room');
                     } else {
-                        localStorage.removeItem('lastRoomId');
-                        if(page === 'auth') setPage('lobby');
+                        if (page === 'auth') setPage('lobby');
                     }
-                } else {
-                    if(page === 'auth') setPage('lobby');
+                } else if (currentUser.providerData.some(p => p.providerId.includes('oidc'))) {
+                    // 카카오 신규 유저일 가능성 있음
+                    const newUserData = {
+                        uid: currentUser.uid,
+                        name: currentUser.displayName || '카카오 유저',
+                        username: `kakao:${currentUser.uid}`,
+                        level: 'D조', gender: '남', birthYear: '2000',
+                        phone: currentUser.phoneNumber || '',
+                        isKakaoUser: true
+                    };
+                    await setDoc(doc(db, "users", currentUser.uid), newUserData);
+                    setUserData(newUserData);
+                    if (page === 'auth') setPage('lobby');
+                } else { 
+                    signOut(auth); 
                 }
             } else {
                 setUserData(null);
                 setPage('auth');
-                localStorage.removeItem('lastRoomId');
             }
             setLoading(false);
         });
