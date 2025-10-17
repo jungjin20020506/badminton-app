@@ -29,7 +29,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const KAKAO_JAVASCRIPT_KEY = "YOUR_KAKAO_JAVASCRIPT_KEY"; // 이 부분을 실제 키 값으로 변경해주세요!
+const KAKAO_JAVASCRIPT_KEY = "4bebedd2921e9ecf2412417b5b35762e"; // 이 부분을 실제 키 값으로 변경해주세요!
 
 // ===================================================================================
 // 상수 및 Helper 함수
