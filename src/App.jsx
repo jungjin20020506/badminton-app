@@ -29,8 +29,6 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-const KAKAO_JAVASCRIPT_KEY = "4bebedd2921e9ecf2412417b5b35762e"; // 이 부분을 실제 키 값으로 변경해주세요!
-
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
@@ -38,6 +36,7 @@ const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 const TEST_PHONE_NUMBER = "01012345678";
+const KAKAO_OPEN_CHAT_URL = "https://open.kakao.com/o/s1234567"; // --- [기능 추가] 카카오 오픈채팅방 URL ---
 
 const getLevelColor = (level) => {
     switch (level) {
@@ -71,6 +70,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
+    // --- [UI 개선] 카드 스타일 개선 ---
     const cardStyle = {
         ...genderStyle,
         borderWidth: '2px',
@@ -80,20 +80,21 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         backgroundColor: '#2d3748',
         opacity: isPlaying || player.isResting ? 0.6 : 1,
         filter: player.isResting ? 'grayscale(80%)' : 'none',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
     };
 
     if (isSelected) {
         cardStyle.borderColor = '#34d399';
         cardStyle.transform = 'scale(1.05)';
-        cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.9)`;
+        cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.7)`;
     }
     if (context.isSwapTarget) {
-        cardStyle.borderColor = '#60A5FA'; // 파란색 테두리로 교환 대상 표시
-        cardStyle.boxShadow = `0 0 15px 5px rgba(96, 165, 250, 0.9)`;
+        cardStyle.borderColor = '#60A5FA';
+        cardStyle.boxShadow = `0 0 15px 5px rgba(96, 165, 250, 0.7)`;
     }
     if (isCurrentUser) {
         cardStyle.borderColor = '#FBBF24';
-        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
+        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 12px 4px rgba(251, 191, 36, 0.7)`;
     }
     
     return (
@@ -131,7 +132,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 
 const EmptySlot = ({ onSlotClick, onDragOver, onDrop }) => ( 
     <div onClick={onSlotClick} onDragOver={onDragOver} onDrop={onDrop}
-        className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all">
+        className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-800/80 hover:border-yellow-400 transition-all">
         <span className="text-xl font-bold">+</span>
     </div> 
 );
@@ -142,7 +143,7 @@ const CourtTimer = ({ court }) => {
         if (court && court.startTime) {
             const timerId = setInterval(() => {
                 const now = new Date();
-                const startTime = new Date(court.startTime); // ISO 문자열을 Date 객체로 변환
+                const startTime = new Date(court.startTime);
                 const diff = Math.floor((now - startTime) / 1000);
                 const minutes = String(Math.floor(diff / 60)).padStart(2, '0');
                 const seconds = String(diff % 60).padStart(2, '0');
@@ -153,6 +154,15 @@ const CourtTimer = ({ court }) => {
     }, [court]);
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
+
+// --- [기능 추가] 플로팅 채팅 버튼 ---
+const FloatingChatButton = () => (
+    <a href={KAKAO_OPEN_CHAT_URL} target="_blank" rel="noopener noreferrer" className="fixed bottom-5 right-5 z-50">
+        <button className="w-14 h-14 bg-yellow-400 rounded-full flex items-center justify-center text-black shadow-lg hover:bg-yellow-500 transition-transform transform hover:scale-110">
+            <i className="fas fa-comment-dots fa-lg"></i>
+        </button>
+    </a>
+);
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6 whitespace-pre-line">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
@@ -226,7 +236,7 @@ function EditGamesModal({ player, onSave, onClose }) {
 // 페이지 컴포넌트
 // ===================================================================================
 
-function AuthPage({ setPage }) {
+function AuthPage({ setPage, setTempUserData }) {
     const [mode, setMode] = useState('login');
     const [error, setError] = useState('');
     
@@ -252,46 +262,62 @@ function AuthPage({ setPage }) {
         return window.recaptchaVerifier;
     }
 
-    const handleKakaoLogin = async () => {
+    const handleKakaoSignUp = async () => {
         setError('');
         try {
-            // 1. Firebase OIDC 공급자 설정
             const provider = new OAuthProvider('oidc.kakao');
-
-            // 2. 팝업으로 로그인 시도
             const result = await signInWithPopup(auth, provider);
             const user = result.user;
 
-            // 3. Firestore에 사용자 정보 저장 또는 업데이트
             const userDocRef = doc(db, 'users', user.uid);
             const userDoc = await getDoc(userDocRef);
 
-            if (!userDoc.exists()) {
-                // 새로운 사용자 정보 생성 (카카오 프로필 정보 사용)
-                await setDoc(userDocRef, {
-                    name: user.displayName || '이름없음',
-                    username: `kakao:${user.uid}`, // 카카오 UID 기반으로 고유 username 생성
-                    level: 'D조', // 기본값
-                    gender: '남', // 기본값
-                    birthYear: '2000', // 기본값
-                    phone: user.phoneNumber || '', // 제공될 경우
-                    isKakaoUser: true
-                });
+            if (userDoc.exists()) {
+                setError("이미 가입된 이용자입니다. '카카오 로그인'을 이용해주세요.");
+                signOut(auth);
+                return;
             }
-            // 이미 존재하는 사용자는 별도 업데이트 없이 로그인 처리
             
+            setTempUserData({
+                uid: user.uid,
+                name: user.displayName || '이름없음',
+                username: `kakao:${user.uid}`,
+                isKakaoUser: true
+            });
+            setPage('kakaoProfileSetup');
+
+        } catch (err) {
+            console.error("카카오 회원가입 실패:", err);
+            setError(`카카오 회원가입에 실패했습니다: ${err.message}`);
+        }
+    };
+
+    const handleKakaoLogin = async () => {
+        setError('');
+        try {
+            const provider = new OAuthProvider('oidc.kakao');
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            if (!userDoc.exists()) {
+                setError("가입 정보가 없습니다. '카카오 3초 간편 회원가입'을 먼저 진행해주세요.");
+                signOut(auth);
+                return;
+            }
         } catch (err) {
             console.error("카카오 로그인 실패:", err);
             setError(`카카오 로그인에 실패했습니다: ${err.message}`);
         }
     };
 
-
     const renderForm = () => {
         switch (mode) {
             case 'signup': return <SignUpForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
             case 'findAccount': return <FindAccountForm setError={setError} setMode={setMode} ensureRecaptcha={ensureRecaptcha} />;
-            default: return <LoginForm setError={setError} setMode={setMode} handleKakaoLogin={handleKakaoLogin} />;
+            default: return <LoginForm setError={setError} setMode={setMode} handleKakaoSignUp={handleKakaoSignUp} handleKakaoLogin={handleKakaoLogin} />;
         }
     };
     
@@ -307,10 +333,11 @@ function AuthPage({ setPage }) {
     );
 }
 
-function LoginForm({ setError, setMode, handleKakaoLogin }) {
+function LoginForm({ setError, setMode, handleKakaoSignUp, handleKakaoLogin }) {
     const [formData, setFormData] = useState({ username: '', password: ''});
     const [showPassword, setShowPassword] = useState(false);
     const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
+
     const handleLogin = async (e) => {
         e.preventDefault(); setError('');
         const email = formData.username === 'domain' ? 'domain@special.user' : `${formData.username}@cockstar.app`;
@@ -318,6 +345,7 @@ function LoginForm({ setError, setMode, handleKakaoLogin }) {
             await signInWithEmailAndPassword(auth, email, formData.password);
         } catch (err) { setError('아이디 또는 비밀번호가 잘못되었습니다.'); }
     };
+
     return (
         <form onSubmit={handleLogin} className="space-y-4">
             <h2 className="text-xl font-bold text-center">로그인</h2>
@@ -327,15 +355,22 @@ function LoginForm({ setError, setMode, handleKakaoLogin }) {
                 <label className="text-xs flex items-center gap-2 mt-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             </div>
             <button type="submit" className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">로그인</button>
+            
+            <button type="button" onClick={handleKakaoLogin} className="w-full arcade-button bg-yellow-500 text-black font-bold py-3 rounded-lg">
+                카카오 로그인
+            </button>
+            
             <div className="text-center text-sm text-gray-400 mt-2">
-                <button type="button" onClick={() => setMode('signup')} className="hover:text-white">회원가입</button> | <button type="button" onClick={() => setMode('findAccount')} className="hover:text-white">ID/PW 찾기</button>
+                <button type="button" onClick={() => setMode('signup')} className="hover:text-white">일반 회원가입</button> |
+                <button type="button" onClick={() => setMode('findAccount')} className="hover:text-white">ID/PW 찾기</button>
             </div>
             <div className="relative my-4">
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-600"></span></div>
                 <div className="relative flex justify-center text-xs uppercase"><span className="bg-gray-800 px-2 text-gray-500">Or</span></div>
             </div>
-            <button type="button" onClick={handleKakaoLogin} className="w-full kakao-button">
-                <i className="fas fa-comment"></i> 카카오 간편인증 회원가입
+            
+            <button type="button" onClick={handleKakaoSignUp} className="w-full kakao-signup-button">
+                <i className="fas fa-comment"></i> 카카오 3초 간편 회원가입
             </button>
         </form>
     );
@@ -653,7 +688,11 @@ function LobbyPage({ userData, setPage, setRoomId }) {
             <header className="w-full max-w-2xl flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold arcade-font flicker-text text-yellow-400">로비</h1>
                 <div>
-                    <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer text-lg">👤 {userData.name}님</button>
+                    {/* --- [UI 개선] 프로필 아이콘 및 색상 변경 --- */}
+                    <button onClick={() => setPage('profile')} className="mr-4 cursor-pointer text-lg text-gray-300 hover:text-white">
+                        <i className="fas fa-user-circle text-yellow-400 mr-2"></i>
+                        {userData.name}님
+                    </button>
                     <button onClick={() => { localStorage.removeItem('cockstar_lastRoomId'); signOut(auth); }} className="arcade-button bg-red-600 text-white py-1 px-3 text-sm rounded-md">로그아웃</button>
                 </div>
             </header>
@@ -662,12 +701,13 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                     <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="방 이름 검색..." className="flex-grow bg-gray-700 p-2 rounded-lg" />
                     <button onClick={handleCreateRoomClick} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
                 </div>
-                <div className="space-y-2">
+                {/* --- [UI 개선] 방 목록 스타일 개선 --- */}
+                <div className="space-y-3">
                     {filteredRooms.map(room => (
-                        <div key={room.id} className="flex justify-between items-center bg-gray-700 p-3 rounded-lg">
-                            <button className="flex-grow text-left" onClick={() => canEdit(room) && setModal({type: 'room', data: room})}>
-                                <span className="font-semibold">{room.name}</span>
-                                {room.password && <span className="ml-2 text-gray-400">🔒</span>}
+                        <div key={room.id} className="flex justify-between items-center bg-gray-900/50 p-3 rounded-lg border border-gray-700 hover:border-yellow-400 transition-colors">
+                            <button className="flex-grow text-left flex items-center gap-3" onClick={() => canEdit(room) && setModal({type: 'room', data: room})}>
+                                <span className="font-semibold text-lg">{room.name}</span>
+                                {room.password && <span className="text-gray-500"><i className="fas fa-lock"></i></span>}
                             </button>
                             <button onClick={() => handleEnterRoomClick(room)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button>
                         </div>
@@ -735,8 +775,21 @@ function ProfilePage({ userData, setPage }) {
     const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, newPassword: '', confirmPassword: '' });
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const [copySuccess, setCopySuccess] = useState('');
 
     const handleChange = (e) => setProfileData({ ...profileData, [e.target.name]: e.target.value });
+
+    // --- [기능 추가] ID 복사 기능 ---
+    const handleCopyId = () => {
+        const idToCopy = userData.username;
+        navigator.clipboard.writeText(idToCopy).then(() => {
+            setCopySuccess('복사 완료!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        }, () => {
+            setCopySuccess('복사 실패');
+            setTimeout(() => setCopySuccess(''), 2000);
+        });
+    };
 
     const handleSave = async () => {
         setMessage(''); setError('');
@@ -767,16 +820,28 @@ function ProfilePage({ userData, setPage }) {
                 {message && <p className="text-center mb-4 text-green-400">{message}</p>}
                 {error && <p className="text-center mb-4 text-red-500">{error}</p>}
                 <div className="space-y-3">
-                    <div><label className="block text-sm font-bold text-gray-400">아이디</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.username}</p></div>
-                    {userData.isKakaoUser ? (
-                        <>
-                            <div><label className="block text-sm font-bold text-gray-400">이름</label><input name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
-                        </>
-                    ) : (
-                        <>
-                            <div><label className="block text-sm font-bold text-gray-400">이름</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.name}</p></div>
-                            <div><label className="block text-sm font-bold text-gray-400">연락처</label><p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.phone}</p></div>
-                        </>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400">아이디</label>
+                        <div className="flex items-center gap-2">
+                            <p className="w-full bg-gray-900 text-gray-400 p-3 rounded-lg truncate">{userData.username}</p>
+                            <button onClick={handleCopyId} className="p-3 bg-gray-700 rounded-lg hover:bg-gray-600" title="아이디 복사">
+                                <i className="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        {copySuccess && <p className="text-xs mt-1 text-center text-yellow-400">{copySuccess}</p>}
+                    </div>
+
+                    {/* --- [로직 수정] 이름 수정 필드를 항상 활성화 --- */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400">이름</label>
+                        <input name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/>
+                    </div>
+                    
+                    {!userData.isKakaoUser && (
+                        <div>
+                            <label className="block text-sm font-bold text-gray-400">연락처</label>
+                            <p className="w-full bg-gray-900 text-gray-500 p-3 rounded-lg">{userData.phone}</p>
+                        </div>
                     )}
 
                     <hr className="border-gray-600"/>
@@ -792,6 +857,80 @@ function ProfilePage({ userData, setPage }) {
                     </>}
                 </div>
                 <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">저장하기</button>
+            </div>
+        </div>
+    );
+}
+
+function KakaoProfileSetupPage({ tempUserData, setPage }) {
+    const [profileData, setProfileData] = useState({
+        level: 'D조',
+        gender: '남',
+        birthYear: '2000'
+    });
+    const [error, setError] = useState('');
+
+    const handleChange = (e) => setProfileData({ ...profileData, [e.target.name]: e.target.value });
+
+    const handleSave = async () => {
+        setError('');
+        if (!tempUserData || !tempUserData.uid) {
+            setError('사용자 정보가 올바르지 않습니다. 다시 시도해주세요.');
+            return;
+        }
+
+        try {
+            const finalUserData = {
+                ...tempUserData,
+                ...profileData,
+                phone: '' // Kakao users don't provide phone number initially
+            };
+            
+            await setDoc(doc(db, "users", tempUserData.uid), finalUserData);
+            
+            alert('회원가입이 완료되었습니다! 이제 카카오 로그인을 통해 접속해주세요.');
+            signOut(auth);
+            setPage('auth');
+
+        } catch (err) {
+            setError('저장에 실패했습니다: ' + err.message);
+        }
+    };
+
+    const birthYears = Array.from({length: 70}, (_, i) => new Date().getFullYear() - i - 15);
+
+    return (
+        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
+            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
+                <h1 className="text-2xl font-bold text-yellow-400 mb-6 text-center arcade-font">프로필 정보 입력</h1>
+                <p className="text-center text-gray-400 mb-4 text-sm">
+                    환영합니다, {tempUserData?.name}님!<br/>
+                    원활한 서비스 이용을 위해 추가 정보를 입력해주세요.
+                </p>
+                {error && <p className="text-center mb-4 text-red-500">{error}</p>}
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400">급수</label>
+                        <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            <option>A조</option><option>B조</option><option>C조</option><option>D조</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400">성별</label>
+                        <select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            <option>남</option><option>여</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-gray-400">출생년도</label>
+                        <select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            {birthYears.map(y=><option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
+                </div>
+                <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">
+                    가입 완료하기
+                </button>
             </div>
         </div>
     );
@@ -824,15 +963,15 @@ function GameRoomPage({ userData, roomId, setPage }) {
         const unsubPlayers = onSnapshot(collection(db, 'rooms', roomId, 'players'), (snapshot) => {
              const currentPlayers = snapshot.docs.reduce((acc, doc) => ({...acc, [doc.id]: { id: doc.id, ...doc.data() } }), {});
              setPlayers(currentPlayers);
-             if (!currentPlayers[userData.uid]) {
-                setModal({type: 'alert', data: { title: '강퇴 알림', body: '방에서 강퇴되었습니다.', onClose: () => {
+             if (userData && !currentPlayers[userData.uid]) {
+                setModal({type: 'alert', data: { title: '강퇴 알림', body: '방에서 강퇴되었거나, 방이 삭제되었습니다.', onClose: () => {
                     localStorage.removeItem('cockstar_lastRoomId');
                     setPage('lobby');
                 }}});
              }
         });
         return () => { unsubRoom(); unsubPlayers(); };
-    }, [roomId, setPage, userData.uid]);
+    }, [roomId, setPage, userData]);
     
     const updateRoomState = useCallback(async (updateLogic) => {
         try { await runTransaction(db, async tx => {
@@ -841,7 +980,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 if (!roomDoc.exists()) throw "Room not found";
                 
                 const currentData = roomDoc.data();
-                const newData = updateLogic(JSON.parse(JSON.stringify(currentData))); // Deep copy
+                const newData = updateLogic(JSON.parse(JSON.stringify(currentData)));
                 
                 tx.update(roomRef, newData);
             });
@@ -872,8 +1011,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
         if (loc.location === 'waiting') {
             setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
         } else if (loc.location === 'schedule') {
-            if (swapTargetId) { // 두 번째 선택 (교환 실행)
-                if (swapTargetId === player.id) { // 같은 카드 다시 클릭
+            if (swapTargetId) {
+                if (swapTargetId === player.id) {
                     setSwapTargetId(null);
                 } else {
                     const sourceLoc = playerLocations[swapTargetId];
@@ -886,13 +1025,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     });
                     setSwapTargetId(null);
                 }
-            } else { // 첫 번째 선택
+            } else {
                 setSwapTargetId(player.id);
             }
         }
     };
     
-    const handleAction = (player) => { // X 버튼 클릭
+    const handleAction = (player) => {
         const loc = playerLocations[player.id];
         if(loc.location === 'waiting'){
              setModal({type:'confirm', data:{title:'선수 내보내기', body:`'${player.name}'님을 방에서 내보내시겠습니까?`, onConfirm: async () => {
@@ -908,26 +1047,34 @@ function GameRoomPage({ userData, roomId, setPage }) {
         }
     };
 
+    // --- [로직 수정] 다중 선택 시 빈자리 체크 ---
     const handleSlotClick = (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
+
+        const targetMatch = roomData.scheduledMatches?.[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+        const emptySlots = targetMatch.filter(p => p === null).length;
+
+        if (selectedPlayerIds.length > emptySlots) {
+            setModal({type: 'alert', data: {title: "배치 불가", body: "선택한 선수가 남은 자리보다 많습니다."}});
+            return;
+        }
+
         updateRoomState(data => {
             const playersToMove = [...selectedPlayerIds];
-            setSelectedPlayerIds([]); // 상태를 먼저 비움
+            setSelectedPlayerIds([]);
             
-            // 이동할 플레이어들을 기존 위치에서 제거
             playersToMove.forEach(pId => {
                 Object.keys(data.scheduledMatches).forEach(mIdx => {
-                    const sIdx = data.scheduledMatches[mIdx].indexOf(pId);
+                    const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(pId);
                     if (sIdx > -1) data.scheduledMatches[mIdx][sIdx] = null;
                 });
             });
 
-            // 새로운 위치에 플레이어 배치
-            let targetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+            let currentTargetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
             for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
-                if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
+                if (currentTargetArray[i] === null) currentTargetArray[i] = playersToMove.shift();
             }
-            data.scheduledMatches[context.matchIndex] = targetArray;
+            data.scheduledMatches[context.matchIndex] = currentTargetArray;
             return data;
         });
     };
@@ -945,11 +1092,10 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 while(data.inProgressCourts.length < data.numInProgressCourts) { data.inProgressCourts.push(null); }
                 data.inProgressCourts[courtIndex] = { players: data.scheduledMatches[matchIndex], startTime: new Date().toISOString() };
                 
-                // 경기 예정 당기기
                 const newScheduled = {};
                 let newIndex = 0;
                 for (let i = 0; i < data.numScheduledMatches; i++) {
-                    if (i === matchIndex) continue; // 시작한 경기는 제외
+                    if (i === matchIndex) continue;
                     if (data.scheduledMatches[i] && data.scheduledMatches[i].some(p => p)) {
                        newScheduled[newIndex] = data.scheduledMatches[i];
                        newIndex++;
@@ -981,7 +1127,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const batch = writeBatch(db);
         court.players.forEach(pId => {
-            if (players[pId]) { // 플레이어가 존재하는지 확인
+            if (players[pId]) {
                 const playerRef = doc(db, 'rooms', roomId, 'players', pId);
                 batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
             }
@@ -1106,7 +1252,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     
     const renderMatchingContent = () => (
         <div className="flex flex-col gap-4">
-            <section className="bg-gray-800/50 rounded-lg p-3">
+            <section className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
                 <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
                     {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} />)}
@@ -1122,7 +1268,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         const match = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                         const playerCount = match.filter(p => p).length;
                         return (
-                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1.5 gap-1.5">
+                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700">
                                 <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
                                 <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
@@ -1148,7 +1294,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
                     return (
-                         <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1.5 gap-1.5 cursor-pointer" onMouseDown={(e) => { e.preventDefault(); if(isAdmin) { const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000); e.target.addEventListener('mouseup', () => clearTimeout(timer), {once: true}); e.target.addEventListener('mouseleave', () => clearTimeout(timer), {once: true}) }}}>
+                         <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 cursor-pointer" onMouseDown={(e) => { e.preventDefault(); if(isAdmin) { const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000); e.target.addEventListener('mouseup', () => clearTimeout(timer), {once: true}); e.target.addEventListener('mouseleave', () => clearTimeout(timer), {once: true}) }}}>
                             <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => ( pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{ location: 'court' }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} /> : <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} /> ))}
@@ -1194,11 +1340,16 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <style>{`
                 html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
                 .arcade-font { font-family: 'Press Start 2P', cursive; }
-                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; }
+                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; transition: transform 0.1s, box-shadow 0.1s; }
                 .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
                 @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
                 .flicker-text { animation: flicker 1.5s infinite; }
-                .kakao-button {
+                
+                @keyframes neon-glow {
+                    0%, 100% { text-shadow: 0 0 5px #FEE500, 0 0 10px #FEE500, 0 0 15px #FEE500; }
+                    50% { text-shadow: 0 0 10px #FEE500, 0 0 20px #FEE500, 0 0 30px #FEE500; }
+                }
+                .kakao-signup-button {
                     background-color: #FEE500;
                     color: #191919;
                     font-weight: bold;
@@ -1208,12 +1359,18 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     align-items: center;
                     justify-content: center;
                     gap: 0.5rem;
-                    border: 2px solid #222; 
-                    box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 15px 5px rgba(254, 229, 0, 0.7);
-                    text-shadow: 0 0 8px rgba(254, 229, 0, 1);
-                    animation: flicker 2s infinite;
+                    border: 2px solid #222;
+                    box-shadow: inset -2px -2px 0px 0px #333, 
+                                inset 2px 2px 0px 0px #FFF, 
+                                0 0 10px 2px rgba(254, 229, 0, 0.7);
+                    animation: neon-glow 2s infinite alternate;
+                    transition: all 0.2s;
                 }
-                .kakao-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
+                .kakao-signup-button:active { 
+                    transform: translateY(2px); 
+                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; 
+                    animation: none;
+                }
             `}</style>
         </div>
     );
@@ -1224,6 +1381,7 @@ export default function App() {
     const [userData, setUserData] = useState(null);
     const [roomId, setRoomId] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [tempUserData, setTempUserData] = useState(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -1239,23 +1397,8 @@ export default function App() {
                         setRoomId(lastRoomId);
                         setPage('room');
                     } else {
-                        if (page === 'auth') setPage('lobby');
+                        if (page === 'auth' || page === 'kakaoProfileSetup') setPage('lobby');
                     }
-                } else if (currentUser.providerData.some(p => p.providerId.includes('oidc'))) {
-                    // 카카오 신규 유저일 가능성 있음
-                    const newUserData = {
-                        uid: currentUser.uid,
-                        name: currentUser.displayName || '카카오 유저',
-                        username: `kakao:${currentUser.uid}`,
-                        level: 'D조', gender: '남', birthYear: '2000',
-                        phone: currentUser.phoneNumber || '',
-                        isKakaoUser: true
-                    };
-                    await setDoc(doc(db, "users", currentUser.uid), newUserData);
-                    setUserData(newUserData);
-                    if (page === 'auth') setPage('lobby');
-                } else { 
-                    signOut(auth); 
                 }
             } else {
                 setUserData(null);
@@ -1268,12 +1411,22 @@ export default function App() {
 
     if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING...</p></div>;
 
-    switch (page) {
-        case 'auth': return <AuthPage setPage={setPage} />;
-        case 'lobby': return <LobbyPage userData={userData} setPage={setPage} setRoomId={setRoomId} />;
-        case 'profile': return <ProfilePage userData={userData} setPage={setPage} />;
-        case 'room': return <GameRoomPage userData={userData} roomId={roomId} setPage={setPage} />;
-        default: return <AuthPage setPage={setPage} />;
-    }
+    const showChatButton = page !== 'auth' && page !== 'kakaoProfileSetup';
+
+    return (
+        <>
+            {showChatButton && <FloatingChatButton />}
+            {(() => {
+                switch (page) {
+                    case 'auth': return <AuthPage setPage={setPage} setTempUserData={setTempUserData} />;
+                    case 'lobby': return <LobbyPage userData={userData} setPage={setPage} setRoomId={setRoomId} />;
+                    case 'profile': return <ProfilePage userData={userData} setPage={setPage} />;
+                    case 'room': return <GameRoomPage userData={userData} roomId={roomId} setPage={setPage} />;
+                    case 'kakaoProfileSetup': return <KakaoProfileSetupPage tempUserData={tempUserData} setPage={setPage} />;
+                    default: return <AuthPage setPage={setPage} />;
+                }
+            })()}
+        </>
+    );
 }
 
