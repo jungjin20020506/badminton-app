@@ -36,7 +36,8 @@ const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 const TEST_PHONE_NUMBER = "01012345678";
-const KAKAO_OPEN_CHAT_URL = "https://open.kakao.com/o/s1234567"; // --- [기능 추가] 카카오 오픈채팅방 URL ---
+// --- [수정] 본인의 카카오톡 오픈채팅방 주소를 여기에 붙여넣으세요 ---
+const KAKAO_OPEN_CHAT_URL = "https://open.kakao.com/o/siJxXzXh"; 
 
 const getLevelColor = (level) => {
     switch (level) {
@@ -1429,4 +1430,5 @@ export default function App() {
         </>
     );
 }
+
 
