@@ -256,7 +256,7 @@ function AuthPage({ setPage }) {
         setError('');
         try {
             // 1. Firebase OIDC 공급자 설정
-            const provider = new OAuthProvider('oidc.Kakao');
+            const provider = new OAuthProvider('oidc.kakao');
 
             // 2. 팝업으로 로그인 시도
             const result = await signInWithPopup(auth, provider);
