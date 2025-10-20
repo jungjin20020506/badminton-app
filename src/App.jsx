@@ -137,13 +137,18 @@ const EmptySlot = ({ onSlotClick, onDragOver, onDrop }) => (
     </div>
 );
 
-// --- [추가] 나간 선수를 표시하기 위한 카드 컴포넌트 ---
-const LeftPlayerCard = () => (
-    <div className="h-14 bg-black/50 rounded-md flex items-center justify-center text-center border-2 border-dashed border-red-500/50 p-1">
+// --- [수정] 나간 선수를 표시하고 삭제할 수 있는 카드 컴포넌트 ---
+const LeftPlayerCard = ({ onRemove, isAdmin }) => (
+    <div className="h-14 bg-black/50 rounded-md flex items-center justify-center text-center border-2 border-dashed border-red-500/50 p-1 relative">
         <div>
             <p className="text-red-400 text-xs font-bold whitespace-nowrap">나간 선수</p>
             <p className="text-gray-500 text-[10px]">(Player Left)</p>
         </div>
+        {isAdmin && onRemove && (
+            <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
+                <i className="fas fa-times-circle fa-xs"></i>
+            </button>
+        )}
     </div>
 );
 
@@ -727,9 +732,19 @@ function LobbyPage({ userData, setPage, setRoomId }) {
 }
 
 function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
-    const [roomData, setRoomData] = useState({ name: '', password: '', admins: [''], usePassword: false, ...data });
+    const [roomData, setRoomData] = useState({});
     const [showPassword, setShowPassword] = useState(false);
-    useEffect(() => setRoomData({name: '', password: '', admins: [''], usePassword: false, ...data }), [data]);
+    
+    // --- [수정] 비밀번호 상태가 올바르게 유지되도록 useEffect 수정 ---
+    useEffect(() => {
+        setRoomData({
+            name: '',
+            password: '',
+            admins: [''],
+            ...data,
+            usePassword: !!data.password,
+        });
+    }, [data]);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -737,16 +752,16 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
     };
 
     const handleAdminChange = (index, value) => {
-        const newAdmins = [...roomData.admins];
+        const newAdmins = [...(roomData.admins || [''])];
         newAdmins[index] = value;
         setRoomData(d => ({ ...d, admins: newAdmins }));
     };
-    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...d.admins, ''] }));
+    const addAdminInput = () => setRoomData(d => ({ ...d, admins: [...(d.admins || []), ''] }));
 
     const handleSave = () => {
         const finalData = {
             name: roomData.name,
-            admins: roomData.admins.map(a => a.trim()).filter(Boolean),
+            admins: (roomData.admins || []).map(a => a.trim()).filter(Boolean),
             password: roomData.usePassword ? roomData.password : ''
         };
         onSave(finalData);
@@ -756,15 +771,15 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg space-y-4">
                 <h3 className="text-xl font-bold text-yellow-400 arcade-font">{data.id ? "방 수정" : "방 만들기"}</h3>
-                <input type="text" name="name" placeholder="방 이름" value={roomData.name} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
-                <label className="flex items-center gap-2"><input type="checkbox" name="usePassword" checked={roomData.usePassword} onChange={handleChange} /> 비밀번호 사용</label>
+                <input type="text" name="name" placeholder="방 이름" value={roomData.name || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
+                <label className="flex items-center gap-2"><input type="checkbox" name="usePassword" checked={roomData.usePassword || false} onChange={handleChange} /> 비밀번호 사용</label>
                 {roomData.usePassword && <div>
-                    <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" value={roomData.password} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
+                    <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" value={roomData.password || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
                     <label className="text-xs flex items-center gap-2 mt-1"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
                 </div>}
                 <div>
                     <label className="block mb-2">관리자 아이디</label>
-                    {roomData.admins.map((admin, index) => (
+                    {(roomData.admins || ['']).map((admin, index) => (
                         <input key={index} type="text" value={admin} onChange={(e) => handleAdminChange(index, e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2" />
                     ))}
                     <button onClick={addAdminInput} className="text-sm text-yellow-400">+ 관리자 추가</button>
@@ -1087,6 +1102,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleStartMatch = (matchIndex) => {
         const match = roomData?.scheduledMatches?.[matchIndex] || [];
         if(match.filter(p=>p).length !== PLAYERS_PER_MATCH) return;
+        
+        // --- [추가] 나간 선수가 있으면 시작 불가 ---
+        const hasLeftPlayer = match.some(pId => pId && !players[pId]);
+        if (hasLeftPlayer) {
+            setModal({type:'alert', data:{title: "시작 불가", body: "나간 선수가 포함되어 있어 경기를 시작할 수 없습니다."}});
+            return;
+        }
 
         const emptyCourts = Array.from({length: roomData.numInProgressCourts}, (_,i) => i).filter(i => !(roomData.inProgressCourts || [])[i]);
         if(emptyCourts.length === 0) { setModal({type:'alert', data:{title: "시작 불가", body: "빈 코트가 없습니다."}}); return; }
@@ -1128,7 +1150,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     const processMatchResult = async (courtIndex) => {
         const court = (roomData.inProgressCourts || [])[courtIndex];
-        // --- [개선] 데이터가 없을 경우를 대비한 방어 코드 추가 ---
         if(!court || !Array.isArray(court.players)) return;
 
         const batch = writeBatch(db);
@@ -1272,18 +1293,35 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 <div className="flex flex-col gap-2">
                     {Array.from({ length: roomData.numScheduledMatches }).map((_, matchIndex) => {
                         const match = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-                        const playerCount = match.filter(p => p).length;
+                        const playerCount = match.filter(pId => pId && players[pId]).length;
+                        const hasLeftPlayer = match.some(pId => pId && !players[pId]);
+                        
+                        const handleRemoveLeftPlayer = (slotIndex) => {
+                            updateRoomState(data => {
+                                if(data.scheduledMatches?.[matchIndex]) {
+                                    data.scheduledMatches[matchIndex][slotIndex] = null;
+                                }
+                                return data;
+                            });
+                        };
+
                         return (
                             <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700">
                                 <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
                                 <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                     {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                         const pId = match[slotIndex];
-                                        return pId && players[pId] ? <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} /> : <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                        if (pId && players[pId]) {
+                                            return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
+                                        } else if (pId && !players[pId]) {
+                                            return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
+                                        } else {
+                                            return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                        }
                                     })}
                                 </div>
                                 <div className="flex-shrink-0 w-14 text-center">
-                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${(playerCount === PLAYERS_PER_MATCH && !hasLeftPlayer && isAdmin) ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || hasLeftPlayer || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                                 </div>
                             </div>
                         );
@@ -1299,24 +1337,18 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <div className="flex flex-col gap-2">
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
-                    // --- [수정] 경기 종료 버튼 활성화 조건 명시 ---
-                    // 코트 데이터가 객체이고 players 배열을 가지고 있을 때만 활성화됩니다.
                     const canEndMatch = isAdmin && court && Array.isArray(court.players);
 
                     return (
                          <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 cursor-pointer" onMouseDown={(e) => { e.preventDefault(); if(isAdmin && canEndMatch) { const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000); e.target.addEventListener('mouseup', () => clearTimeout(timer), {once: true}); e.target.addEventListener('mouseleave', () => clearTimeout(timer), {once: true}) }}}>
                             <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
-                                {/* --- [수정] 나간 선수(유령 선수) 처리 로직 추가 --- */}
                                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => {
                                     if (pId && players[pId]) {
-                                        // 현재 참여중인 정상 선수
                                         return <PlayerCard key={pId} player={players[pId]} context={{ location: 'court' }} isAdmin={isAdmin} isCurrentUser={userData.uid === pId} />;
                                     } else if (pId && !players[pId]) {
-                                        // 경기도중 나간 선수
                                         return <LeftPlayerCard key={`left-${courtIndex}-${slotIndex}`} />;
                                     } else {
-                                        // 원래 비어있던 슬롯
                                         return <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} />;
                                     }
                                 })}
@@ -1456,3 +1488,4 @@ export default function App() {
         </>
     );
 }
+
