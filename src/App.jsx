@@ -1340,7 +1340,23 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     const canEndMatch = isAdmin && court && Array.isArray(court.players);
 
                     return (
-                         <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 cursor-pointer" onMouseDown={(e) => { e.preventDefault(); if(isAdmin && canEndMatch) { const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000); e.target.addEventListener('mouseup', () => clearTimeout(timer), {once: true}); e.target.addEventListener('mouseleave', () => clearTimeout(timer), {once: true}) }}}>
+                         <div
+                            key={`court-${courtIndex}`}
+                            className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 cursor-pointer"
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                if (!isAdmin || !canEndMatch) return;
+                                const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000);
+                                e.currentTarget.addEventListener('mouseup', () => clearTimeout(timer), { once: true });
+                                e.currentTarget.addEventListener('mouseleave', () => clearTimeout(timer), { once: true });
+                            }}
+                            onTouchStart={(e) => {
+                                if (!isAdmin || !canEndMatch) return;
+                                const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000);
+                                e.currentTarget.addEventListener('touchend', () => clearTimeout(timer), { once: true });
+                                e.currentTarget.addEventListener('touchcancel', () => clearTimeout(timer), { once: true });
+                            }}
+                         >
                             <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center"><p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p><p className="font-semibold text-[8px] text-gray-400">코트</p></div>
                             <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
                                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((pId, slotIndex) => {
@@ -1488,4 +1504,3 @@ export default function App() {
         </>
     );
 }
-
