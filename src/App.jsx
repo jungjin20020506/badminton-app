@@ -34,13 +34,16 @@ const auth = getAuth(app);
 // ===================================================================================
 const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
-const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
+// --- [수정] S조 추가
+const LEVEL_ORDER = { 'S조': 1, 'A조': 2, 'B조': 3, 'C조': 4, 'D조': 5, 'N조': 6 };
 const TEST_PHONE_NUMBER = "01012345678";
 // --- [수정] 본인의 카카오톡 오픈채팅방 주소를 여기에 붙여넣으세요 ---
 const KAKAO_OPEN_CHAT_URL = "https://open.kakao.com/o/siJxXzXh";
 
+// --- [수정] S조 색상 추가
 const getLevelColor = (level) => {
     switch (level) {
+        case 'S조': return '#00FFFF'; // 네온 파란색 (Cyan)
         case 'A조': return '#FF4F4F';
         case 'B조': return '#FF9100';
         case 'C조': return '#FFD600';
@@ -392,7 +395,8 @@ function LoginForm({ setError, setMode, handleKakaoSignUp, handleKakaoLogin }) {
 }
 
 function SignUpForm({ setError, setMode, ensureRecaptcha }) {
-    const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'A조', gender: '남', birthYear: '2000', phone: '' });
+    // --- [수정] S조를 기본값으로 변경
+    const [formData, setFormData] = useState({ name: '', username: '', password: '', confirmPassword: '', level: 'S조', gender: '남', birthYear: '2000', phone: '' });
     const [step, setStep] = useState(1);
     const [verificationId, setVerificationId] = useState('');
     const [verificationCode, setVerificationCode] = useState('');
@@ -499,7 +503,14 @@ function SignUpForm({ setError, setMode, ensureRecaptcha }) {
              </div>
             <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             <div className="grid grid-cols-2 gap-2">
-                <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select>
+                {/* --- [수정] S조 옵션 추가 --- */}
+                <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg">
+                    <option>S조</option>
+                    <option>A조</option>
+                    <option>B조</option>
+                    <option>C조</option>
+                    <option>D조</option>
+                </select>
                 <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
             </div>
             <div>
@@ -867,7 +878,17 @@ function ProfilePage({ userData, setPage }) {
 
                     <hr className="border-gray-600"/>
 
-                    <div><label className="block text-sm font-bold">급수</label><select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>A조</option><option>B조</option><option>C조</option><option>D조</option></select></div>
+                    {/* --- [수정] S조 옵션 추가 --- */}
+                    <div>
+                        <label className="block text-sm font-bold">급수</label>
+                        <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            <option>S조</option>
+                            <option>A조</option>
+                            <option>B조</option>
+                            <option>C조</option>
+                            <option>D조</option>
+                        </select>
+                    </div>
                     <div><label className="block text-sm font-bold">성별</label><select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select></div>
                     <div><label className="block text-sm font-bold">출생년도</label><select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">{birthYears.map(y=><option key={y} value={y}>{y}</option>)}</select></div>
 
@@ -884,8 +905,9 @@ function ProfilePage({ userData, setPage }) {
 }
 
 function KakaoProfileSetupPage({ tempUserData, setPage }) {
+    // --- [수정] S조를 기본값으로 변경
     const [profileData, setProfileData] = useState({
-        level: 'D조',
+        level: 'S조',
         gender: '남',
         birthYear: '2000'
     });
@@ -932,8 +954,13 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-bold text-gray-400">급수</label>
+                        {/* --- [수정] S조 옵션 추가 --- */}
                         <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
-                            <option>A조</option><option>B조</option><option>C조</option><option>D조</option>
+                            <option>S조</option>
+                            <option>A조</option>
+                            <option>B조</option>
+                            <option>C조</option>
+                            <option>D조</option>
                         </select>
                     </div>
                     <div>
