@@ -69,15 +69,20 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         clearTimeout(longPressTimer.current);
     };
     
-    // --- [남녀 구분 1. 선수 카드] 남녀 구분을 위한 스타일 (파랑/분홍) ---
-    // 이 로직은 S조 추가 시 이미 포함되어 있었습니다.
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
     const adminIcon = SUPER_ADMIN_USERNAMES.includes(player.username) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
+    // --- [!!!] 버그 수정: box-shadow 로직 변경 ---
+    // 여러 boxShadow 속성이 덮어쓰지 않고 중첩되도록 배열로 관리
+    let combinedShadows = [
+        genderStyle.boxShadow, // 1. 성별 띠 (항상 적용)
+        '0 2px 4px rgba(0,0,0,0.3)' // 2. 기본 카드 그림자
+    ];
+
     const cardStyle = {
-        ...genderStyle, // --- [남녀 구분 1. 선수 카드] 스타일 적용
+        // ...genderStyle, // -> combinedShadows 배열로 대체
         borderWidth: '2px',
         borderStyle: 'solid',
         borderColor: 'transparent',
@@ -85,22 +90,26 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         backgroundColor: '#2d3748',
         opacity: isPlaying || player.isResting ? 0.6 : 1,
         filter: player.isResting ? 'grayscale(80%)' : 'none',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        // boxShadow 속성은 아래에서 최종 조합
     };
 
     if (isSelected) {
         cardStyle.borderColor = '#34d399';
         cardStyle.transform = 'scale(1.05)';
-        cardStyle.boxShadow = `0 0 15px 5px rgba(52, 211, 153, 0.7)`;
+        combinedShadows.push('0 0 15px 5px rgba(52, 211, 153, 0.7)'); // 3. 선택 효과
     }
     if (context.isSwapTarget) {
         cardStyle.borderColor = '#60A5FA';
-        cardStyle.boxShadow = `0 0 15px 5px rgba(96, 165, 250, 0.7)`;
+        combinedShadows.push('0 0 15px 5px rgba(96, 165, 250, 0.7)'); // 4. 스왑 대상 효과
     }
     if (isCurrentUser) {
         cardStyle.borderColor = '#FBBF24';
-        cardStyle.boxShadow = `${cardStyle.boxShadow || ''}, 0 0 12px 4px rgba(251, 191, 36, 0.7)`;
+        combinedShadows.push('0 0 12px 4px rgba(251, 191, 36, 0.7)'); // 5. 현재 유저 효과
     }
+
+    // 배열로 만든 그림자들을 쉼표(,)로 연결하여 최종 스타일 적용
+    cardStyle.boxShadow = combinedShadows.join(', ');
+    // --- [!!!] 버그 수정 끝 ---
 
     return (
         <div
