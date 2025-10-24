@@ -68,14 +68,16 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const handlePressEnd = () => {
         clearTimeout(longPressTimer.current);
     };
-
+    
+    // --- [남녀 구분 1. 선수 카드] 남녀 구분을 위한 스타일 (파랑/분홍) ---
+    // 이 로직은 S조 추가 시 이미 포함되어 있었습니다.
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
     const adminIcon = SUPER_ADMIN_USERNAMES.includes(player.username) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
     const cardStyle = {
-        ...genderStyle,
+        ...genderStyle, // --- [남녀 구분 1. 선수 카드] 스타일 적용
         borderWidth: '2px',
         borderStyle: 'solid',
         borderColor: 'transparent',
@@ -1050,6 +1052,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
     }, [roomData, players]);
 
     const waitingPlayers = useMemo(() =>  Object.values(players).filter(p => playerLocations[p.id]?.location === 'waiting').sort((a,b) => (LEVEL_ORDER[a.level]||99)-(LEVEL_ORDER[b.level]||99) || new Date(a.entryTime).getTime()-new Date(b.entryTime).getTime()), [players, playerLocations]);
+    
+    // --- [남녀 구분 2. 대기 명단] 남/녀 대기 명단 분리 ---
+    const maleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '남'), [waitingPlayers]);
+    const femaleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '여'), [waitingPlayers]);
+    // --- [남녀 구분 2. 끝] ---
+
     const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
     const handleCardClick = (player) => {
@@ -1159,7 +1167,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
                 return data;
             });
-            setModal({type: null, data: null});
+            setModal({ type: null, data: null });
         };
 
         if(emptyCourts.length === 1) start(emptyCourts[0]);
@@ -1304,59 +1312,89 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
     if (!roomData) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING ROOM...</p></div>;
 
-    const renderMatchingContent = () => (
-        <div className="flex flex-col gap-4">
-            <section className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
-                <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
-                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
-                    {waitingPlayers.map(p => <PlayerCard key={p.id} player={p} context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === p.id} isPlaying={inProgressPlayerIds.has(p.id)} isSelected={selectedPlayerIds.includes(p.id)} />)}
-                </div>
-            </section>
-            <section>
-                <div className="flex justify-between items-center mb-2 px-1">
-                    <h2 className="text-lg font-bold text-cyan-400 arcade-font">경기 예정</h2>
-                    {isAdmin && <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>}
-                </div>
-                <div className="flex flex-col gap-2">
-                    {Array.from({ length: roomData.numScheduledMatches }).map((_, matchIndex) => {
-                        const match = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-                        const playerCount = match.filter(pId => pId && players[pId]).length;
-                        const hasLeftPlayer = match.some(pId => pId && !players[pId]);
-                        
-                        const handleRemoveLeftPlayer = (slotIndex) => {
-                            updateRoomState(data => {
-                                if(data.scheduledMatches?.[matchIndex]) {
-                                    data.scheduledMatches[matchIndex][slotIndex] = null;
-                                }
-                                return data;
-                            });
-                        };
+    const renderMatchingContent = () => {
+        // --- [남녀 구분 2. 대기 명단] 헬퍼 렌더 함수 추가 ---
+        const renderPlayerGrid = (playersList) => (
+            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-8 gap-1.5">
+                {playersList.map(p => 
+                    <PlayerCard 
+                        key={p.id} 
+                        player={p} 
+                        context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} 
+                        isAdmin={isAdmin} 
+                        onCardClick={handleCardClick} 
+                        onAction={handleAction} 
+                        onLongPress={handleLongPressPlayer} 
+                        isCurrentUser={userData.uid === p.id} 
+                        isPlaying={inProgressPlayerIds.has(p.id)} 
+                        isSelected={selectedPlayerIds.includes(p.id)} 
+                    />
+                )}
+            </div>
+        );
+        // --- [남녀 구분 2. 끝] ---
 
-                        return (
-                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700">
-                                <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
-                                <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
-                                    {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
-                                        const pId = match[slotIndex];
-                                        if (pId && players[pId]) {
-                                            return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
-                                        } else if (pId && !players[pId]) {
-                                            return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
-                                        } else {
-                                            return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
-                                        }
-                                    })}
+        return (
+            <div className="flex flex-col gap-4">
+                {/* --- [남녀 구분 2. 대기 명단] 렌더링 로직 수정 --- */}
+                <section className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
+                    <div className="flex flex-col gap-1.5">
+                        {renderPlayerGrid(maleWaitingPlayers)}
+                        {maleWaitingPlayers.length > 0 && femaleWaitingPlayers.length > 0 && (
+                            <hr className="border-dashed border-gray-700 my-1" />
+                        )}
+                        {renderPlayerGrid(femaleWaitingPlayers)}
+                    </div>
+                </section>
+                {/* --- [남녀 구분 2. 끝] --- */}
+                
+                <section>
+                    <div className="flex justify-between items-center mb-2 px-1">
+                        <h2 className="text-lg font-bold text-cyan-400 arcade-font">경기 예정</h2>
+                        {isAdmin && <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        {Array.from({ length: roomData.numScheduledMatches }).map((_, matchIndex) => {
+                            const match = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+                            const playerCount = match.filter(pId => pId && players[pId]).length;
+                            const hasLeftPlayer = match.some(pId => pId && !players[pId]);
+                            
+                            const handleRemoveLeftPlayer = (slotIndex) => {
+                                updateRoomState(data => {
+                                    if(data.scheduledMatches?.[matchIndex]) {
+                                        data.scheduledMatches[matchIndex][slotIndex] = null;
+                                    }
+                                    return data;
+                                });
+                            };
+
+                            return (
+                                <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700">
+                                    <p className="flex-shrink-0 w-6 text-center font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
+                                    <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
+                                        {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
+                                            const pId = match[slotIndex];
+                                            if (pId && players[pId]) {
+                                                return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
+                                            } else if (pId && !players[pId]) {
+                                                return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
+                                            } else {
+                                                return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
+                                            }
+                                        })}
+                                    </div>
+                                    <div className="flex-shrink-0 w-14 text-center">
+                                        <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${(playerCount === PLAYERS_PER_MATCH && !hasLeftPlayer && isAdmin) ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || hasLeftPlayer || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                                    </div>
                                 </div>
-                                <div className="flex-shrink-0 w-14 text-center">
-                                    <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${(playerCount === PLAYERS_PER_MATCH && !hasLeftPlayer && isAdmin) ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || hasLeftPlayer || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </section>
-        </div>
-    );
+                            );
+                        })}
+                    </div>
+                </section>
+            </div>
+        );
+    }
 
     const renderInProgressContent = () => (
         <section>
@@ -1425,6 +1463,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 <div className="flex items-center gap-3">
                     {isAdmin && <button onClick={() => setModal({type: 'settings'})} className="text-gray-400 hover:text-white text-xl"><i className="fas fa-cog"></i></button>}
                     <button onClick={handleToggleRest} className={`arcade-button py-1.5 px-3 rounded-md text-xs font-bold transition-colors ${players[userData.uid]?.isResting ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-300'}`}>{players[userData.uid]?.isResting ? '복귀' : '휴식'}</button>
+
                     <button onClick={handleExitRoom} className="arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-3 rounded-md text-xs">나가기</button>
                 </div>
             </header>
@@ -1531,3 +1570,4 @@ export default function App() {
         </>
     );
 }
+
