@@ -53,7 +53,6 @@ const getLevelColor = (level) => {
 // 공용 UI 컴포넌트 (모달, 카드 등)
 // ===================================================================================
 
-// --- [수정] mode prop 추가, draggable 로직 수정 ---
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop, mode = 'admin' }) => {
     const longPressTimer = useRef(null);
 
@@ -88,12 +87,12 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         filter: player.isResting ? 'grayscale(80%)' : 'none',
     };
 
-    if (isSelected && isAdmin) { // --- [수정] 개인 모드에서는 선택 기능 사용 안 함 ---
+    if (isSelected && isAdmin) { // 관리자의 다중 선택
         cardStyle.borderColor = '#34d399';
         cardStyle.transform = 'scale(1.05)';
         combinedShadows.push('0 0 15px 5px rgba(52, 211, 153, 0.7)');
     }
-    if (context.isSwapTarget) {
+    if (context.isSwapTarget && isAdmin) { // 관리자의 스왑 대상
         cardStyle.borderColor = '#60A5FA';
         combinedShadows.push('0 0 15px 5px rgba(96, 165, 250, 0.7)');
     }
@@ -106,21 +105,25 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 
     // --- [수정] 개인 모드(본인) 또는 관리자일 때만 드래그 가능 ---
     const canDrag = isAdmin || (mode === 'personal' && isCurrentUser);
+    
+    // --- [수정] 'X' 버튼 표시 권한 ---
+    // 관리자이거나, (개인 모드 + 본인 카드 + 예정 경기에 있을 때)
+    const canClickX = isAdmin || (mode === 'personal' && isCurrentUser && context.location === 'schedule');
 
     return (
         <div
             className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full cursor-pointer"
             style={cardStyle}
-            onClick={isAdmin && onCardClick ? () => onCardClick(player) : null} // --- [수정] 관리자만 클릭 가능 ---
-            onMouseDown={handlePressStart}
+            onClick={isAdmin && onCardClick ? () => onCardClick(player) : null} // 관리자만 다중선택
+            onMouseDown={handlePressStart} // 관리자만 롱프레스
             onMouseUp={handlePressEnd}
             onMouseLeave={handlePressEnd}
             onTouchStart={handlePressStart}
             onTouchEnd={handlePressEnd}
             onTouchCancel={handlePressEnd}
-            draggable={canDrag && (context.location === 'schedule' || context.location === 'waiting')} // --- [수정] 드래그 가능 조건 변경 ---
+            draggable={canDrag && (context.location === 'schedule' || context.location === 'waiting')} // 대기/예정 상태일 때 드래그 가능
             onDragStart={(e) => {
-                if (!canDrag) { e.preventDefault(); return; } // --- [수정] 드래그 시작 시 방어 코드 ---
+                if (!canDrag) { e.preventDefault(); return; }
                 onDragStart(e, player.id);
             }}
             onDragEnd={onDragEnd}
@@ -134,7 +137,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                     {`${player.todayGames || 0}게임`}
                 </div>
             </div>
-            {isAdmin && onAction && ( // --- [수정] 관리자만 X 버튼 표시 ---
+            {/* --- [수정] 'X' 버튼 표시 권한 적용 --- */}
+            {canClickX && onAction && (
                 <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
@@ -143,9 +147,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     );
 });
 
-// --- [수정] isAdmin prop 추가 ---
 const EmptySlot = ({ onSlotClick, onDragOver, onDrop, isAdmin }) => (
-    <div onClick={isAdmin ? onSlotClick : null} // --- [수정] 관리자만 슬롯 클릭(선택 선수 배치) 가능 ---
+    <div onClick={isAdmin ? onSlotClick : null} // 관리자만 슬롯 클릭(선택 선수 배치) 가능
         onDragOver={onDragOver} 
         onDrop={onDrop}
         className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-800/80 hover:border-yellow-400 transition-all">
@@ -216,7 +219,6 @@ function CourtSelectionModal({ courts, onSelect, onCancel, title = "코트 선�
     );
 }
 
-// --- [수정] onSetMode, onKickAllPlayers prop 추가 ---
 function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onSetMode, onKickAllPlayers }) {
     const [settings, setSettings] = useState({
         numScheduledMatches: roomData.numScheduledMatches,
@@ -224,7 +226,6 @@ function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onSetMode, o
     });
     const handleChange = (field, value) => setSettings(s => ({...s, [field]: Math.max(1, (s[field] || 0) + value)}));
     
-    // --- [추가] 현재 모드 (기본값 'admin') ---
     const currentMode = roomData.mode || 'admin';
 
     return (
@@ -240,7 +241,6 @@ function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onSetMode, o
                         </div>
                     </div>
                     
-                    {/* --- [추가] 운영 모드 변경 UI --- */}
                     <div className="bg-gray-700 p-3 rounded-lg">
                         <span className="font-semibold mb-2 block text-center">운영 모드</span>
                         <div className="flex gap-2">
@@ -262,7 +262,6 @@ function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onSetMode, o
                         </p>
                     </div>
 
-                    {/* --- [수정] '선수 모두 내보내기' 버튼 추가 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2">
                         <label className="font-semibold mb-2 block text-center">고급 기능</label>
                         <button onClick={onSystemReset} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg">시스템 초기화</button>
@@ -680,6 +679,8 @@ function LobbyPage({ userData, setPage, setRoomId }) {
         return () => unsubscribe();
     }, []);
 
+
+
     useEffect(() => {
         setFilteredRooms(rooms.filter(room => room.name.toLowerCase().includes(searchTerm.toLowerCase())));
     }, [searchTerm, rooms]);
@@ -694,7 +695,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                     ...roomData,
                     createdAt: serverTimestamp(),
                     createdBy: userData.uid,
-                    mode: 'admin', // --- [추가] 생성 시 기본 '관리자 모드' ---
+                    mode: 'admin', // 생성 시 기본 '관리자 모드'
                     numScheduledMatches: 5,
                     numInProgressCourts: 3,
                     scheduledMatches: {},
@@ -1039,7 +1040,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
         return SUPER_ADMIN_USERNAMES.includes(userData.username) || roomData.createdBy === userData.uid || (roomData.admins || []).includes(userData.username);
     }, [userData, roomData]);
 
-    // --- [추가] 현재 방 모드 (기본값 'admin') ---
     const mode = useMemo(() => roomData?.mode || 'admin', [roomData]);
 
     useEffect(() => {
@@ -1049,7 +1049,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
             } else {
                 localStorage.removeItem('cockstar_lastRoomId');
                 setPage('lobby');
-                alert("방이 존재하지거나 삭제되었습니다.");
+                alert("방이 존재하지 않거나 삭제되었습니다.");
             }
         });
         const unsubPlayers = onSnapshot(collection(db, 'rooms', roomId, 'players'), (snapshot) => {
@@ -1059,7 +1059,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 setModal({type: 'alert', data: { title: '알림', body: '방에서 나갔거나, 방이 삭제되었습니다.', onClose: () => {
                     localStorage.removeItem('cockstar_lastRoomId');
                     setPage('lobby');
-                    setModal({type:null}); // --- [수정] 모달 닫기 추가 ---
+                    setModal({type:null});
                 }}});
              }
         });
@@ -1071,19 +1071,22 @@ function GameRoomPage({ userData, roomId, setPage }) {
             await runTransaction(db, async tx => {
                 const roomRef = doc(db, 'rooms', roomId);
                 const roomDoc = await tx.get(roomRef);
-                if (!roomDoc.exists()) throw new Error("Room not found"); // --- [수정] Error 객체 사용 ---
+                if (!roomDoc.exists()) throw new Error("Room not found");
 
                 const currentData = roomDoc.data();
-                // --- [수정] JSON.parse(JSON.stringify(...))로 깊은 복사 보장 ---
                 const newData = updateLogic(JSON.parse(JSON.stringify(currentData)));
 
                 tx.update(roomRef, newData);
             });
-            return true; // --- [추가] 성공 시 true 반환 ---
+            return true;
         } catch (e) { 
-            console.error("Transaction failed: ", e); // --- [추가] 콘솔 에러 로깅 ---
-            setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } }); 
-            return false; // --- [추가] 실패 시 false 반환 ---
+            console.error("Transaction failed: ", e); 
+            // --- [수정] 트랜잭션 충돌 시 사용자 알림 ---
+            const errorMessage = e.message.includes("이미 자리가 찼습니다") || e.message.includes("교체할 수 없습니다")
+                ? e.message
+                : "다른 사용자와 작업이 충돌했습니다. 다시 시도해주세요.";
+            setModal({ type: 'alert', data: { title: '작업 실패', body: errorMessage } }); 
+            return false;
         }
     }, [roomId]);
 
@@ -1109,8 +1112,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
     const handleCardClick = (player) => {
-        // --- [수정] 관리자 모드일 때만 작동 ---
-        if (!isAdmin || mode !== 'admin') return;
+        if (!isAdmin) return; // 관리자만 다중 선택 가능
         
         const loc = playerLocations[player.id];
 
@@ -1137,18 +1139,24 @@ function GameRoomPage({ userData, roomId, setPage }) {
         }
     };
 
+    // --- [수정] 권한 모델에 맞게 'X' 버튼 핸들러 수정 ---
     const handleAction = (player) => {
-        // --- [수정] 관리자만 작동 ---
-        if (!isAdmin) return;
+        const canExecute = isAdmin || (mode === 'personal' && player.id === userData.uid);
+        if (!canExecute) return;
 
         const loc = playerLocations[player.id];
+
         if(loc.location === 'waiting'){
-             setModal({type:'confirm', data:{title:'선수 내보내기', body:`'${player.name}'님을 방에서 내보내시겠습니까?`, onConfirm: async () => {
-                await deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
-                setModal({type:null});
-             }}});
+             // 대기 명단에서 'X'는 관리자(강퇴)만 가능
+             if (isAdmin) {
+                 setModal({type:'confirm', data:{title:'선수 내보내기', body:`'${player.name}'님을 방에서 내보내시겠습니까?`, onConfirm: async () => {
+                    await deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
+                    setModal({type:null});
+                 }}});
+             }
         }
         else if (loc && loc.location === 'schedule') {
+             // 예정 경기에서 'X'는 관리자 또는 (개인 모드 + 본인)
              updateRoomState(data => {
                 data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
                 return data;
@@ -1157,8 +1165,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleSlotClick = (context) => {
-        // --- [수정] 관리자 모드일 때만 작동 ---
-        if (!isAdmin || mode !== 'admin' || selectedPlayerIds.length === 0) return;
+        if (!isAdmin || selectedPlayerIds.length === 0) return; // 관리자 다중 선택 전용
 
         const targetMatch = roomData.scheduledMatches?.[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
         const emptySlots = targetMatch.filter(p => p === null).length;
@@ -1189,7 +1196,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleStartMatch = (matchIndex) => {
-        // --- [수정] 개인 모드 또는 관리자일 때만 시작 가능 ---
+        // --- [수정] 개인 모드(누구나) 또는 관리자일 때만 시작 가능 ---
         const canStart = isAdmin || mode === 'personal';
         if (!canStart) return;
 
@@ -1207,7 +1214,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const start = (courtIndex) => {
             updateRoomState(data => {
-                // --- [수정] 트랜잭션 내에서 한 번 더 시작 가능 여부 확인 ---
                 if (data.inProgressCourts && data.inProgressCourts[courtIndex]) {
                     throw new Error("이미 다른 경기가 시작되었습니다.");
                 }
@@ -1240,7 +1246,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleEndMatch = (courtIndex) => {
-        // --- [수정] 개인 모드 또는 관리자일 때만 종료 가능 ---
+        // --- [수정] 개인 모드(누구나) 또는 관리자일 때만 종료 가능 ---
         const canEnd = isAdmin || mode === 'personal';
         const court = (roomData.inProgressCourts || [])[courtIndex];
         
@@ -1256,9 +1262,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
         const court = (roomData.inProgressCourts || [])[courtIndex];
         if(!court || !Array.isArray(court.players)) return;
 
-        // --- [수정] 경기 종료도 트랜잭션으로 처리 ---
         const success = await updateRoomState(data => {
-            // --- [수정] 트랜잭션 내에서 한 번 더 종료 가능 여부 확인 ---
             if (!data.inProgressCourts || !data.inProgressCourts[courtIndex]) {
                 throw new Error("이미 종료된 경기입니다.");
             }
@@ -1266,7 +1270,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
             return data;
         });
 
-        // --- [수정] 트랜잭션이 성공했을 때만 점수 업데이트 ---
         if (success) {
             const batch = writeBatch(db);
             court.players.forEach(pId => {
@@ -1285,6 +1288,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleSystemReset = () => {
+        if (!isAdmin) return;
         setModal({type:'confirm', data:{title:'시스템 초기화', body:'[경고] 모든 경기가 사라지고, 선수들은 대기 명단으로 이동합니다. 계속하시겠습니까?', onConfirm: () => {
             updateRoomState(data => {
                 data.scheduledMatches = {};
@@ -1295,8 +1299,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
         }}});
     };
 
-    // --- [추가] 선수 모두 내보내기 핸들러 ---
     const handleKickAllPlayers = () => {
+        if (!isAdmin) return;
         setModal({
             type: 'confirm',
             data: {
@@ -1305,16 +1309,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 onConfirm: async () => {
                     try {
                         const batch = writeBatch(db);
-                        // 'players' 상태를 기반으로 삭제
                         Object.keys(players).forEach(pId => {
                             const playerRef = doc(db, 'rooms', roomId, 'players', pId);
                             batch.delete(playerRef);
                         });
                         await batch.commit();
-                        
                         setModal({ type: null, data: null });
-                        // 참고: 이 로직이 실행되면, 관리자 본인도 players 목록에서
-                        // 사라지므로, useEffect가 변경을 감지하고 로비로 내보냅니다.
                     } catch (e) {
                          setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } });
                     }
@@ -1323,20 +1323,18 @@ function GameRoomPage({ userData, roomId, setPage }) {
         });
     };
 
-    // --- [추가] 모드 변경 핸들러 ---
     const handleSetMode = (newMode) => {
+        if (!isAdmin) return;
         updateRoomState(data => {
             data.mode = newMode;
             return data;
         });
-        // 모달을 닫기 위해 onSave/onCancel을 호출하는 대신,
-        // 모드 변경 즉시 적용하고 모달은 열어둠 (저장 버튼 누를 때 함께 저장됨)
-        // -> 아니면 즉시 닫는게 낫겠다.
-        setModal({type:null, data:null});
+        setModal({type:null, data:null}); // 모드 변경 후 모달 닫기
     };
 
 
     const handleSettingsSave = (settings) => {
+        if (!isAdmin) return;
         updateRoomState(data => {
              const courtsDiff = settings.numInProgressCourts - (data.numInProgressCourts || 0);
              if (courtsDiff > 0) {
@@ -1356,20 +1354,26 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleClearScheduledMatches = () => {
+        if (!isAdmin) return;
         setModal({type:'confirm', data:{title:'전체 삭제', body:'모든 예정 경기를 삭제하시겠습니까?', onConfirm: () => {
             updateRoomState(data => { data.scheduledMatches = {}; return data; });
             setModal({type:null, data:null});
         }}});
     };
 
-    const handleLongPressPlayer = (player) => setModal({ type: 'editGames', data: player });
+    const handleLongPressPlayer = (player) => {
+        if (!isAdmin) return;
+        setModal({ type: 'editGames', data: player });
+    };
+    
     const handleSaveGames = async (playerId, games) => {
+        if (!isAdmin) return;
         await updateDoc(doc(db, 'rooms', roomId, 'players', playerId), { todayGames: games });
         setModal({ type: null, data: null });
     };
 
     const handleLongPressCourt = (sourceCourtIndex) => {
-        if (!isAdmin) return; // --- [추가] 관리자만 코트 교환 ---
+        if (!isAdmin) return;
         
         const availableTargets = Array.from({ length: roomData.numInProgressCourts }, (_, i) => i)
             .filter(i => i !== sourceCourtIndex);
@@ -1402,7 +1406,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const handleDragEnd = () => setDraggedPlayerId(null);
     const handleDragOver = (e) => e.preventDefault();
 
-    // --- [수정] '관리자/개인 모드'를 모두 처리하는 드롭 핸들러 ---
     const handleDrop = (e, target) => {
         e.preventDefault();
         const sourcePlayerId = e.dataTransfer.getData("playerId");
@@ -1410,31 +1413,43 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         const isPersonalMove = (mode === 'personal' && sourcePlayerId === userData.uid);
 
-        // 권한 확인
         if (!isAdmin && !isPersonalMove) {
-            return; // 관리자도 아니고, 본인 카드 움직이는 것도 아님
-        }
-        
-        if (isPersonalMove && sourcePlayerId !== userData.uid) {
-            setModal({type: 'alert', data: { title: '이동 불가', body: '개인 모드에서는 자신의 카드만 이동할 수 있습니다.' }});
             return;
         }
         
-        // 트랜잭션을 사용하여 카드 이동 처리 (충돌 방지)
+        // --- [수정] 개인 모드에서 본인 카드 아닌 것 드래그 시도 방지 ---
+        if (mode === 'personal' && !isAdmin && sourcePlayerId !== userData.uid) {
+             setModal({type: 'alert', data: { title: '이동 불가', body: '개인 모드에서는 자신의 카드만 이동할 수 있습니다.' }});
+             return;
+        }
+        
+        // --- [추가] 대기 명단 영역으로 드롭 (복귀) ---
+        if (target.type === 'waiting_area') {
+            updateRoomState(data => {
+                Object.keys(data.scheduledMatches).forEach(mIdx => {
+                    const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(sourcePlayerId);
+                    if (sIdx > -1) {
+                        data.scheduledMatches[mIdx][sIdx] = null;
+                    }
+                });
+                return data;
+            });
+            setDraggedPlayerId(null);
+            return;
+        }
+
+        // --- (슬롯 또는 플레이어 카드 위로 드롭) ---
         updateRoomState(data => {
-            // 트랜잭션 내부에서 최신 playerLocations 계산
             const txLocations = {};
             Object.keys(players).forEach(pId => txLocations[pId] = { location: 'waiting' });
             Object.keys(data.scheduledMatches || {}).forEach(mK => (data.scheduledMatches[mK]||[]).forEach((pId, sI) => { if(pId) txLocations[pId] = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI }; }));
 
             const sourceLoc = txLocations[sourcePlayerId];
 
-            // 1. 소스 플레이어의 기존 위치 비우기 (예정 경기에 있었다면)
             if (sourceLoc.location === 'schedule') {
                 data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = null;
             }
 
-            // 2. 타겟 위치에 플레이어 놓기
             if (target.type === 'slot') {
                 const { matchIndex, slotIndex } = target;
                 data.scheduledMatches[matchIndex] = data.scheduledMatches[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
@@ -1442,30 +1457,22 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 const currentTargetPlayerId = data.scheduledMatches[matchIndex][slotIndex];
                 
                 if (currentTargetPlayerId) {
-                    // 타겟 슬롯이 비어있지 않음 (다른 선수가 있음)
                     if (isAdmin) {
-                        // 관리자는 스왑 (교체)
                         data.scheduledMatches[matchIndex][slotIndex] = sourcePlayerId;
                         if (sourceLoc.location === 'schedule') {
-                            // 소스 위치로 타겟 플레이어 이동
                             data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = currentTargetPlayerId;
                         }
                     } else {
-                        // 개인 모드 사용자는 스왑 불가 -> 에러
-                        // 소스 위치 비운 것을 되돌리기 (원래 위치로 복귀)
                         if (sourceLoc.location === 'schedule') {
                              data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = sourcePlayerId;
                         }
                         throw new Error("이미 자리가 찼습니다. 빈 슬롯에 놓아주세요.");
                     }
                 } else {
-                    // 타겟 슬롯이 비어있음 -> 플레이어 배치
                     data.scheduledMatches[matchIndex][slotIndex] = sourcePlayerId;
                 }
             } else if (target.type === 'player') {
-                // 다른 선수 카드 위에 놓음
                 if (isAdmin) {
-                    // 관리자는 스왑
                     const targetLoc = txLocations[target.id];
                     if (targetLoc.location === 'schedule') {
                         data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = sourcePlayerId;
@@ -1474,8 +1481,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         }
                     }
                 } else {
-                    // 개인 모드 사용자는 스왑 불가 -> 에러
-                    // 소스 위치 비운 것을 되돌리기
                     if (sourceLoc.location === 'schedule') {
                          data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = sourcePlayerId;
                     }
@@ -1483,10 +1488,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 }
             }
             return data;
-        }).catch(e => {
-            // 트랜잭션 실패 시 (충돌 발생 등)
-            setModal({ type: 'alert', data: { title: '이동 실패', body: e.message }});
-        });
+        }); // updateRoomState의 catch가 에러를 처리함
 
         setDraggedPlayerId(null);
     }
@@ -1503,7 +1505,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         player={p} 
                         context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} 
                         isAdmin={isAdmin} 
-                        mode={mode} // --- [추가] mode prop 전달 ---
+                        mode={mode}
                         onCardClick={handleCardClick} 
                         onAction={handleAction} 
                         onLongPress={handleLongPressPlayer} 
@@ -1513,7 +1515,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         onDragStart={handleDragStart} 
                         onDragEnd={handleDragEnd} 
                         onDragOver={handleDragOver} 
-                        onDrop={handleDrop} // --- [수정] 공통 handleDrop 사용 ---
+                        onDrop={handleDrop}
                     />
                 )}
             </div>
@@ -1521,7 +1523,12 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         return (
             <div className="flex flex-col gap-4">
-                <section className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                {/* --- [수정] 대기 명단에 onDragOver, onDrop 추가 --- */}
+                <section 
+                    className="bg-gray-900/50 rounded-lg p-3 border border-gray-700"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, { type: 'waiting_area' })}
+                >
                     <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font">대기 명단 ({waitingPlayers.length})</h2>
                     <div className="flex flex-col gap-1.5">
                         {renderPlayerGrid(maleWaitingPlayers)}
@@ -1552,7 +1559,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                 });
                             };
 
-                            // --- [수정] '경기 시작' 가능 여부 ---
                             const canStart = isAdmin || mode === 'personal';
 
                             return (
@@ -1571,7 +1577,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                         })}
                                     </div>
                                     <div className="flex-shrink-0 w-14 text-center">
-                                        {/* --- [수정] '경기 시작' 버튼 활성화 로직 변경 --- */}
                                         <button 
                                             className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${(playerCount === PLAYERS_PER_MATCH && !hasLeftPlayer && canStart) ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} 
                                             disabled={playerCount !== PLAYERS_PER_MATCH || hasLeftPlayer || !canStart} 
@@ -1594,22 +1599,21 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <div className="flex flex-col gap-2">
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
-                    // --- [수정] '경기 종료' 가능 여부 ---
                     const canEnd = (isAdmin || mode === 'personal') && court && Array.isArray(court.players);
 
                     return (
                          <div
                             key={`court-${courtIndex}`}
-                            className={`flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 ${isAdmin ? 'cursor-pointer' : 'cursor-default'}`} // --- [수정] 관리자만 코트 교환(롱프레스) 커서 ---
+                            className={`flex items-center w-full bg-gray-800/80 rounded-lg p-1.5 gap-1.5 border border-gray-700 ${isAdmin ? 'cursor-pointer' : 'cursor-default'}`}
                             onMouseDown={(e) => {
                                 e.preventDefault();
-                                if (!isAdmin || !canEnd) return; // --- [수정] 관리자만 롱프레스 ---
+                                if (!isAdmin || !canEnd) return;
                                 const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000);
                                 e.currentTarget.addEventListener('mouseup', () => clearTimeout(timer), { once: true });
                                 e.currentTarget.addEventListener('mouseleave', () => clearTimeout(timer), { once: true });
                             }}
                             onTouchStart={(e) => {
-                                if (!isAdmin || !canEnd) return; // --- [수정] 관리자만 롱프레스 ---
+                                if (!isAdmin || !canEnd) return;
                                 const timer = setTimeout(() => handleLongPressCourt(courtIndex), 1000);
                                 e.currentTarget.addEventListener('touchend', () => clearTimeout(timer), { once: true });
                                 e.currentTarget.addEventListener('touchcancel', () => clearTimeout(timer), { once: true });
@@ -1628,7 +1632,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
-                                {/* --- [수정] '경기 종료' 버튼 활성화 로직 변경 --- */}
                                 <button
                                     className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${canEnd ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
                                     disabled={!canEnd}
@@ -1649,7 +1652,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
             {modal.type === 'alert' && <AlertModal {...modal.data} onClose={modal.data.onClose || (() => setModal({type:null}))} />}
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({type:null})} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({type:null})} />}
-            {/* --- [수정] SettingsModal에 onSetMode, onKickAllPlayers prop 전달 --- */}
             {modal.type === 'settings' && <SettingsModal roomData={roomData} onSave={handleSettingsSave} onCancel={() => setModal({type:null})} onSystemReset={handleSystemReset} onSetMode={handleSetMode} onKickAllPlayers={handleKickAllPlayers} />}
             {modal.type === 'editGames' && <EditGamesModal player={modal.data} onSave={handleSaveGames} onClose={() => setModal({type:null})} />}
 
@@ -1672,44 +1674,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     {activeTab === 'matching' ? renderMatchingContent() : renderInProgressContent()}
                 </main>
             </div>
-
-            <FloatingChatButton /> {/* --- [수정] 채팅 버튼 GameRoomPage 밖으로 이동 --- */}
-
-            <style>{`
-                html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
-                .arcade-font { font-family: 'Press Start 2P', cursive; }
-                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; transition: transform 0.1s, box-shadow 0.1s; }
-                .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
-                @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
-                .flicker-text { animation: flicker 1.5s infinite; }
-
-                @keyframes neon-glow {
-                    0%, 100% { text-shadow: 0 0 5px #FEE500, 0 0 10px #FEE500, 0 0 15px #FEE500; }
-                    50% { text-shadow: 0 0 10px #FEE500, 0 0 20px #FEE500, 0 0 30px #FEE500; }
-                }
-                .kakao-signup-button {
-                    background-color: #FEE500;
-                    color: #191919;
-                    font-weight: bold;
-                    padding: 0.75rem;
-                    border-radius: 0.5rem;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 0.5rem;
-                    border: 2px solid #222;
-                    box-shadow: inset -2px -2px 0px 0px #333,
-                                inset 2px 2px 0px 0px #FFF,
-                                0 0 10px 2px rgba(254, 229, 0, 0.7);
-                    animation: neon-glow 2s infinite alternate;
-                    transition: all 0.2s;
-                }
-                .kakao-signup-button:active {
-                    transform: translateY(2px);
-                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
-                    animation: none;
-                }
-            `}</style>
+            {/* 스타일 태그는 App 컴포넌트 최상위로 이동 */}
         </div>
     );
 }
@@ -1738,7 +1703,6 @@ export default function App() {
                         if (page === 'auth' || page === 'kakaoProfileSetup') setPage('lobby');
                     }
                 } else {
-                    // --- [수정] 가입 정보 없으면 로그아웃 처리 ---
                      console.warn("User authenticated but no user doc found. Logging out.");
                      signOut(auth);
                      setUserData(null);
@@ -1751,7 +1715,7 @@ export default function App() {
             setLoading(false);
         });
         return () => unsubscribe();
-    }, [page]); // --- [수정] page 의존성 유지 (로그인/아웃 시 페이지 전환을 위해) ---
+    }, [page]);
 
     if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center"><p className="arcade-font text-yellow-400">LOADING...</p></div>;
 
@@ -1759,6 +1723,47 @@ export default function App() {
 
     return (
         <>
+            {/* --- [수정] 글로벌 스타일을 App 최상위로 이동 --- */}
+            <style>{`
+                html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+                .arcade-font { font-family: 'Press Start 2P', cursive; }
+                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; transition: transform 0.1s, box-shadow 0.1s; }
+                .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
+                @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
+                .flicker-text { animation: flicker 1.5s infinite; }
+
+                /* --- [수정] 카카오 버튼 네온 글로우 애니메이션 (box-shadow) --- */
+                @keyframes neon-glow {
+                    from {
+                        box-shadow: 0 0 5px #FEE500, 0 0 10px #FEE500, inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF;
+                    }
+                    to {
+                        box-shadow: 0 0 10px #FEE500, 0 0 20px #FEE500, inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF;
+                    }
+                }
+                .kakao-signup-button {
+                    background-color: #FEE500;
+                    color: #191919;
+                    font-weight: bold;
+                    padding: 0.75rem;
+                    border-radius: 0.5rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.5rem;
+                    border: 2px solid #222;
+                    /* box-shadow: inset -2px -2px 0px 0px #333,
+                                inset 2px 2px 0px 0px #FFF; */
+                    animation: neon-glow 1.5s infinite alternate;
+                    transition: all 0.2s;
+                }
+                .kakao-signup-button:active {
+                    transform: translateY(2px);
+                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
+                    animation: none;
+                }
+            `}</style>
+            
             {showChatButton && <FloatingChatButton />}
             {(() => {
                 switch (page) {
@@ -1767,9 +1772,10 @@ export default function App() {
                     case 'profile': return <ProfilePage userData={userData} setPage={setPage} />;
                     case 'room': return <GameRoomPage userData={userData} roomId={roomId} setPage={setPage} />;
                     case 'kakaoProfileSetup': return <KakaoProfileSetupPage tempUserData={tempUserData} setPage={setPage} />;
-                    default: return <AuthPage setPage={setPage} setTempUserData={setTempUserData} />; // --- [수정] 기본값을 auth로 ---
+                    default: return <AuthPage setPage={setPage} setTempUserData={setTempUserData} />;
                 }
             })()}
         </>
     );
 }
+
