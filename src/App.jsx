@@ -107,14 +107,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const canDrag = isAdmin || (mode === 'personal' && isCurrentUser);
     
     // --- [수정] 'X' 버튼 표시 권한 ---
-    // 관리자이거나, (개인 모드 + 본인 카드 + 예정 경기에 있을 때)
+    // 관리자이거나, (개인 모드 + 본인 카드 + *예정 경기에 있을 때*)
     const canClickX = isAdmin || (mode === 'personal' && isCurrentUser && context.location === 'schedule');
 
     return (
         <div
             className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full cursor-pointer"
             style={cardStyle}
-            onClick={isAdmin && onCardClick ? () => onCardClick(player) : null} // 관리자만 다중선택
+            onClick={onCardClick ? () => onCardClick(player) : null} // --- [수정] 클릭 핸들러 항상 연결 ---
             onMouseDown={handlePressStart} // 관리자만 롱프레스
             onMouseUp={handlePressEnd}
             onMouseLeave={handlePressEnd}
@@ -148,7 +148,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 });
 
 const EmptySlot = ({ onSlotClick, onDragOver, onDrop, isAdmin }) => (
-    <div onClick={isAdmin ? onSlotClick : null} // 관리자만 슬롯 클릭(선택 선수 배치) 가능
+    <div onClick={onSlotClick ? onSlotClick : null} // --- [수정] 클릭 핸들러 항상 연결 ---
         onDragOver={onDragOver} 
         onDrop={onDrop}
         className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-800/80 hover:border-yellow-400 transition-all">
@@ -1034,6 +1034,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const [modal, setModal] = useState({ type: null, data: null });
     const [activeTab, setActiveTab] = useState('matching');
     const [draggedPlayerId, setDraggedPlayerId] = useState(null);
+    const [personalSelectedId, setPersonalSelectedId] = useState(null); // --- [추가] 개인 모드용 단일 선택 ID ---
 
     const isAdmin = useMemo(() => {
         if (!roomData || !userData) return false;
@@ -1111,31 +1112,47 @@ function GameRoomPage({ userData, roomId, setPage }) {
     
     const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
+    // --- [수정] 관리자 클릭 / 개인 클릭 모두 처리 ---
     const handleCardClick = (player) => {
-        if (!isAdmin) return; // 관리자만 다중 선택 가능
-        
-        const loc = playerLocations[player.id];
+        if (isAdmin) {
+            // --- 관리자 로직 ---
+            const loc = playerLocations[player.id];
+            
+            // 1. 개인 선택(초록색)이 있다면 무조건 취소
+            setPersonalSelectedId(null);
 
-        if (loc.location === 'waiting') {
-            setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
-        } else if (loc.location === 'schedule') {
-            if (swapTargetId) {
-                if (swapTargetId === player.id) {
-                    setSwapTargetId(null);
+            // 2. 대기 명단 클릭 (다중 선택)
+            if (loc.location === 'waiting') {
+                setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
+            } 
+            // 3. 예정 경기 클릭 (스왑 선택)
+            else if (loc.location === 'schedule') {
+                if (swapTargetId) {
+                    if (swapTargetId === player.id) {
+                        setSwapTargetId(null);
+                    } else {
+                        const sourceLoc = playerLocations[swapTargetId];
+                        const targetLoc = loc;
+                        updateRoomState(data => {
+                            const temp = data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex];
+                            data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex];
+                            data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = temp;
+                            return data;
+                        });
+                        setSwapTargetId(null);
+                    }
                 } else {
-                    const sourceLoc = playerLocations[swapTargetId];
-                    const targetLoc = loc;
-                    updateRoomState(data => {
-                        const temp = data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex];
-                        data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex];
-                        data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = temp;
-                        return data;
-                    });
-                    setSwapTargetId(null);
+                    setSwapTargetId(player.id);
                 }
-            } else {
-                setSwapTargetId(player.id);
             }
+        
+        } else if (mode === 'personal' && player.id === userData.uid) {
+            // --- 개인 모드 (본인 카드) 로직 ---
+            // 1. 관리자 선택(스왑)이 있다면 무시
+            if (swapTargetId) return;
+
+            // 2. 본인 카드 선택 (토글)
+            setPersonalSelectedId(prevId => (prevId === player.id ? null : player.id));
         }
     };
 
@@ -1164,35 +1181,73 @@ function GameRoomPage({ userData, roomId, setPage }) {
         }
     };
 
+    // --- [수정] 관리자 다중이동 / 개인 단일이동 모두 처리 ---
     const handleSlotClick = (context) => {
-        if (!isAdmin || selectedPlayerIds.length === 0) return; // 관리자 다중 선택 전용
+        // --- [수정] Case 1: 관리자 다중 선택 이동 ---
+        if (isAdmin && selectedPlayerIds.length > 0) {
+            const { matchIndex, slotIndex } = context; // 컨텍스트 여기서 선언
+            const targetMatch = roomData.scheduledMatches?.[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+            const emptySlots = targetMatch.filter(p => p === null).length;
 
-        const targetMatch = roomData.scheduledMatches?.[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-        const emptySlots = targetMatch.filter(p => p === null).length;
+            if (selectedPlayerIds.length > emptySlots) {
+                setModal({type: 'alert', data: {title: "배치 불가", body: "선택한 선수가 남은 자리보다 많습니다."}});
+                return;
+            }
 
-        if (selectedPlayerIds.length > emptySlots) {
-            setModal({type: 'alert', data: {title: "배치 불가", body: "선택한 선수가 남은 자리보다 많습니다."}});
-            return;
+            updateRoomState(data => {
+                const playersToMove = [...selectedPlayerIds];
+                setSelectedPlayerIds([]); // 선택 해제
+
+                playersToMove.forEach(pId => {
+                    Object.keys(data.scheduledMatches).forEach(mIdx => {
+                        const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(pId);
+                        if (sIdx > -1) data.scheduledMatches[mIdx][sIdx] = null;
+                    });
+                });
+
+                let currentTargetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+                for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
+                    if (currentTargetArray[i] === null) currentTargetArray[i] = playersToMove.shift();
+                }
+                data.scheduledMatches[context.matchIndex] = currentTargetArray;
+                return data;
+            });
+            return; // 작업 종료
         }
 
-        updateRoomState(data => {
-            const playersToMove = [...selectedPlayerIds];
-            setSelectedPlayerIds([]);
+        // --- [추가] Case 2: 개인 모드 단일 선택 이동 (관리자도 사용 가능) ---
+        if (personalSelectedId) {
+            const canMove = isAdmin || (mode === 'personal' && personalSelectedId === userData.uid);
+            if (!canMove) return;
 
-            playersToMove.forEach(pId => {
+            const { matchIndex, slotIndex } = context;
+
+            updateRoomState(data => {
+                // 1. 기존 위치 찾아서 비우기
                 Object.keys(data.scheduledMatches).forEach(mIdx => {
-                    const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(pId);
-                    if (sIdx > -1) data.scheduledMatches[mIdx][sIdx] = null;
+                    const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(personalSelectedId);
+                    if (sIdx > -1) {
+                        data.scheduledMatches[mIdx][sIdx] = null;
+                    }
                 });
-            });
 
-            let currentTargetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
-            for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
-                if (currentTargetArray[i] === null) currentTargetArray[i] = playersToMove.shift();
-            }
-            data.scheduledMatches[context.matchIndex] = currentTargetArray;
-            return data;
-        });
+                // 2. 새 위치가 비어있는지 트랜잭션 내에서 확인
+                data.scheduledMatches[matchIndex] = data.scheduledMatches[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
+                const currentTargetPlayerId = data.scheduledMatches[matchIndex][slotIndex];
+
+                if (currentTargetPlayerId) {
+                    // 꽉 찼으면 에러 (개인 모드는 스왑 안 함)
+                    throw new Error("이미 자리가 찼습니다. 빈 슬롯에 놓아주세요.");
+                } else {
+                    // 비었으면 카드 배치
+                    data.scheduledMatches[matchIndex][slotIndex] = personalSelectedId;
+                }
+                return data;
+            });
+            
+            setPersonalSelectedId(null); // 이동 후 선택 해제
+            return; // 작업 종료
+        }
     };
 
     const handleStartMatch = (matchIndex) => {
@@ -1511,11 +1566,11 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         onLongPress={handleLongPressPlayer} 
                         isCurrentUser={userData.uid === p.id} 
                         isPlaying={inProgressPlayerIds.has(p.id)} 
-                        isSelected={selectedPlayerIds.includes(p.id)}
                         onDragStart={handleDragStart} 
                         onDragEnd={handleDragEnd} 
                         onDragOver={handleDragOver} 
                         onDrop={handleDrop}
+                        isSelected={selectedPlayerIds.includes(p.id) || personalSelectedId === p.id} // --- [수정] 개인 선택도 isSelected로 전달 ---
                     />
                 )}
             </div>
@@ -1568,11 +1623,17 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                         {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                             const pId = match[slotIndex];
                                             if (pId && players[pId]) {
-                                                return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} mode={mode} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} isSelected={selectedPlayerIds.includes(pId)} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
+                                                return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} mode={mode} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} 
+                                                    isSelected={selectedPlayerIds.includes(p.id) || personalSelectedId === p.id} // --- [수정] 개인 선택도 isSelected로 전달 ---
+                                                    onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
                                             } else if (pId && !players[pId]) {
                                                 return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
                                             } else {
-                                                return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} isAdmin={isAdmin} />
+                                                return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} 
+                                                    onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} // --- [수정] 공통 핸들러 연결 ---
+                                                    onDragOver={handleDragOver} 
+                                                    onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} 
+                                                    isAdmin={isAdmin} />
                                             }
                                         })}
                                     </div>
@@ -1627,7 +1688,9 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                     } else if (pId && !players[pId]) {
                                         return <LeftPlayerCard key={`left-${courtIndex}-${slotIndex}`} isAdmin={isAdmin} />;
                                     } else {
-                                        return <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} isAdmin={isAdmin} />;
+                                        return <EmptySlot key={`c-empty-${courtIndex}-${slotIndex}`} 
+                                            onSlotClick={() => {}} // --- [수정] 진행 중인 코트는 클릭 이벤트 없음 ---
+                                            isAdmin={isAdmin} />;
                                     }
                                 })}
                             </div>
@@ -1778,4 +1841,7 @@ export default function App() {
         </>
     );
 }
+
+
+
 
