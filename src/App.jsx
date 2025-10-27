@@ -1624,7 +1624,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                             const pId = match[slotIndex];
                                             if (pId && players[pId]) {
                                                 return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} mode={mode} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} 
-                                                    isSelected={selectedPlayerIds.includes(p.id) || personalSelectedId === p.id} // --- [수정] 개인 선택도 isSelected로 전달 ---
+                                                    isSelected={selectedPlayerIds.includes(pId) || personalSelectedId === pId} // --- [수정] p.id -> pId ---
                                                     onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
                                             } else if (pId && !players[pId]) {
                                                 return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
@@ -1841,6 +1841,7 @@ export default function App() {
         </>
     );
 }
+
 
 
 
