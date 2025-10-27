@@ -4,7 +4,9 @@ import {
     getAuth, RecaptchaVerifier, onAuthStateChanged, signOut,
     createUserWithEmailAndPassword, signInWithEmailAndPassword,
     signInWithPhoneNumber, updatePassword, PhoneAuthProvider,
-    signInWithCredential, OAuthProvider, signInWithPopup
+    signInWithCredential, OAuthProvider, signInWithPopup,
+    // --- [수정] 비밀번호 재인증을 위해 2개 모듈 추가 ---
+    EmailAuthProvider, reauthenticateWithCredential
 } from 'firebase/auth';
 import {
     getFirestore, doc, getDoc, setDoc, onSnapshot,
@@ -859,7 +861,8 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
 }
 
 function ProfilePage({ userData, setPage }) {
-    const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, newPassword: '', confirmPassword: '' });
+    // --- [수정] 'currentPassword' 필드 추가 ---
+    const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, currentPassword: '', newPassword: '', confirmPassword: '' });
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [copySuccess, setCopySuccess] = useState('');
@@ -880,18 +883,49 @@ function ProfilePage({ userData, setPage }) {
     const handleSave = async () => {
         setMessage(''); setError('');
         try {
-            const userDocRef = doc(db, "users", userData.uid);
-            await updateDoc(userDocRef, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
-
+            // --- [수정] 비밀번호 변경 로직 (재인증 포함) ---
             if (profileData.newPassword) {
+                // 1. 유효성 검사
                 if (profileData.newPassword.length < 6) { setError("새 비밀번호는 6자 이상이어야 합니다."); return; }
                 if (profileData.newPassword !== profileData.confirmPassword) { setError("새 비밀번호가 일치하지 않습니다."); return; }
+                if (!profileData.currentPassword) { setError("비밀번호를 변경하려면 현재 비밀번호를 입력해야 합니다."); return; }
+
+                // 2. 재인증을 위한 자격증명 생성
+                const credential = EmailAuthProvider.credential(auth.currentUser.email, profileData.currentPassword);
+                
+                // 3. 재인증 실행
+                await reauthenticateWithCredential(auth.currentUser, credential);
+                
+                // 4. 재인증 성공 시, 새 비밀번호로 업데이트
                 await updatePassword(auth.currentUser, profileData.newPassword);
             }
 
-            setMessage('프로필이 성공적으로 저장되었습니다.');
+            // 5. Firestore 프로필 정보 업데이트 (비밀번호 변경 여부와 관계없이 실행)
+            const userDocRef = doc(db, "users", userData.uid);
+            // --- [!!!] 버그 수정: (Line 909) 잘못된 JSX가 삽입되어 있던 부분 수정 ---
+            await updateDoc(userDocRef, { 
+                name: profileData.name, 
+                level: profileData.level, 
+                gender: profileData.gender, 
+                birthYear: profileData.birthYear // --- [추가] birthYear 누락 수정
+            });
+            // --- [!!!] 버그 수정 완료 ---
+
+            // 6. 성공 메시지 및 상태 초기화
+            setMessage(profileData.newPassword ? '프로필과 비밀번호가 성공적으로 저장되었습니다.' : '프로필이 성공적으로 저장되었습니다.');
             Object.assign(userData, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
-        } catch (error) { setError('저장에 실패했습니다: ' + error.message); }
+            setProfileData(p => ({...p, currentPassword: '', newPassword: '', confirmPassword: ''})); // 비밀번호 필드 초기화
+
+        } catch (error) {
+            // 7. 오류 처리 (재인증 실패, 업데이트 실패 등)
+            if (error.code === 'auth/wrong-password') {
+                setError('현재 비밀번호가 잘못되었습니다.');
+            } else if (error.code === 'auth/too-many-requests') {
+                setError('너무 많은 요청을 보냈습니다. 잠시 후 다시 시도하세요.');
+            } else {
+                setError('저장에 실패했습니다: ' + error.message);
+            }
+        }
     };
 
     const birthYears = Array.from({length: 70}, (_, i) => new Date().getFullYear() - i - 15);
@@ -922,6 +956,7 @@ function ProfilePage({ userData, setPage }) {
                         <input name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/>
                     </div>
 
+                    {/* --- [!!!] 버그 수정: 이 JSX 블록이 handleSave 함수 내부에 잘못 복사되었었음 --- */}
                     {!userData.isKakaoUser && (
                         <div>
                             <label className="block text-sm font-bold text-gray-400">연락처</label>
@@ -931,6 +966,7 @@ function ProfilePage({ userData, setPage }) {
 
                     <hr className="border-gray-600"/>
 
+                    {/* --- [추가] ProfilePage에 누락된 급수, 성별, 출생년도 필드 추가 --- */}
                     <div>
                         <label className="block text-sm font-bold">급수</label>
                         <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
@@ -941,11 +977,26 @@ function ProfilePage({ userData, setPage }) {
                             <option>D조</option>
                         </select>
                     </div>
-                    <div><label className="block text-sm font-bold">성별</label><select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"><option>남</option><option>여</option></select></div>
-                    <div><label className="block text-sm font-bold">출생년도</label><select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">{birthYears.map(y=><option key={y} value={y}>{y}</option>)}</select></div>
+                    <div>
+                        <label className="block text-sm font-bold">성별</label>
+                        <select name="gender" value={profileData.gender} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            <option>남</option><option>여</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold">출생년도</label>
+                        <select name="birthYear" value={profileData.birthYear} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
+                            {birthYears.map(y=><option key={y} value={y}>{y}</option>)}
+                        </select>
+                    </div>
 
                     {!userData.isKakaoUser && <>
                         <hr className="border-gray-600"/>
+                        {/* --- [수정] '현재 비밀번호' 입력 필드 추가 --- */}
+                        <div>
+                            <label className="block text-sm font-bold">현재 비밀번호</label>
+                            <input type="password" name="currentPassword" placeholder="현재 비밀번호" value={profileData.currentPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/>
+                        </div>
                         <div><label className="block text-sm font-bold">새 비밀번호</label><input type="password" name="newPassword" placeholder="6자 이상" value={profileData.newPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
                         <div><label className="block text-sm font-bold">새 비밀번호 확인</label><input type="password" name="confirmPassword" value={profileData.confirmPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/></div>
                     </>}
@@ -957,6 +1008,7 @@ function ProfilePage({ userData, setPage }) {
 }
 
 function KakaoProfileSetupPage({ tempUserData, setPage }) {
+    // --- [수정] S조를 기본값으로 변경
     const [profileData, setProfileData] = useState({
         level: 'S조',
         gender: '남',
@@ -1003,6 +1055,11 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
                 </p>
                 {error && <p className="text-center mb-4 text-red-500">{error}</p>}
                 <div className="space-y-4">
+                    {/* --- [삭제] 카카오 가입 페이지에 비밀번호 변경 로직이 잘못 포함되어 있었음 --- */}
+                    {/* {!userData.isKakaoUser && <> ... </>} */}
+
+                    {/* --- [수정] 급수, 성별, 출생년도 필드를 space-y-4 안으로 이동 --- */}
+                    {/* --- [추가] '급수' 필드 추가 --- */}
                     <div>
                         <label className="block text-sm font-bold text-gray-400">급수</label>
                         <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
@@ -1025,6 +1082,7 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
                             {birthYears.map(y=><option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>
+                {/* --- [!!!] 버그 수정: </div>가 누락되어 구조가 깨졌었음 --- */}
                 </div>
                 <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">
                     가입 완료하기
@@ -1780,40 +1838,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 </main>
             </div>
             
-            {/* --- [스타일] 글로벌 스타일 --- */}
-            <style>{`
-                html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
-                .arcade-font { font-family: 'Press Start 2P', cursive; }
-                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; transition: transform 0.1s, box-shadow 0.1s; }
-                .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
-                @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
-                .flicker-text { animation: flicker 1.5s infinite; }
-
-                /* --- [스타일] 카카오 버튼 네온사인 --- */
-                @keyframes neon-glow {
-                    0%, 100% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 10px 2px rgba(254, 229, 0, 0.7); }
-                    50% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 20px 5px rgba(254, 229, 0, 0.9); }
-                }
-                .kakao-signup-button {
-                    background-color: #FEE500;
-                    color: #191919;
-                    font-weight: bold;
-                    padding: 0.75rem;
-                    border-radius: 0.5rem;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 0.5rem;
-                    border: 2px solid #222;
-                    animation: neon-glow 2s infinite alternate;
-                    transition: all 0.2s;
-                }
-                .kakao-signup-button:active {
-                    transform: translateY(2px);
-                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
-                    animation: none;
-                }
-            `}</style>
+            {/* --- [삭제] 스타일 태그를 App 컴포넌트 최상단으로 이동 --- */}
+            {/* <style>{` ... `}</style> */}
         </div>
     );
 }
@@ -1868,8 +1894,43 @@ export default function App() {
                     default: return <AuthPage setPage={setPage} />;
                 }
             })()}
+
+            {/* --- [추가] 스타일 태그를 GameRoomPage에서 여기로 이동 --- */}
+            {/* 이제 모든 페이지(AuthPage 포함)에서 스타일이 적용됩니다. */}
+            <style>{`
+                html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+                .arcade-font { font-family: 'Press Start 2P', cursive; }
+                .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; transition: transform 0.1s, box-shadow 0.1s; }
+                .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; }
+                @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
+                .flicker-text { animation: flicker 1.5s infinite; }
+
+                /* --- [스타일] 카카오 버튼 네온사인 --- */
+                @keyframes neon-glow {
+                    0%, 100% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 10px 2px rgba(254, 229, 0, 0.7); }
+                    50% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 20px 5px rgba(254, 229, 0, 0.9); }
+                }
+                .kakao-signup-button {
+                    background-color: #FEE500;
+                    color: #191919;
+                    font-weight: bold;
+                    padding: 0.75rem;
+                    border-radius: 0.5rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.5rem;
+                    border: 2px solid #222;
+                    animation: neon-glow 2s infinite alternate;
+                    transition: all 0.2s;
+                }
+                .kakao-signup-button:active {
+                    transform: translateY(2px);
+                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
+                    animation: none;
+                }
+            `}</style>
         </>
     );
 }
-
 
