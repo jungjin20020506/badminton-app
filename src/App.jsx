@@ -55,17 +55,25 @@ const getLevelColor = (level) => {
 // 공용 UI 컴포넌트 (모달, 카드 등)
 // ===================================================================================
 const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, onAction, onLongPress, isCurrentUser, isPlaying = false, isSelected = false, onDragStart, onDragEnd, onDragOver, onDrop }) => {
-    const longPressTimer = useRef(null);
+   const longPressTimer = useRef(null);
 
     const handlePressStart = (e) => {
         if (isAdmin && onLongPress) {
+            // [수정] 혹시 모를 기존 타이머를 제거합니다.
+            clearTimeout(longPressTimer.current); 
+            
             e.preventDefault();
-            longPressTimer.current = setTimeout(() => onLongPress(player), 1000);
+            longPressTimer.current = setTimeout(() => {
+                onLongPress(player); // 롱프레스 이벤트 실행
+                longPressTimer.current = null; // [수정] 실행 후 타이머 참조를 null로 초기화
+            }, 1000);
         }
     };
 
     const handlePressEnd = () => {
+        // [수정] 타이머를 취소하고 참조를 null로 초기화합니다.
         clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
     };
     
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
@@ -126,7 +134,21 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
             onTouchEnd={handlePressEnd}
             onTouchCancel={handlePressEnd}
             draggable={canDrag} // --- [권한] canDrag 변수 사용 ---
-            onDragStart={(e) => canDrag && onDragStart(e, player.id)}
+            onDragStart={(e) => {
+                // [!!!] 모바일 롱프레스 충돌 해결 [!!!]
+                // 롱프레스 타이머가 현재 작동 중인지 확인합니다.
+                if (longPressTimer.current) {
+                    // 타이머가 작동 중(롱프레스 진행 중)이라면,
+                    // 드래그 이벤트를 강제로 막습니다.
+                    e.preventDefault();
+                    return;
+                }
+                
+                // 롱프레스 타이머가 없다면(단순 드래그), 정상적으로 드래그를 시작합니다.
+                if (canDrag) {
+                    onDragStart(e, player.id);
+                }
+            }}
             onDragEnd={onDragEnd}
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, {type: 'player', id: player.id})}
