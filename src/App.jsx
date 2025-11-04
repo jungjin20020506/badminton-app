@@ -1199,25 +1199,19 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
             if (loc.location === 'waiting') {
                 setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
+            // ... handleCardClick 함수 내부 ...
             } else if (loc.location === 'schedule') {
-                if (swapTargetId) { // 스왑 대상이 이미 선택됨
-                    if (swapTargetId === player.id) { // 같은 카드 클릭
-                        setSwapTargetId(null);
-                    } else { // 다른 카드 클릭 (스왑 실행)
-                        const sourceLoc = playerLocations[swapTargetId];
-                        const targetLoc = loc;
-                        updateRoomState(data => {
-                            const temp = data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex];
-                            data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex];
-                            data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = temp;
-                            return data;
-                        });
-                        setSwapTargetId(null);
-                    }
-                } else { // 스왑 대상 신규 선택
-                    setSwapTargetId(player.id);
-                }
+                // [수정] 스왑 로직 대신, 'selectedPlayerIds'에 단일 선택/해제 로직을 사용합니다.
+                // (이렇게 해야 handleSlotClick에서 이동시킬 선수를 인지할 수 있습니다.)
+                setSelectedPlayerIds(ids => {
+                    if (ids.includes(player.id)) return []; // 이미 선택된 카드를 다시 클릭하면 선택 해제
+                    return [player.id]; // 새로운 카드를 클릭하면 이 카드만 선택
+                });
+                
+                // 스왑 대상(swapTargetId)은 클릭-투-무브와 충돌할 수 있으므로 초기화합니다.
+                setSwapTargetId(null); 
             }
+            
         // 개인 모드 + 본인 카드 클릭
         } else if (mode === 'personal' && player.id === userData.uid) {
             setSelectedPlayerIds([]); // 관리자 선택 해제
