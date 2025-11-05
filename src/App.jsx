@@ -5,7 +5,6 @@ import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword,
     signInWithPhoneNumber, updatePassword, PhoneAuthProvider,
     signInWithCredential, OAuthProvider, signInWithPopup,
-    // --- [수정] 비밀번호 재인증을 위해 2개 모듈 추가 ---
     EmailAuthProvider, reauthenticateWithCredential
 } from 'firebase/auth';
 import {
@@ -36,10 +35,12 @@ const auth = getAuth(app);
 // ===================================================================================
 const SUPER_ADMIN_USERNAMES = ["jung22459369", "domain"];
 const PLAYERS_PER_MATCH = 4;
-const LEVEL_ORDER = { 'S조': 1, 'A조': 2, 'B조': 3, 'C조': 4, 'D조': 5, 'N조': 6 };
+// --- [수정] E조 추가 (정렬 순서) ---
+const LEVEL_ORDER = { 'S조': 1, 'A조': 2, 'B조': 3, 'C조': 4, 'D조': 5, 'E조': 6, 'N조': 7 };
 const TEST_PHONE_NUMBER = "01012345678";
 const KAKAO_OPEN_CHAT_URL = "https://open.kakao.com/o/siJxXzXh";
 
+// --- [수정] E조 (흰색) 추가 ---
 const getLevelColor = (level) => {
     switch (level) {
         case 'S조': return '#00FFFF'; // 네온 파란색 (Cyan)
@@ -47,6 +48,7 @@ const getLevelColor = (level) => {
         case 'B조': return '#FF9100';
         case 'C조': return '#FFD600';
         case 'D조': return '#00E676';
+        case 'E조': return '#FFFFFF'; // E조 (흰색)
         default: return '#A1A1AA';
     }
 };
@@ -59,19 +61,16 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
 
     const handlePressStart = (e) => {
         if (isAdmin && onLongPress) {
-            // [수정] 혹시 모를 기존 타이머를 제거합니다.
             clearTimeout(longPressTimer.current); 
-            
             e.preventDefault();
             longPressTimer.current = setTimeout(() => {
-                onLongPress(player); // 롱프레스 이벤트 실행
-                longPressTimer.current = null; // [수정] 실행 후 타이머 참조를 null로 초기화
+                onLongPress(player);
+                longPressTimer.current = null;
             }, 1000);
         }
     };
 
     const handlePressEnd = () => {
-        // [수정] 타이머를 취소하고 참조를 null로 초기화합니다.
         clearTimeout(longPressTimer.current);
         longPressTimer.current = null;
     };
@@ -79,6 +78,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
     const genderStyle = { boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` };
     const adminIcon = SUPER_ADMIN_USERNAMES.includes(player.username) ? '👑' : '';
     const levelColor = getLevelColor(player.level);
+    // --- [수정] 급수별 알파벳 색깔 흰색으로 변경 (textShadow 대신 color 사용) ---
     const levelStyle = { color: levelColor, fontWeight: 'bold', fontSize: '14px', textShadow: `0 0 5px ${levelColor}` };
 
     let combinedShadows = [
@@ -96,36 +96,29 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
         filter: player.isResting ? 'grayscale(80%)' : 'none',
     };
 
-    if (isSelected) { // 관리자 선택(다중) 또는 개인 선택(단일)
-        cardStyle.borderColor = '#34d399'; // 초록색 빛
+    if (isSelected) {
+        cardStyle.borderColor = '#34d399';
         cardStyle.transform = 'scale(1.05)';
         combinedShadows.push('0 0 15px 5px rgba(52, 211, 153, 0.7)');
     }
-    if (context.isSwapTarget) { // 관리자 스왑 대상
+    if (context.isSwapTarget) {
         cardStyle.borderColor = '#60A5FA';
         combinedShadows.push('0 0 15px 5px rgba(96, 165, 250, 0.7)');
     }
-    if (isCurrentUser) { // 본인 카드
+    if (isCurrentUser) {
         cardStyle.borderColor = '#FBBF24';
         combinedShadows.push('0 0 12px 4px rgba(251, 191, 36, 0.7)');
     }
 
     cardStyle.boxShadow = combinedShadows.join(', ');
     
-    // --- [권한] 개인 모드 + 본인 카드 = 드래그 가능 ---
     const canDrag = isAdmin || (mode === 'personal' && isCurrentUser);
-    
-    // --- [권한] 'X' 버튼 표시 권한 ---
-    // 관리자이거나, (개인 모드 + 본인 카드 + *예정 경기에 있을 때*)
     const canClickX = isAdmin || (mode === 'personal' && isCurrentUser && context.location === 'schedule');
 
     return (
         <div
             className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full cursor-pointer"
             style={cardStyle}
-            // --- [!!!] 버그 수정 ---
-            // isAdmin 여부와 관계없이 onClick 핸들러를 항상 연결합니다.
-            // 권한 확인은 handleCardClick 함수 내부에서 수행합니다.
             onClick={() => onCardClick(player)}
             onMouseDown={handlePressStart}
             onMouseUp={handlePressEnd}
@@ -133,18 +126,12 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
             onTouchStart={handlePressStart}
             onTouchEnd={handlePressEnd}
             onTouchCancel={handlePressEnd}
-            draggable={canDrag} // --- [권한] canDrag 변수 사용 ---
+            draggable={canDrag}
             onDragStart={(e) => {
-                // [!!!] 모바일 롱프레스 충돌 해결 [!!!]
-                // 롱프레스 타이머가 현재 작동 중인지 확인합니다.
                 if (longPressTimer.current) {
-                    // 타이머가 작동 중(롱프레스 진행 중)이라면,
-                    // 드래그 이벤트를 강제로 막습니다.
                     e.preventDefault();
                     return;
                 }
-                
-                // 롱프레스 타이머가 없다면(단순 드래그), 정상적으로 드래그를 시작합니다.
                 if (canDrag) {
                     onDragStart(e, player.id);
                 }
@@ -156,11 +143,12 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
             <div>
                 <div className="player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter">{adminIcon}{player.name}</div>
                 <div className="player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap">
-                    <span style={levelStyle}>{(player.level || '').replace('조','')}</span >|
+                    {/* --- [수정] 급수 표시 부분 스타일 변경 --- */}
+                    <span style={levelStyle}>{(player.level || '').replace('조','')}</span>
+                    <span style={{color: 'white'}}>|</span> {/* 구분자도 흰색으로 */}
                     {`${player.todayGames || 0}게임`}
                 </div>
             </div>
-            {/* --- [권한] canClickX 변수 사용 --- */}
             {canClickX && (
                 <button onClick={(e) => { e.stopPropagation(); onAction(player); }} className="absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
@@ -172,7 +160,6 @@ const PlayerCard = React.memo(({ player, context, isAdmin, mode, onCardClick, on
 
 const EmptySlot = ({ onSlotClick, onDragOver, onDrop }) => (
     <div 
-        // --- [!!!] 클릭-투-무브를 위해 onClick을 항상 연결 ---
         onClick={onSlotClick} 
         onDragOver={onDragOver} 
         onDrop={onDrop}
@@ -244,7 +231,6 @@ function CourtSelectionModal({ courts, onSelect, onCancel, title = "코트 선�
     );
 }
 
-// --- [기능 추가] 모드 변경 토글, 선수 모두 내보내기 버튼 ---
 function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onKickAllPlayers, onSetMode }) {
     const [settings, setSettings] = useState({
         numScheduledMatches: roomData.numScheduledMatches,
@@ -256,7 +242,7 @@ function SettingsModal({ roomData, onSave, onCancel, onSystemReset, onKickAllPla
     
     const handleModeChange = (newMode) => {
         setMode(newMode);
-        onSetMode(newMode); // 변경 즉시 Firestore에 반영
+        onSetMode(newMode);
     };
     
     return (
@@ -581,12 +567,14 @@ function SignUpForm({ setError, setMode, ensureRecaptcha }) {
              </div>
             <label className="text-xs flex items-center gap-2"><input type="checkbox" checked={showPassword} onChange={() => setShowPassword(!showPassword)} /> 비밀번호 표시</label>
             <div className="grid grid-cols-2 gap-2">
+                {/* --- [수정] E조 추가 --- */}
                 <select name="level" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg">
                     <option>S조</option>
                     <option>A조</option>
                     <option>B조</option>
                     <option>C조</option>
                     <option>D조</option>
+                    <option>E조</option>
                 </select>
                 <select name="gender" onChange={handleChange} className="bg-gray-700 p-3 rounded-lg"><option>남</option><option>여</option></select>
             </div>
@@ -699,6 +687,7 @@ function FindAccountForm({ setError, setMode, ensureRecaptcha }) {
     );
 }
 
+// --- [수정] LobbyPage: UI 및 로직 변경 ---
 function LobbyPage({ userData, setPage, setRoomId }) {
     const [rooms, setRooms] = useState([]);
     const [filteredRooms, setFilteredRooms] = useState([]);
@@ -722,17 +711,18 @@ function LobbyPage({ userData, setPage, setRoomId }) {
         try {
             if (modal.data?.id) { // Update
                 const roomRef = doc(db, 'rooms', modal.data.id);
+                // roomData에는 이미 description, location 등이 포함되어 있음
                 await updateDoc(roomRef, roomData);
             } else { // Create
                 const roomRef = await addDoc(collection(db, "rooms"), {
-                    ...roomData,
+                    ...roomData, // name, password, description, location, admins
                     createdAt: serverTimestamp(),
                     createdBy: userData.uid,
                     numScheduledMatches: 5,
                     numInProgressCourts: 3,
                     scheduledMatches: {},
                     inProgressCourts: [],
-                    mode: 'admin' // --- [기능 추가] 방 생성 시 기본 '관리자 모드' ---
+                    mode: 'admin'
                 });
                 handleEnterRoom(roomRef.id);
             }
@@ -766,7 +756,8 @@ function LobbyPage({ userData, setPage, setRoomId }) {
 
     const handleCreateRoomClick = () => {
         if (SUPER_ADMIN_USERNAMES.includes(userData.username)) {
-            setModal({type: 'room', data: {}});
+            // RoomModal의 useEffect에서 기본값을 설정하므로 빈 객체 전달
+            setModal({type: 'room', data: {}}); 
         } else {
             setModal({type: 'alert', data: {
                 title: "방 만들기 안내",
@@ -800,18 +791,54 @@ function LobbyPage({ userData, setPage, setRoomId }) {
                 </div>
             </header>
             <div className="w-full max-w-2xl bg-gray-800 p-4 rounded-lg">
+                {/* --- [수정] 검색창/버튼 레이아웃 수정 --- */}
                 <div className="flex gap-2 mb-4">
-                    <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="방 이름 검색..." className="flex-grow bg-gray-700 p-2 rounded-lg" />
-                    <button onClick={handleCreateRoomClick} className="arcade-button bg-yellow-500 text-black font-bold px-4 rounded-lg">방 만들기</button>
+                    <input 
+                        type="text" 
+                        value={searchTerm} 
+                        onChange={(e) => setSearchTerm(e.target.value)} 
+                        placeholder="방 이름 검색..." 
+                        className="flex-grow bg-gray-700 p-2 rounded-lg min-w-0" // min-w-0 추가
+                    />
+                    <button 
+                        onClick={handleCreateRoomClick} 
+                        className="arcade-button bg-yellow-500 text-black font-bold px-3 text-sm rounded-lg flex-shrink-0" // px-4 -> px-3, text-sm, flex-shrink-0 추가
+                    >
+                        방 만들기
+                    </button>
                 </div>
+                {/* --- [수정] 방 목록 UI 전체 변경 --- */}
                 <div className="space-y-3">
                     {filteredRooms.map(room => (
-                        <div key={room.id} className="flex justify-between items-center bg-gray-900/50 p-3 rounded-lg border border-gray-700 hover:border-yellow-400 transition-colors">
-                            <button className="flex-grow text-left flex items-center gap-3" onClick={() => canEdit(room) && setModal({type: 'room', data: room})}>
-                                <span className="font-semibold text-lg">{room.name}</span>
-                                {room.password && <span className="text-gray-500"><i className="fas fa-lock"></i></span>}
+                        <div key={room.id} className="bg-gray-900 rounded-lg p-4 border-2 border-gray-700 hover:border-yellow-500 transition-all shadow-lg flex items-center gap-4">
+                            {/* 정보 섹션 (수정을 위해 클릭 가능) */}
+                            <div 
+                                className="flex-grow min-w-0 cursor-pointer" 
+                                onClick={() => canEdit(room) && setModal({type: 'room', data: room})}
+                            >
+                                {/* 방 이름 & 잠금 아이콘 */}
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xl font-bold text-yellow-400 truncate arcade-font">{room.name}</h3>
+                                    {room.password && <i className="fas fa-lock text-gray-500 text-xs"></i>}
+                                </div>
+                                {/* 모임 소개 */}
+                                <p className="text-sm text-gray-300 mt-1 truncate">
+                                    {room.description || "모임 소개가 없습니다."}
+                                </p>
+                                {/* 모임 위치 */}
+                                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
+                                    <i className="fas fa-map-marker-alt fa-xs"></i>
+                                    <span>장소 : {room.location || "위치 정보가 없습니다."}</span>
+                                </p>
+                            </div>
+                            
+                            {/* 입장 버튼 */}
+                            <button 
+                                onClick={() => handleEnterRoomClick(room)} 
+                                className="arcade-button bg-yellow-500 text-black font-bold px-5 py-3 rounded-lg flex-shrink-0 text-sm"
+                            >
+                                입장
                             </button>
-                            <button onClick={() => handleEnterRoomClick(room)} className="arcade-button bg-green-500 text-black font-bold px-4 py-1 text-sm rounded-lg">입장</button>
                         </div>
                     ))}
                 </div>
@@ -820,6 +847,7 @@ function LobbyPage({ userData, setPage, setRoomId }) {
     );
 }
 
+// --- [수정] RoomModal: description, location 필드 추가 ---
 function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
     const [roomData, setRoomData] = useState({});
     const [showPassword, setShowPassword] = useState(false);
@@ -828,8 +856,10 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
         setRoomData({
             name: '',
             password: '',
+            description: '', // [추가]
+            location: '',    // [추가]
             admins: [''],
-            ...data,
+            ...data, // 기존 데이터 (description, location 포함) 덮어쓰기
             usePassword: !!data.password,
         });
     }, [data]);
@@ -850,7 +880,9 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
         const finalData = {
             name: roomData.name,
             admins: (roomData.admins || []).map(a => a.trim()).filter(Boolean),
-            password: roomData.usePassword ? roomData.password : ''
+            password: roomData.usePassword ? roomData.password : '',
+            description: roomData.description || '', // [추가]
+            location: roomData.location || ''      // [추가]
         };
         onSave(finalData);
     };
@@ -859,7 +891,13 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg space-y-4">
                 <h3 className="text-xl font-bold text-yellow-400 arcade-font">{data.id ? "방 수정" : "방 만들기"}</h3>
+                
                 <input type="text" name="name" placeholder="방 이름" value={roomData.name || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
+                
+                {/* --- [추가] 모임 소개, 위치 입력 필드 --- */}
+                <textarea name="description" placeholder="모임 소개" value={roomData.description || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" rows="3"></textarea>
+                <input type="text" name="location" placeholder="모임 위치 (예: 탄천종합운동장)" value={roomData.location || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
+
                 <label className="flex items-center gap-2"><input type="checkbox" name="usePassword" checked={roomData.usePassword || false} onChange={handleChange} /> 비밀번호 사용</label>
                 {roomData.usePassword && <div>
                     <input type={showPassword ? "text" : "password"} name="password" placeholder="비밀번호" value={roomData.password || ''} onChange={handleChange} className="w-full bg-gray-700 p-2 rounded-lg" />
@@ -883,7 +921,6 @@ function RoomModal({ data, onSave, onClose, onDelete, isSuperAdmin }) {
 }
 
 function ProfilePage({ userData, setPage }) {
-    // --- [수정] 'currentPassword' 필드 추가 ---
     const [profileData, setProfileData] = useState({ name: userData.name, level: userData.level, gender: userData.gender, birthYear: userData.birthYear, currentPassword: '', newPassword: '', confirmPassword: '' });
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
@@ -905,41 +942,29 @@ function ProfilePage({ userData, setPage }) {
     const handleSave = async () => {
         setMessage(''); setError('');
         try {
-            // --- [수정] 비밀번호 변경 로직 (재인증 포함) ---
             if (profileData.newPassword) {
-                // 1. 유효성 검사
                 if (profileData.newPassword.length < 6) { setError("새 비밀번호는 6자 이상이어야 합니다."); return; }
                 if (profileData.newPassword !== profileData.confirmPassword) { setError("새 비밀번호가 일치하지 않습니다."); return; }
                 if (!profileData.currentPassword) { setError("비밀번호를 변경하려면 현재 비밀번호를 입력해야 합니다."); return; }
 
-                // 2. 재인증을 위한 자격증명 생성
                 const credential = EmailAuthProvider.credential(auth.currentUser.email, profileData.currentPassword);
-                
-                // 3. 재인증 실행
                 await reauthenticateWithCredential(auth.currentUser, credential);
-                
-                // 4. 재인증 성공 시, 새 비밀번호로 업데이트
                 await updatePassword(auth.currentUser, profileData.newPassword);
             }
 
-            // 5. Firestore 프로필 정보 업데이트 (비밀번호 변경 여부와 관계없이 실행)
             const userDocRef = doc(db, "users", userData.uid);
-            // --- [!!!] 버그 수정: (Line 909) 잘못된 JSX가 삽입되어 있던 부분 수정 ---
             await updateDoc(userDocRef, { 
                 name: profileData.name, 
                 level: profileData.level, 
                 gender: profileData.gender, 
-                birthYear: profileData.birthYear // --- [추가] birthYear 누락 수정
+                birthYear: profileData.birthYear
             });
-            // --- [!!!] 버그 수정 완료 ---
 
-            // 6. 성공 메시지 및 상태 초기화
             setMessage(profileData.newPassword ? '프로필과 비밀번호가 성공적으로 저장되었습니다.' : '프로필이 성공적으로 저장되었습니다.');
             Object.assign(userData, { name: profileData.name, level: profileData.level, gender: profileData.gender, birthYear: profileData.birthYear });
-            setProfileData(p => ({...p, currentPassword: '', newPassword: '', confirmPassword: ''})); // 비밀번호 필드 초기화
+            setProfileData(p => ({...p, currentPassword: '', newPassword: '', confirmPassword: ''}));
 
         } catch (error) {
-            // 7. 오류 처리 (재인증 실패, 업데이트 실패 등)
             if (error.code === 'auth/wrong-password') {
                 setError('현재 비밀번호가 잘못되었습니다.');
             } else if (error.code === 'auth/too-many-requests') {
@@ -978,7 +1003,6 @@ function ProfilePage({ userData, setPage }) {
                         <input name="name" value={profileData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/>
                     </div>
 
-                    {/* --- [!!!] 버그 수정: 이 JSX 블록이 handleSave 함수 내부에 잘못 복사되었었음 --- */}
                     {!userData.isKakaoUser && (
                         <div>
                             <label className="block text-sm font-bold text-gray-400">연락처</label>
@@ -988,15 +1012,16 @@ function ProfilePage({ userData, setPage }) {
 
                     <hr className="border-gray-600"/>
 
-                    {/* --- [추가] ProfilePage에 누락된 급수, 성별, 출생년도 필드 추가 --- */}
                     <div>
                         <label className="block text-sm font-bold">급수</label>
+                        {/* --- [수정] E조 추가 --- */}
                         <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
                             <option>S조</option>
                             <option>A조</option>
                             <option>B조</option>
                             <option>C조</option>
                             <option>D조</option>
+                            <option>E조</option>
                         </select>
                     </div>
                     <div>
@@ -1014,7 +1039,6 @@ function ProfilePage({ userData, setPage }) {
 
                     {!userData.isKakaoUser && <>
                         <hr className="border-gray-600"/>
-                        {/* --- [수정] '현재 비밀번호' 입력 필드 추가 --- */}
                         <div>
                             <label className="block text-sm font-bold">현재 비밀번호</label>
                             <input type="password" name="currentPassword" placeholder="현재 비밀번호" value={profileData.currentPassword} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg"/>
@@ -1030,7 +1054,6 @@ function ProfilePage({ userData, setPage }) {
 }
 
 function KakaoProfileSetupPage({ tempUserData, setPage }) {
-    // --- [수정] S조를 기본값으로 변경
     const [profileData, setProfileData] = useState({
         level: 'S조',
         gender: '남',
@@ -1077,19 +1100,16 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
                 </p>
                 {error && <p className="text-center mb-4 text-red-500">{error}</p>}
                 <div className="space-y-4">
-                    {/* --- [삭제] 카카오 가입 페이지에 비밀번호 변경 로직이 잘못 포함되어 있었음 --- */}
-                    {/* {!userData.isKakaoUser && <> ... </>} */}
-
-                    {/* --- [수정] 급수, 성별, 출생년도 필드를 space-y-4 안으로 이동 --- */}
-                    {/* --- [추가] '급수' 필드 추가 --- */}
                     <div>
                         <label className="block text-sm font-bold text-gray-400">급수</label>
+                        {/* --- [수정] E조 추가 --- */}
                         <select name="level" value={profileData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg">
                             <option>S조</option>
                             <option>A조</option>
                             <option>B조</option>
                             <option>C조</option>
                             <option>D조</option>
+                            <option>E조</option>
                         </select>
                     </div>
                     <div>
@@ -1104,7 +1124,6 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
                             {birthYears.map(y=><option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>
-                {/* --- [!!!] 버그 수정: </div>가 누락되어 구조가 깨졌었음 --- */}
                 </div>
                 <button onClick={handleSave} className="w-full mt-6 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg">
                     가입 완료하기
@@ -1117,14 +1136,13 @@ function KakaoProfileSetupPage({ tempUserData, setPage }) {
 function GameRoomPage({ userData, roomId, setPage }) {
     const [roomData, setRoomData] = useState(null);
     const [players, setPlayers] = useState({});
-    const [selectedPlayerIds, setSelectedPlayerIds] = useState([]); // 관리자용 다중 선택
-    const [personalSelectedId, setPersonalSelectedId] = useState(null); // 개인용 단일 선택
+    const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
+    const [personalSelectedId, setPersonalSelectedId] = useState(null);
     const [swapTargetId, setSwapTargetId] = useState(null);
     const [modal, setModal] = useState({ type: null, data: null });
     const [activeTab, setActiveTab] = useState('matching');
     const [draggedPlayerId, setDraggedPlayerId] = useState(null);
     
-    // --- [권한] 현재 모드 (admin / personal) ---
     const mode = roomData?.mode || 'admin';
 
     const isAdmin = useMemo(() => {
@@ -1163,32 +1181,27 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 if (!roomDoc.exists()) throw new Error("Room not found");
 
                 const currentData = roomDoc.data();
-                // 트랜잭션 내에서 에러를 발생시켜 롤백시키는 용도로 사용
                 let clientAlert = null;
 
-                // updateLogic에 트랜잭션 객체와 알림 함수를 전달
                 const newData = updateLogic(
                     JSON.parse(JSON.stringify(currentData)), 
                     (message) => { clientAlert = message; }
                 );
 
-                // updateLogic 내부에서 clientAlert이 설정되었다면(충돌 등)
-                // 에러를 발생시켜 트랜잭션을 롤백
                 if (clientAlert) {
                     throw new Error(clientAlert);
                 }
 
                 tx.update(roomRef, newData);
             });
-            return true; // 트랜잭션 성공
+            return true;
         } catch (e) { 
-            // 트랜잭션 실패 (데이터 충돌 또는 updateLogic에서 발생시킨 에러)
             const errorMessage = e.message === "Room not found" 
                 ? `작업에 실패했습니다: ${e.message}`
-                : e.message; // "이미 자리가 찼습니다" 등의 메시지
+                : e.message;
             
             setModal({ type: 'alert', data: { title: '알림', body: errorMessage } });
-            return false; // 트랜잭션 실패
+            return false;
         }
     }, [roomId]);
 
@@ -1212,63 +1225,49 @@ function GameRoomPage({ userData, roomId, setPage }) {
     const femaleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '여'), [waitingPlayers]);
     const inProgressPlayerIds = useMemo(() => new Set((roomData?.inProgressCourts || []).filter(c=>c&&c.players).flatMap(c=>c.players).filter(Boolean)), [roomData]);
 
-    // --- [권한] 클릭-투-무브 로직 ---
     const handleCardClick = (player) => {
-        // 관리자 클릭
         if (isAdmin) {
-            setPersonalSelectedId(null); // 개인 선택 해제
+            setPersonalSelectedId(null);
             const loc = playerLocations[player.id];
 
             if (loc.location === 'waiting') {
                 setSelectedPlayerIds(ids => ids.includes(player.id) ? ids.filter(id => id !== player.id) : [...ids, player.id]);
-            // ... handleCardClick 함수 내부 ...
             } else if (loc.location === 'schedule') {
-                // [수정] 스왑 로직 대신, 'selectedPlayerIds'에 단일 선택/해제 로직을 사용합니다.
-                // (이렇게 해야 handleSlotClick에서 이동시킬 선수를 인지할 수 있습니다.)
                 setSelectedPlayerIds(ids => {
-                    if (ids.includes(player.id)) return []; // 이미 선택된 카드를 다시 클릭하면 선택 해제
-                    return [player.id]; // 새로운 카드를 클릭하면 이 카드만 선택
+                    if (ids.includes(player.id)) return [];
+                    return [player.id];
                 });
-                
-                // 스왑 대상(swapTargetId)은 클릭-투-무브와 충돌할 수 있으므로 초기화합니다.
                 setSwapTargetId(null); 
             }
             
-        // 개인 모드 + 본인 카드 클릭
         } else if (mode === 'personal' && player.id === userData.uid) {
-            setSelectedPlayerIds([]); // 관리자 선택 해제
-            setPersonalSelectedId(id => id === player.id ? null : player.id); // 본인 카드 선택 토글
+            setSelectedPlayerIds([]);
+            setPersonalSelectedId(id => id === player.id ? null : player.id);
         }
     };
 
-    // --- [권한] X 버튼 클릭 로직 ---
     const handleAction = (player) => {
-        // 관리자이거나, (개인 모드 + 본인 카드)
         if (isAdmin || (mode === 'personal' && player.id === userData.uid)) {
             const loc = playerLocations[player.id];
             
-            if(loc.location === 'waiting' && isAdmin){ // 대기 명단에서 X = 강퇴 (관리자만)
+            if(loc.location === 'waiting' && isAdmin){
                  setModal({type:'confirm', data:{title:'선수 내보내기', body:`'${player.name}'님을 방에서 내보내시겠습니까?`, onConfirm: async () => {
                     await deleteDoc(doc(db, 'rooms', roomId, 'players', player.id));
                     setModal({type:null});
                  }}});
             }
-            else if (loc && loc.location === 'schedule') { // 예정 경기에서 X = 대기로 복귀 (관리자 또는 본인)
+            else if (loc && loc.location === 'schedule') {
                  updateRoomState(data => {
                     data.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
                     return data;
                 });
-                // 선택 상태 해제
                 if (personalSelectedId === player.id) setPersonalSelectedId(null);
                 if (selectedPlayerIds.includes(player.id)) setSelectedPlayerIds(ids => ids.filter(id => id !== player.id));
             }
         }
     };
 
-    // --- [권한] 클릭-투-무브 로직 ---
-    const handleSlotClick = async (context) => { // context = { matchIndex, slotIndex }
-        
-        // Case 1: 관리자 다중 이동
+    const handleSlotClick = async (context) => {
         if (isAdmin && selectedPlayerIds.length > 0) {
             const targetMatch = roomData.scheduledMatches?.[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
             const emptySlots = targetMatch.filter(p => p === null).length;
@@ -1280,9 +1279,8 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
             updateRoomState(data => {
                 const playersToMove = [...selectedPlayerIds];
-                setSelectedPlayerIds([]); // 선택 해제
+                setSelectedPlayerIds([]);
 
-                // 기존 위치에서 제거
                 playersToMove.forEach(pId => {
                     Object.keys(data.scheduledMatches).forEach(mIdx => {
                         const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(pId);
@@ -1290,7 +1288,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                     });
                 });
 
-                // 새 슬롯에 채우기
                 let currentTargetArray = data.scheduledMatches[context.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                 for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
                     if (currentTargetArray[i] === null) currentTargetArray[i] = playersToMove.shift();
@@ -1299,29 +1296,23 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 return data;
             });
         
-        // Case 2: 개인 단일 이동 (또는 관리자가 개인처럼 1명 이동)
         } else if (personalSelectedId) {
             
             const success = await updateRoomState((data, setClientAlert) => {
                 const playerToMove = personalSelectedId;
                 const { matchIndex, slotIndex } = context;
 
-                // 1. (트랜잭션 내) 타겟 슬롯이 비었는지 확인
                 const currentMatch = data.scheduledMatches[matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                 if (currentMatch[slotIndex] !== null) {
-                    setClientAlert("이미 자리가 찼습니다. 다시 시도해주세요."); // 트랜잭션 롤백
+                    setClientAlert("이미 자리가 찼습니다. 다시 시도해주세요.");
                     return data;
                 }
 
-                // 2. (트랜잭션 내) 기존 위치(대기 또는 다른 슬롯)에서 제거
-                // 2a. 다른 슬롯에 있었는지?
                 Object.keys(data.scheduledMatches).forEach(mIdx => {
                     const sIdx = (data.scheduledMatches[mIdx] || []).indexOf(playerToMove);
                     if (sIdx > -1) data.scheduledMatches[mIdx][sIdx] = null;
                 });
-                // 2b. 대기 명단에 있었는지? (이건 상태 변경이 필요 없음)
 
-                // 3. (트랜잭션 내) 새 위치에 할당
                 currentMatch[slotIndex] = playerToMove;
                 data.scheduledMatches[matchIndex] = currentMatch;
                 
@@ -1329,15 +1320,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
             });
 
             if (success) {
-                setPersonalSelectedId(null); // 이동 성공 시 선택 해제
+                setPersonalSelectedId(null);
             }
-            // 실패 시(충돌) updateRoomState가 알아서 알림창 띄움
         }
     };
 
 
     const handleStartMatch = (matchIndex) => {
-        // --- [권한] 관리자 또는 개인 모드일 때 ---
         if (!isAdmin && mode !== 'personal') {
             setModal({type:'alert', data:{title: "권한 없음", body: "경기 시작은 관리자만 가능합니다."}});
             return;
@@ -1360,9 +1349,7 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 if (!data.inProgressCourts) data.inProgressCourts = [];
                 while(data.inProgressCourts.length < data.numInProgressCourts) { data.inProgressCourts.push(null); }
                 
-                // --- [충돌 방지] 혹시 모를 동시 시작 방지
                 if (data.inProgressCourts[courtIndex] !== null) {
-                    // 트랜잭션 롤백 대신, 그냥 시작 안 함. (알림은 updateRoomState 밖에서)
                     console.warn("Court was already taken");
                     return data; 
                 }
@@ -1390,7 +1377,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleEndMatch = (courtIndex) => {
-        // --- [권한] 관리자 또는 개인 모드일 때 ---
         if (!isAdmin && mode !== 'personal') {
             setModal({type:'alert', data:{title: "권한 없음", body: "경기 종료는 관리자만 가능합니다."}});
             return;
@@ -1409,12 +1395,9 @@ function GameRoomPage({ userData, roomId, setPage }) {
         const court = (roomData.inProgressCourts || [])[courtIndex];
         if(!court || !Array.isArray(court.players)) return;
 
-        // 경기 종료 시점의 플레이어 목록을 사용
         const playerIdsInMatch = [...court.players];
 
-        // 1. 코트 비우기 (트랜잭션)
         const success = await updateRoomState((data, setClientAlert) => {
-            // --- [충돌 방지] 이미 다른 사람이 종료했는지 확인
             if (!data.inProgressCourts[courtIndex]) {
                 setClientAlert("이미 종료된 경기입니다.");
                 return data;
@@ -1423,12 +1406,11 @@ function GameRoomPage({ userData, roomId, setPage }) {
             return data;
         });
 
-        // 2. 코트 비우기 성공 시에만 점수 업데이트 (Batch)
         if (success) {
             try {
                 const batch = writeBatch(db);
                 playerIdsInMatch.forEach(pId => {
-                    if (pId && players[pId]) { // players[pId]가 없으면(나간 유저) 무시
+                    if (pId && players[pId]) {
                         const playerRef = doc(db, 'rooms', roomId, 'players', pId);
                         batch.update(playerRef, { todayGames: (players[pId].todayGames || 0) + 1 });
                     }
@@ -1436,11 +1418,9 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 await batch.commit();
             } catch (e) {
                 console.error("Failed to update player games count:", e);
-                // 점수 업데이트 실패 시 알림 (코트는 이미 비워짐)
                 setModal({type:'alert', data:{title:'오류', body:'경기 종료는 되었으나, 일부 선수의 경기 수 집계에 실패했습니다.'}});
             }
         }
-        // 실패 시(충돌) updateRoomState가 알아서 알림창 띄움
     };
 
 
@@ -1449,7 +1429,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
         updateDoc(playerRef, { isResting: !players[userData.uid]?.isResting });
     };
 
-    // --- [기능 추가] 모두 내보내기 ---
     const handleKickAllPlayers = () => {
         setModal({
             type: 'confirm',
@@ -1465,8 +1444,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         });
                         await batch.commit();
                         setModal({ type: null, data: null });
-                        // 본인도 삭제되므로, useEffect[unsubPlayers]가 감지하여
-                        // 자동으로 로비로 튕겨나감.
                     } catch (e) {
                          setModal({ type: 'alert', data: { title: '오류', body: `작업에 실패했습니다: ${e.message}` } });
                     }
@@ -1486,7 +1463,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
         }}});
     };
     
-    // --- [기능 추가] 모드 변경 ---
     const handleSetMode = (newMode) => {
         const roomRef = doc(db, 'rooms', roomId);
         updateDoc(roomRef, { mode: newMode });
@@ -1508,7 +1484,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
     };
 
     const handleExitRoom = async () => {
-        // --- [버그 수정] 본인 카드 선택 상태 해제
         setPersonalSelectedId(null);
         setSelectedPlayerIds([]);
         await deleteDoc(doc(db, 'rooms', roomId, 'players', userData.uid));
@@ -1554,23 +1529,20 @@ function GameRoomPage({ userData, roomId, setPage }) {
         });
     };
 
-    // --- [권한] 드래그 앤 드롭 로직 (권한 통합) ---
     const handleDragStart = (e, playerId) => { 
-        // 관리자이거나, (개인 모드 + 본인 카드)일 때만 드래그 시작
         if (isAdmin || (mode === 'personal' && playerId === userData.uid)) {
             e.dataTransfer.setData("playerId", playerId); 
             setDraggedPlayerId(playerId); 
             
-            // 드래그 시 클릭 선택 상태 해제
             setPersonalSelectedId(null);
             setSelectedPlayerIds([]);
         } else {
-            e.preventDefault(); // 드래그 방지
+            e.preventDefault();
         }
     };
     const handleDragEnd = () => setDraggedPlayerId(null);
     const handleDragOver = (e) => e.preventDefault();
-    const handleDrop = (e, target) => { // target = {type: 'player' | 'slot' | 'waiting_area', id?, matchIndex?, slotIndex?}
+    const handleDrop = (e, target) => {
         e.preventDefault();
         const sourcePlayerId = e.dataTransfer.getData("playerId");
         if (!sourcePlayerId || sourcePlayerId === target.id) {
@@ -1578,79 +1550,62 @@ function GameRoomPage({ userData, roomId, setPage }) {
             return;
         }
 
-        // --- [권한] 드롭 권한 확인 ---
-        // 관리자가 아니면서, 개인 모드 + 본인 카드가 아니면 드롭 자체를 무시
         if (!isAdmin && !(mode === 'personal' && sourcePlayerId === userData.uid)) {
             setDraggedPlayerId(null);
             return;
         }
 
         updateRoomState((data, setClientAlert) => {
-            // 1. 소스 위치 찾기
             let sourceLoc = null;
             Object.keys(data.scheduledMatches || {}).forEach(mK => {
                 const sI = (data.scheduledMatches[mK]||[]).indexOf(sourcePlayerId);
                 if (sI > -1) sourceLoc = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI };
             });
-            // 소스가 '대기 명단'이면 sourceLoc은 null
 
-            // 2. 타겟 위치 찾기
             let targetLoc = null;
-            if (target.type === 'player') { // 다른 플레이어 카드 위
+            if (target.type === 'player') {
                 Object.keys(data.scheduledMatches || {}).forEach(mK => {
                     const sI = (data.scheduledMatches[mK]||[]).indexOf(target.id);
                     if (sI > -1) targetLoc = { location: 'schedule', matchIndex: parseInt(mK), slotIndex: sI };
                 });
-            } else if (target.type === 'slot') { // 빈 슬롯
+            } else if (target.type === 'slot') {
                 targetLoc = { location: 'schedule', matchIndex: target.matchIndex, slotIndex: target.slotIndex };
-            } else if (target.type === 'waiting_area') { // 대기 명단 영역
+            } else if (target.type === 'waiting_area') {
                 targetLoc = { location: 'waiting' };
             }
 
-            if (!targetLoc) return data; // 유효하지 않은 드롭
+            if (!targetLoc) return data;
             
-            // --- [권한] 드롭 로직 분기 ---
-
-            // Case 1: 관리자 (스왑 가능)
             if (isAdmin) {
                 const sourceVal = sourceLoc ? data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] : sourcePlayerId;
                 const targetVal = (targetLoc.location === 'schedule' && data.scheduledMatches[targetLoc.matchIndex]) 
                                     ? data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] 
                                     : null;
 
-                // 1a. 소스 위치 비우기
                 if (sourceLoc) data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = null;
                 
-                // 1b. 타겟 위치 채우기
                 if (targetLoc.location === 'schedule') {
                     data.scheduledMatches[targetLoc.matchIndex] = data.scheduledMatches[targetLoc.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                     data.scheduledMatches[targetLoc.matchIndex][targetLoc.slotIndex] = sourceVal;
                 }
 
-                // 1c. (스왑이었다면) 소스 위치에 타겟 값 넣기
                 if (sourceLoc && targetVal) {
                     data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = targetVal;
                 }
             
-            // Case 2: 개인 모드 + 본인 카드 (빈 슬롯 또는 대기 명단으로만 가능)
             } else {
-                // 2a. 소스 위치 비우기
                 if (sourceLoc) data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = null;
 
-                // 2b. 타겟 위치가 빈 슬롯인지 확인
                 if (targetLoc.location === 'schedule') {
                     const currentMatch = data.scheduledMatches[targetLoc.matchIndex] || Array(PLAYERS_PER_MATCH).fill(null);
                     if (currentMatch[targetLoc.slotIndex] !== null) {
                         setClientAlert("이미 자리가 찼습니다. 빈 슬롯에 놓아주세요.");
-                        // 원상 복구 (소스 위치 비운 것 취소)
                         if (sourceLoc) data.scheduledMatches[sourceLoc.matchIndex][sourceLoc.slotIndex] = sourcePlayerId;
                         return data;
                     }
-                    // 빈 슬롯이면 채우기
                     currentMatch[targetLoc.slotIndex] = sourcePlayerId;
                     data.scheduledMatches[targetLoc.matchIndex] = currentMatch;
                 }
-                // 2c. 타겟이 대기 명단이면 (sourceLoc만 비우면 됨) - 이미 2a에서 완료됨
             }
             
             return data;
@@ -1671,13 +1626,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
                         player={p} 
                         context={{ location: 'waiting', isAdmin: (roomData.admins || []).includes(p.username) }} 
                         isAdmin={isAdmin} 
-                        mode={mode} // 모드 전달
-                        onCardClick={handleCardClick} // 클릭 이벤트 전달
+                        mode={mode}
+                        onCardClick={handleCardClick}
                         onAction={handleAction} 
                         onLongPress={handleLongPressPlayer} 
                         isCurrentUser={userData.uid === p.id} 
                         isPlaying={inProgressPlayerIds.has(p.id)} 
-                        isSelected={selectedPlayerIds.includes(p.id) || personalSelectedId === p.id} // 개인 선택 반영
+                        isSelected={selectedPlayerIds.includes(p.id) || personalSelectedId === p.id}
                         onDragStart={handleDragStart} 
                         onDragEnd={handleDragEnd} 
                         onDragOver={handleDragOver} 
@@ -1689,7 +1644,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
 
         return (
             <div className="flex flex-col gap-4">
-                {/* --- [수정] 대기 명단 영역에 onDrop 추가 --- */}
                 <section 
                     className="bg-gray-900/50 rounded-lg p-3 border border-gray-700"
                     onDragOver={handleDragOver}
@@ -1716,8 +1670,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                             const playerCount = match.filter(pId => pId && players[pId]).length;
                             const hasLeftPlayer = match.some(pId => pId && !players[pId]);
                             
-                            // --- [권한] 경기 시작 버튼 활성화 로직 ---
-                            // (관리자이거나 개인 모드) + 4명 참 + 나간 선수 없음
                             const canStartMatch = (isAdmin || mode === 'personal') && playerCount === PLAYERS_PER_MATCH && !hasLeftPlayer;
 
                             const handleRemoveLeftPlayer = (slotIndex) => {
@@ -1737,13 +1689,13 @@ function GameRoomPage({ userData, roomId, setPage }) {
                                             const pId = match[slotIndex];
                                             if (pId && players[pId]) {
                                                 return <PlayerCard key={pId} player={players[pId]} context={{location: 'schedule', isAdmin: (roomData.admins || []).includes(players[pId].username), isSwapTarget: swapTargetId === pId}} isAdmin={isAdmin} mode={mode} onCardClick={handleCardClick} onAction={handleAction} onLongPress={handleLongPressPlayer} isCurrentUser={userData.uid === pId} isPlaying={inProgressPlayerIds.has(pId)} 
-                                                    isSelected={selectedPlayerIds.includes(pId) || personalSelectedId === pId} // 개인 선택 반영
+                                                    isSelected={selectedPlayerIds.includes(pId) || personalSelectedId === pId}
                                                     onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
                                             } else if (pId && !players[pId]) {
                                                 return <LeftPlayerCard key={`left-${matchIndex}-${slotIndex}`} isAdmin={isAdmin} onRemove={() => handleRemoveLeftPlayer(slotIndex)} />
                                             } else {
                                                 return <EmptySlot key={`s-empty-${matchIndex}-${slotIndex}`} 
-                                                    onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })} // 클릭-투-무브 연결
+                                                    onSlotClick={() => handleSlotClick({ matchIndex, slotIndex })}
                                                     onDragOver={handleDragOver} 
                                                     onDrop={(e) => handleDrop(e, {type: 'slot', matchIndex, slotIndex})} />
                                             }
@@ -1771,8 +1723,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
             <div className="flex flex-col gap-2">
                 {Array.from({ length: roomData.numInProgressCourts }).map((_, courtIndex) => {
                     const court = (roomData.inProgressCourts || [])[courtIndex];
-                    // --- [권한] 경기 종료 버튼 활성화 로직 ---
-                    // (관리자이거나 개인 모드) + 코트에 선수가 있음
                     const canEndMatch = (isAdmin || mode === 'personal') && court && Array.isArray(court.players);
 
                     return (
@@ -1854,8 +1804,6 @@ function GameRoomPage({ userData, roomId, setPage }) {
                 </main>
             </div>
             
-            {/* --- [삭제] 스타일 태그를 App 컴포넌트 최상단으로 이동 --- */}
-            {/* <style>{` ... `}</style> */}
         </div>
     );
 }
@@ -1911,8 +1859,6 @@ export default function App() {
                 }
             })()}
 
-            {/* --- [추가] 스타일 태그를 GameRoomPage에서 여기로 이동 --- */}
-            {/* 이제 모든 페이지(AuthPage 포함)에서 스타일이 적용됩니다. */}
             <style>{`
                 html, body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
                 .arcade-font { font-family: 'Press Start 2P', cursive; }
@@ -1921,7 +1867,6 @@ export default function App() {
                 @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } }
                 .flicker-text { animation: flicker 1.5s infinite; }
 
-                /* --- [스타일] 카카오 버튼 네온사인 --- */
                 @keyframes neon-glow {
                     0%, 100% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 10px 2px rgba(254, 229, 0, 0.7); }
                     50% { box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF, 0 0 20px 5px rgba(254, 229, 0, 0.9); }
@@ -1949,4 +1894,3 @@ export default function App() {
         </>
     );
 }
-
