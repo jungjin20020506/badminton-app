@@ -8,6 +8,18 @@ TESTER_TYPES = ["기능검사기", "방수", "VSWR", "LNA", "PROXIMITY", "지문
 # 검증 모드
 VERIFY_MODES = ["신규", "MODIFY", "양산"]
 
+# 부품 분류 표준 목록 (검수자 의견 입력 시 드롭다운, AI 자동추출 시 표준화 기준)
+COMPONENT_TYPES = [
+    "마이크", "스피커", "핀블록", "카메라", "보드", "케이블",
+    "커넥터", "센서", "소프트웨어", "기타",
+]
+
+# 증상 분류 표준 목록
+SYMPTOM_TYPES = [
+    "접촉불량", "단선/단락", "오조립", "소프트웨어 오류",
+    "이물", "편차/스펙이탈", "파손", "기타",
+]
+
 # 검증 사진 종류 (섹션 5.4)
 PHOTO_TYPES = [
     "검사기 사진", "LOG DATA(LCD)", "EOS Surge", "인주TEST", "검사기 마킹",
@@ -141,6 +153,14 @@ def seed_all(conn):
     conn.executemany(
         "INSERT INTO issue_history(model_name,tester_type,item,symptom,action,note) VALUES (?,?,?,?,?,?)",
         ISSUE_HISTORY,
+    )
+    conn.executemany(
+        "INSERT INTO component_type(name,sort_order) VALUES (?,?)",
+        [(name, i) for i, name in enumerate(COMPONENT_TYPES)],
+    )
+    conn.executemany(
+        "INSERT INTO symptom_type(name,sort_order) VALUES (?,?)",
+        [(name, i) for i, name in enumerate(SYMPTOM_TYPES)],
     )
 
     # 더미 검사기 + 과거 검증 세션 + 측정값

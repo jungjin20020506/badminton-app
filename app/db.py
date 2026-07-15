@@ -40,6 +40,20 @@ def init_db():
         from app import seed
         seed.seed_all(conn)
         conn.commit()
+
+    # 기존 DB에 새 테이블(component_type/symptom_type)만 추가된 경우 대비 — 별도 시딩
+    comp_cnt = conn.execute("SELECT COUNT(*) AS c FROM component_type").fetchone()["c"]
+    if comp_cnt == 0:
+        from app import seed
+        conn.executemany(
+            "INSERT INTO component_type(name,sort_order) VALUES (?,?)",
+            [(name, i) for i, name in enumerate(seed.COMPONENT_TYPES)],
+        )
+        conn.executemany(
+            "INSERT INTO symptom_type(name,sort_order) VALUES (?,?)",
+            [(name, i) for i, name in enumerate(seed.SYMPTOM_TYPES)],
+        )
+        conn.commit()
     conn.close()
 
 

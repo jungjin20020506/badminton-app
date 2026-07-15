@@ -12,6 +12,8 @@ def bootstrap():
         "tester_types": seed.TESTER_TYPES,
         "verify_modes": seed.VERIFY_MODES,
         "photo_types": seed.PHOTO_TYPES,
+        "component_types": [r["name"] for r in db.query("SELECT name FROM component_type ORDER BY sort_order")],
+        "symptom_types": [r["name"] for r in db.query("SELECT name FROM symptom_type ORDER BY sort_order")],
         "flow_steps": db.query("SELECT * FROM flow_step ORDER BY step_no"),
         "testers": db.query(
             "SELECT DISTINCT model_name, model_rev, tester_type, customer FROM tester ORDER BY model_name"
@@ -181,7 +183,7 @@ def parse_log(run_id, text, tester_type=None, model_name=None):
     }
 
 
-def finish_run(run_id, comment=""):
+def finish_run(run_id, comment="", component=None, symptom_type=None):
     items = db.query("SELECT result FROM check_item WHERE run_id = ?", (run_id,))
     meas = db.query("SELECT judge FROM measurement WHERE run_id = ? AND repeat_index IS NULL", (run_id,))
     has_fail = any(i["result"] == "FAIL" for i in items) or any(m["judge"] == "알림" for m in meas)
@@ -189,10 +191,35 @@ def finish_run(run_id, comment=""):
 
     db.execute("UPDATE inspection_run SET result = ?, inspector_comment = ? WHERE run_id = ?",
                (result, comment, run_id))
-    run = db.query("SELECT tester_id FROM inspection_run WHERE run_id = ?", (run_id,), one=True)
+    run = db.query(
+        "SELECT r.tester_id, r.inspector, t.model_name, t.tester_type "
+        "FROM inspection_run r JOIN tester t ON t.tester_id = r.tester_id WHERE r.run_id = ?",
+        (run_id,), one=True,
+    )
     if run:
         db.execute("UPDATE tester SET status = '출하완료' WHERE tester_id = ?", (run["tester_id"],))
+        if comment.strip():
+            db.execute(
+                "INSERT INTO issue_record(run_id,model_name,tester_type,component,symptom_type,raw_text,inspector) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (run_id, run["model_name"], run["tester_type"], component or None, symptom_type or None,
+                 comment, run["inspector"]),
+            )
     return {"run_id": run_id, "result": result, "comment": comment}
+
+
+def get_issue_records(model_name=None, component=None):
+    """검수자 의견(구조화) 검색 — 모델명이 달라도 component(부품 분류)로 과거 이력을 조회. 3단계 챗봇 근거용."""
+    sql = "SELECT * FROM issue_record WHERE 1=1"
+    args = []
+    if model_name:
+        sql += " AND (? LIKE '%'||model_name||'%' OR model_name LIKE '%'||?||'%')"
+        args += [model_name, model_name]
+    if component:
+        sql += " AND component = ?"
+        args.append(component)
+    sql += " ORDER BY created_at DESC"
+    return db.query(sql, args)
 
 
 def get_run(run_id):

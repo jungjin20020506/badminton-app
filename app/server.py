@@ -78,6 +78,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(run or {}, 200 if run else 404)
             if path == "/api/sample-log":
                 return self._send_json({"text": api.sample_log_text()})
+            if path == "/api/issue-records":
+                return self._send_json(api.get_issue_records(
+                    _first(qs, "model"), _first(qs, "component")))
 
             self.send_error(404, "Not Found")
         except Exception as e:  # noqa: BLE001
@@ -97,7 +100,9 @@ class Handler(BaseHTTPRequestHandler):
                     body.get("run_id"), body.get("text", ""),
                     body.get("tester_type"), body.get("model_name")))
             if path == "/api/run/finish":
-                return self._send_json(api.finish_run(body.get("run_id"), body.get("comment", "")))
+                return self._send_json(api.finish_run(
+                    body.get("run_id"), body.get("comment", ""),
+                    body.get("component"), body.get("symptom_type")))
             self.send_error(404, "Not Found")
         except Exception as e:  # noqa: BLE001
             self._send_json({"error": str(e)}, 500)

@@ -103,3 +103,52 @@ CREATE TABLE IF NOT EXISTS issue_history (
     action      TEXT,
     note        TEXT
 );
+
+-- ===================================================================================
+-- 3단계(AI 지원) 준비 — 검수자 의견 구조화 & 참고자료 색인
+-- 원문은 그대로 보존하고, 검색용 분류 칸(component/symptom_type)을 별도로 둔다.
+-- ===================================================================================
+
+-- 부품 분류 표준 목록 (검수자 의견 입력 시 드롭다운)
+CREATE TABLE IF NOT EXISTS component_type (
+    name       TEXT PRIMARY KEY,
+    sort_order INTEGER
+);
+
+-- 증상 분류 표준 목록 (검수자 의견 입력 시 드롭다운)
+CREATE TABLE IF NOT EXISTS symptom_type (
+    name       TEXT PRIMARY KEY,
+    sort_order INTEGER
+);
+
+-- 모델 ↔ 검사기 종류 매핑 (어떤 모델이 어떤 검사를 받는지, N:M)
+CREATE TABLE IF NOT EXISTS model_test_map (
+    model_name  TEXT NOT NULL,
+    tester_type TEXT NOT NULL,
+    PRIMARY KEY (model_name, tester_type)
+);
+
+-- 검수자 의견 (구조화) — 원문 보존 + 부품/증상 분류 + AI 요약(3단계 연동 시 채움)
+CREATE TABLE IF NOT EXISTS issue_record (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER REFERENCES inspection_run(run_id),
+    model_name  TEXT,
+    tester_type TEXT,
+    component   TEXT REFERENCES component_type(name),
+    symptom_type TEXT REFERENCES symptom_type(name),
+    raw_text    TEXT NOT NULL,
+    summary     TEXT,
+    action      TEXT,
+    inspector   TEXT,
+    created_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- 참고자료 색인 (메뉴얼/사진 등 파일은 파일서버에 두고, 검색용 텍스트+경로만 저장)
+CREATE TABLE IF NOT EXISTS reference_doc (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    category    TEXT,
+    customer    TEXT,
+    title       TEXT,
+    description TEXT,
+    file_path   TEXT
+);

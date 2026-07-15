@@ -45,7 +45,7 @@ app/
   server.py             # http.server 라우터 (정적 + JSON API)
   api.py                # 비즈니스 로직 (검증 세션/판정/저장)
   db.py                 # SQLite 연결·초기화
-  schema.sql            # 7개 테이블 스키마 (명세 섹션 3)
+  schema.sql            # 12개 테이블 스키마 (명세 섹션 3 + 3단계 준비: issue_record 등)
   seed.py               # 초기 데이터 시딩 (명세 섹션 5: 순서도 22단계·체크시트·판정기준·더미)
   judge.py              # 판정 엔진 (Open/Short·경계·이탈 / 반복성 / 호기 편차)
   parsers/              # 로그 파서 플러그인 (모델별 교체 가능)
@@ -80,3 +80,14 @@ python3 -c "from app import db,api; db.init_db(); r=api.start_run({'model_name':
 ## 확장 로드맵 (명세 2·3단계)
 - **2단계 문서 자동화**: 고객사별 체크시트/주말보고서 자동 출력(openpyxl), 사진 배치
 - **3단계 AI 지원**: 셀프 AS 챗봇, 보고서 요약, 메뉴얼 학습 (Claude API + `issue_history`·순서도 근거)
+
+### 3단계 준비 — 검수자 의견 구조화 스키마
+검증 완료 화면(4번 섹션)에서 검사자 의견을 남길 때 **관련 부품**·**증상 분류** 드롭다운을 함께
+선택하면, 원문은 그대로 보존한 채(`issue_record.raw_text`) 검색용 분류 칸(`component`,
+`symptom_type`)이 함께 저장됩니다. 모델명이 달라도 부품 기준으로 과거 이력을 검색할 수 있어
+(`GET /api/issue-records?component=마이크`), 3단계 챗봇의 근거 데이터로 바로 활용됩니다.
+
+- `component_type` / `symptom_type` — 표준 분류 목록(드롭다운 소스, `app/seed.py`에서 관리)
+- `issue_record` — 원문 + 분류 + (추후 AI 자동 요약용) `summary`/`action` 칸
+- `model_test_map` — 모델 ↔ 검사기 종류 매핑(N:M) 뼈대
+- `reference_doc` — 메뉴얼·사진 등 파일은 파일서버에 두고, 설명 텍스트와 경로만 색인

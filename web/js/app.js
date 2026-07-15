@@ -206,7 +206,13 @@ const App = (() => {
 
       <div class="card">
         <div class="card-title"><span class="section-num">4</span> 검사자 의견 & 검증 완료</div>
-        <div class="card-sub">의견은 주말보고서·다음 검증 참고자료로 자동 축적됩니다.</div>
+        <div class="card-sub">의견은 부품/증상 분류와 함께 축적되어, 이후 같은 부품 문제가 다른 모델에서 발생해도 검색됩니다.</div>
+        <div class="grid2 mt12">
+          <div class="field"><label>관련 부품</label>
+            <select id="f_component"><option value="">선택 안 함</option>${(state.boot.component_types || []).map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+          <div class="field"><label>증상 분류</label>
+            <select id="f_symptom"><option value="">선택 안 함</option>${(state.boot.symptom_types || []).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
+        </div>
         <textarea id="comment" class="mt12" placeholder="예) 1번 시료 DIFF 값이 다소 높음. 재조립 후 재측정 예정."></textarea>
         <button class="btn btn-accent btn-lg btn-block mt16" onclick="App.finish()">검증 완료 및 판정 →</button>
       </div>`;
@@ -313,7 +319,9 @@ const App = (() => {
   // ------------------------------------------------------------ 완료
   async function finish() {
     const comment = $('comment') ? $('comment').value.trim() : '';
-    const res = await api.post('/api/run/finish', { run_id: state.run.run_id, comment });
+    const component = $('f_component') ? $('f_component').value : '';
+    const symptom_type = $('f_symptom') ? $('f_symptom').value : '';
+    const res = await api.post('/api/run/finish', { run_id: state.run.run_id, comment, component, symptom_type });
     state.finish = res;
     go('done');
   }
