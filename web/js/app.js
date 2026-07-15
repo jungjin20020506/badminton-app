@@ -360,8 +360,11 @@ const App = (() => {
 
       <div class="card">
         <div class="row-between">
-          <div class="hint">📄 체크시트·주말보고서 자동 출력은 <b>2단계(문서 자동화)</b>에서 제공됩니다. 현재 검증 데이터는 로컬 DB에 저장되었습니다.</div>
-          <button class="btn btn-primary" onclick="App.go('setup')">＋ 새 검증</button>
+          <div class="hint">📄 검증 데이터는 로컬 DB에 저장되었습니다. 체크시트를 엑셀 파일로 내려받을 수 있습니다.</div>
+          <div style="display:flex;gap:8px">
+            <a class="btn btn-ghost" href="/api/run/report?run_id=${r.run_id}">📊 엑셀 다운로드</a>
+            <button class="btn btn-primary" onclick="App.go('setup')">＋ 새 검증</button>
+          </div>
         </div>
       </div>`;
   }

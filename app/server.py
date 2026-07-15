@@ -43,6 +43,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_xlsx(self, content, filename):
+        encoded_name = urllib.parse.quote(filename)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{encoded_name}")
+        self.end_headers()
+        self.wfile.write(content)
+
     def _read_body(self):
         length = int(self.headers.get("Content-Length", 0) or 0)
         if not length:
@@ -81,6 +90,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/issue-records":
                 return self._send_json(api.get_issue_records(
                     _first(qs, "model"), _first(qs, "component")))
+            if path == "/api/run/report":
+                run_id = int(_first(qs, "run_id") or 0)
+                content, filename = api.build_report(run_id)
+                if content is None:
+                    self.send_error(404, "Not Found")
+                    return
+                return self._send_xlsx(content, filename)
 
             self.send_error(404, "Not Found")
         except Exception as e:  # noqa: BLE001
