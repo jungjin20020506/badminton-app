@@ -1,0 +1,13 @@
+{
+  "framework": null,
+  "buildCommand": "echo 'no build needed (static + python serverless)'",
+  "outputDirectory": "web",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "app/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ]
+}

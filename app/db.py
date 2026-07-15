@@ -3,7 +3,18 @@ import os
 import sqlite3
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+
+# 데이터 디렉터리:
+#  - KNK_DATA_DIR 환경변수가 있으면 그 경로
+#  - Vercel/서버리스(읽기전용 FS)면 /tmp (쓰기 가능)
+#  - 그 외 로컬 실행이면 프로젝트/data
+if os.environ.get("KNK_DATA_DIR"):
+    DATA_DIR = os.environ["KNK_DATA_DIR"]
+elif os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    DATA_DIR = "/tmp/knk-data"
+else:
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+
 DB_PATH = os.path.join(DATA_DIR, "quality.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
 

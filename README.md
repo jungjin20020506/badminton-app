@@ -70,6 +70,13 @@ python3 -c "from app import db,api; db.init_db(); r=api.start_run({'model_name':
 ```
 브라우저에서 `python run.py` 실행 후 새 검증 → 샘플 로그 불러오기 → 자동 판정으로 확인할 수 있습니다.
 
+## 배포 (Vercel — 시연용)
+`vercel.json` + `api/index.py` 로 Vercel 배포가 구성되어 있습니다.
+정적 프론트엔드(`web/`)는 CDN에서, API는 Python 서버리스 함수로 동작합니다.
+> ⚠️ Vercel 서버리스는 파일시스템이 읽기전용이라 DB를 `/tmp`에 생성합니다.
+> 인스턴스 재시작 시 시드 데이터가 초기화되므로 **데이터 영구 축적은 로컬 실행(`python run.py`)** 에서 이뤄집니다.
+> Vercel 배포는 대표님/동료에게 URL로 보여주기 위한 **시연 용도**입니다.
+
 ## 확장 로드맵 (명세 2·3단계)
 - **2단계 문서 자동화**: 고객사별 체크시트/주말보고서 자동 출력(openpyxl), 사진 배치
 - **3단계 AI 지원**: 셀프 AS 챗봇, 보고서 요약, 메뉴얼 학습 (Claude API + `issue_history`·순서도 근거)
