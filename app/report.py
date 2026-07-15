@@ -141,3 +141,104 @@ def build_checksheet(run_id):
     date_part = (run["run_date"] or "")[:10].replace("-", "")
     filename = f"체크시트_{safe_model}_{date_part}.xlsx"
     return buf.read(), filename
+
+
+# ---------------------------------------------------------------------------
+# 주간 업무 보고서 — 기간별 검증 완료 데이터(검사자 의견)를 카테고리별로 묶어 출력
+# ---------------------------------------------------------------------------
+WEEKLY_CATEGORIES = [
+    ("PBA.", ["기능검사기", "방수", "VSWR", "LNA", "PROXIMITY"]),
+    ("TSP.", ["TSP"]),
+    ("지문,센서 파트.", ["지문"]),
+]
+
+
+def _weekly_runs(start_date, end_date):
+    return db.query(
+        """
+        SELECT r.run_date, r.inspector, r.inspector_comment, r.result,
+               t.model_name, t.tester_type, t.customer
+        FROM inspection_run r JOIN tester t ON t.tester_id = r.tester_id
+        WHERE date(r.run_date) BETWEEN date(?) AND date(?)
+          AND r.inspector_comment IS NOT NULL AND trim(r.inspector_comment) != ''
+        ORDER BY r.run_date
+        """,
+        (start_date, end_date),
+    )
+
+
+def _write_section_header(ws, row, title):
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+    c = ws.cell(row=row, column=1, value=title)
+    c.font = HEADER_FONT
+    c.fill = HEADER_FILL
+    return row + 1
+
+
+def _write_bullets(ws, row, text, customer, model_name, tester_type):
+    prefix = f"{customer + ' ' if customer else ''}{model_name} {tester_type}"
+    lines = [l for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return row
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+    ws.cell(row=row, column=1, value=f" -. {prefix} — {lines[0]}")
+    row += 1
+    for extra in lines[1:]:
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=6)
+        ws.cell(row=row, column=1, value=f"   -> {extra}")
+        row += 1
+    return row
+
+
+def build_weekly_report(start_date, end_date):
+    """기간 내 검증완료 건의 검사자 의견을 PBA/TSP/지문·센서 파트로 묶어 주간 업무 보고서 생성."""
+    runs = _weekly_runs(start_date, end_date)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "주간업무보고"
+    ws.column_dimensions["A"].width = 90
+    for col in "BCDEF":
+        ws.column_dimensions[col].width = 4
+
+    ws.merge_cells("A1:F1")
+    ws["A1"] = f"주간 업무 보고 ({start_date} ~ {end_date})"
+    ws["A1"].font = Font(size=16, bold=True)
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 28
+
+    inspectors = sorted({r["inspector"] for r in runs if r["inspector"]})
+    ws["A3"] = f"작성자 : {', '.join(inspectors) if inspectors else '-'}"
+
+    row = 5
+    row = _write_section_header(ws, row, "전 주 업 무 실 적")
+
+    for cat_title, tester_types in WEEKLY_CATEGORIES:
+        row += 1
+        ws.cell(row=row, column=1, value=cat_title).font = Font(bold=True)
+        row += 1
+        cat_runs = [r for r in runs if r["tester_type"] in tester_types]
+        if not cat_runs:
+            ws.cell(row=row, column=1, value=" -. 해당 기간 내용 없음")
+            row += 1
+            continue
+        for r in cat_runs:
+            row = _write_bullets(ws, row, r["inspector_comment"], r["customer"], r["model_name"], r["tester_type"])
+
+    row += 1
+    row = _write_section_header(ws, row, "특이 사항")
+    fail_runs = [r for r in runs if r["result"] == "FAIL"]
+    if not fail_runs:
+        row += 1
+        ws.cell(row=row, column=1, value=" -. 해당 기간 FAIL 건 없음")
+    else:
+        for r in fail_runs:
+            row += 1
+            row = _write_bullets(ws, row, r["inspector_comment"], r["customer"], r["model_name"], r["tester_type"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"주간업무보고_{start_date}_{end_date}.xlsx"
+    return buf.read(), filename

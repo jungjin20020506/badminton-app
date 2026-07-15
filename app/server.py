@@ -100,6 +100,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_error(404, "Not Found")
                     return
                 return self._send_xlsx(content, filename)
+            if path == "/api/report/weekly":
+                start = _first(qs, "start")
+                end = _first(qs, "end")
+                if not start or not end:
+                    return self._send_json({"error": "start, end 날짜가 필요합니다."}, 400)
+                content, filename = api.build_weekly_report(start, end)
+                return self._send_xlsx(content, filename)
 
             self.send_error(404, "Not Found")
         except Exception as e:  # noqa: BLE001

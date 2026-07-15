@@ -27,6 +27,14 @@ const App = (() => {
     window.scrollTo(0, 0);
   }
 
+  function today() { return new Date().toISOString().slice(0, 10); }
+  function weekAgo() { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); }
+  function downloadWeeklyReport() {
+    const start = $('f_report_start').value, end = $('f_report_end').value;
+    if (!start || !end) { alert('시작일/종료일을 모두 선택하세요.'); return; }
+    window.location.href = `/api/report/weekly?start=${start}&end=${end}`;
+  }
+
   // ------------------------------------------------------------ 홈
   function renderHome() {
     view().innerHTML = `
@@ -52,11 +60,23 @@ const App = (() => {
           <p>순서도 안내 · 검사 항목 체크 · 로그 자동 판정 · 호기 편차 비교 · 이슈 사전 안내</p>
           <span class="badge badge-now">● 현재 동작</span></div>
         <div class="pipe"><div class="n">STAGE 2</div><h4>문서 자동화</h4>
-          <p>고객사별 체크시트 · 사진 배치 · 주말보고서 원클릭 (검증 데이터 재사용)</p>
-          <span class="badge badge-next">확장 예정</span></div>
+          <p>체크시트 · 주간보고서 엑셀 원클릭 출력 (검증 데이터 재사용)</p>
+          <span class="badge badge-now">● 현재 동작</span></div>
         <div class="pipe"><div class="n">STAGE 3</div><h4>AI 지원</h4>
           <p>셀프 AS 챗봇 · 보고서 요약 · 메뉴얼 학습 (issue_history + 순서도 근거)</p>
           <span class="badge badge-next">확장 예정</span></div>
+      </div>
+
+      <div class="card mt20">
+        <div class="card-title">📅 보고서 추출</div>
+        <div class="card-sub">기간을 정하면 그 사이 검증 완료된 데이터(검사자 의견)를 주간 업무 보고서 엑셀로 묶어 내려받습니다.</div>
+        <div class="grid2 mt12">
+          <div class="field"><label>시작일</label>
+            <input class="input" type="date" id="f_report_start" value="${weekAgo()}"></div>
+          <div class="field"><label>종료일</label>
+            <input class="input" type="date" id="f_report_end" value="${today()}"></div>
+        </div>
+        <button class="btn btn-primary mt12" onclick="App.downloadWeeklyReport()">📊 주간보고서 엑셀 다운로드</button>
       </div>
 
       <div class="card mt20">
@@ -373,6 +393,6 @@ const App = (() => {
   function init() { $('year').textContent = new Date().getFullYear(); go('home'); }
   document.addEventListener('DOMContentLoaded', init);
 
-  return { go, startRun, pickMode, toggleStep, setItem, parseLog, loadSample, onFile, finish };
+  return { go, startRun, pickMode, toggleStep, setItem, parseLog, loadSample, onFile, finish, downloadWeeklyReport };
 })();
 window.App = App;

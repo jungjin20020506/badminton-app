@@ -250,3 +250,14 @@ def build_report(run_id):
             "명령 프롬프트에서 'pip install openpyxl' 실행 후 다시 시도하세요."
         ) from e
     return report.build_checksheet(run_id)
+
+
+def build_weekly_report(start_date, end_date):
+    try:
+        from app import report
+    except ImportError as e:
+        raise RuntimeError(
+            "엑셀 출력 기능에는 openpyxl 설치가 필요합니다. "
+            "명령 프롬프트에서 'pip install openpyxl' 실행 후 다시 시도하세요."
+        ) from e
+    return report.build_weekly_report(start_date, end_date)
