@@ -1,13 +1,11 @@
 {
-  "framework": null,
-  "buildCommand": "echo 'no build needed (static + python serverless)'",
-  "outputDirectory": "web",
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "app/**"
-    }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": "app/**" } },
+    { "src": "web/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/", "dest": "/web/index.html" },
+    { "src": "/(.*)", "dest": "/web/$1" }
   ]
 }
