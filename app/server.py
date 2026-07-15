@@ -72,8 +72,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/" or path == "/index.html":
                 return self._send_file(os.path.join(WEB_DIR, "index.html"))
             if path.startswith("/css/") or path.startswith("/js/"):
-                safe = os.path.normpath(path).lstrip("/")
-                return self._send_file(os.path.join(WEB_DIR, safe))
+                # URL은 항상 '/' 구분자를 쓰므로 os.path.normpath로 바로 처리하면 안 됨
+                # (Windows에서 '\'로 변환된 뒤 os.path.join이 절대경로로 취급해 엉뚱한 위치를
+                #  가리키는 문제가 있었음). '/'로 직접 분해하고 '..'/''는 걸러 안전하게 조립한다.
+                parts = [p for p in path.split("/") if p not in ("", ".", "..")]
+                return self._send_file(os.path.join(WEB_DIR, *parts))
             if path == "/favicon.svg":
                 return self._send_file(os.path.join(WEB_DIR, "favicon.svg"))
 
