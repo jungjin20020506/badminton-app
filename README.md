@@ -1,12 +1,34 @@
-# React + Vite
+# KNK 품질 검증 시스템 (시안 / Demo)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+케이엔케이(KNK) **품질팀**을 위한 통합 웹 애플리케이션 시안입니다.
+대표 승인용 데모로, 실제 규격/조치 데이터 및 AI API 연동 전 단계의 퍼포먼스 시안입니다.
 
-Currently, two official plugins are available:
+## 주요 기능
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 1. 출하 품질 검증 프로그램
+- 고객사 · 모델명 · 검사기 종류(PBA / LNA / 조도 / 방수 / 기능) · 검사자 입력 후 검증 시작
+- **출하검사 순서도** 기반으로 검사 항목을 한 단계씩 진행 (예 / 아니요)
+- **아니요** 선택 시 항목별 **조치사항**을 자동 안내
+- 완료 시 **품질 인증서(성적서)를 엑셀(.xlsx) 파일로 자동 발행**
+  - 케이엔케이(KNK), 검사자, 검사일, 모델명, 항목별 판정/조치 포함
 
-## Expanding the ESLint configuration
+### 2. AI 품질·AS 챗봇
+- AS / 불량 조치 / 품질 규격 질문에 대한 응답 (현재 데모용 Mock 응답)
+- 추천 질문, 타이핑 애니메이션 등 실사용 UX 시연
+- 향후 사내 품질 DB + AI API 연동 예정
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 기술 스택
+- React 19 + Vite
+- Tailwind CSS (빌드에 브랜드 컬러 포함, 오프라인 동작)
+- SheetJS(xlsx) — 엑셀 성적서 생성 (번들 포함)
+
+## 실행 방법
+```bash
+npm install
+npm run dev      # 개발 서버
+npm run build    # 배포 빌드 (dist/)
+npm run preview  # 빌드 결과 미리보기
+```
+
+> 참고: 아이콘(Font Awesome)과 웹폰트는 CDN에서 로드되며 인터넷 연결 시 정상 표시됩니다.
+> 핵심 기능(레이아웃/컬러/엑셀 발행)은 오프라인에서도 동작합니다.
