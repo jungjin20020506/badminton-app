@@ -19,5 +19,8 @@ from app.server import Handler
 # cold start 시 1회 스키마 생성 + 시드
 db.init_db()
 
-# Vercel Python 런타임이 인식하는 이름
-handler = Handler
+
+# Vercel Python 런타임은 이 파일 안에 top-level로 정의된 "handler" 클래스를 정적 분석으로
+# 찾는다. `handler = Handler` 같은 별칭 대입은 인식하지 못하므로 반드시 클래스 정의여야 한다.
+class handler(Handler):
+    pass
