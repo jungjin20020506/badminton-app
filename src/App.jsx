@@ -135,7 +135,7 @@ function Home({ setView }) {
       {/* Stat strip */}
       <section className="-mt-8 relative z-10 mx-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { k: '5종', v: '검사기 종류 지원' },
+          { k: '6종', v: '검사기 종류 지원' },
           { k: '순서도', v: '기반 단계 검증' },
           { k: '.xlsx', v: '품질 인증서 자동 발행' },
           { k: 'AI', v: '품질·AS 어시스턴트' },
@@ -199,6 +199,7 @@ function Field({ label, children, required }) {
 function VerifySetup({ onStart }) {
   const [customer, setCustomer] = useState('');
   const [model, setModel] = useState('');
+  const [rev, setRev] = useState('');
   const [typeId, setTypeId] = useState('PBA');
   const [inspector, setInspector] = useState('');
   const valid = customer.trim() && model.trim() && inspector.trim();
@@ -219,7 +220,10 @@ function VerifySetup({ onStart }) {
             <input className={inputCls} value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="예) 삼성전자" />
           </Field>
           <Field label="모델명" required>
-            <input className={inputCls} value={model} onChange={(e) => setModel(e.target.value)} placeholder="예) KNK-LNA-2400" />
+            <input className={inputCls} value={model} onChange={(e) => setModel(e.target.value)} placeholder="예) SM-S711 SUB" />
+          </Field>
+          <Field label="모델 REV.">
+            <input className={inputCls} value={rev} onChange={(e) => setRev(e.target.value)} placeholder="예) R0.5" />
           </Field>
           <Field label="검사자 이름" required>
             <input className={inputCls} value={inspector} onChange={(e) => setInspector(e.target.value)} placeholder="예) 홍길동" />
@@ -258,7 +262,7 @@ function VerifySetup({ onStart }) {
           disabled={!valid}
           onClick={() => {
             const type = INSPECTION_TYPES.find((t) => t.id === typeId);
-            onStart({ customer, model, inspector, typeId, typeLabel: type.label });
+            onStart({ customer, model, rev, inspector, typeId, typeLabel: type.label, machine: type.machine });
           }}
           className="mt-7 w-full rounded-xl bg-brand-600 py-3.5 text-sm font-bold text-white shadow-soft transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
         >
