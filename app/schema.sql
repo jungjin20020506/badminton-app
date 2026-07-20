@@ -101,7 +101,60 @@ CREATE TABLE IF NOT EXISTS issue_history (
     item        TEXT,
     symptom     TEXT,
     action      TEXT,
-    note        TEXT
+    note        TEXT,
+    -- 이슈관리 화면용 정규 항목 (출하이슈사항 이관 시 채움)
+    issue_date  TEXT,                            -- 검증일/이슈 날짜
+    unit_label  TEXT,                            -- 호기 (예: 1호기, 2~5호기)
+    customer    TEXT,                            -- 고객사
+    board_type  TEXT,                            -- 부위/PBA 구분
+    raw_text    TEXT,                            -- 출하이슈사항 원문 그대로
+    title       TEXT,                            -- 이슈 제목(원문 첫 줄)
+    symptom_type TEXT,                           -- 증상 주 분류(10종) — 필터/통계용
+    tags        TEXT,                            -- 다중 태그(",마이크,파형/전류," 형태)
+    cause       TEXT,                            -- 원인 (이슈 양식)
+    status      TEXT,                            -- 상태: 개선완료/임시조치·모니터링/미해결·추후확인/정보공유
+    sample_rev  TEXT                             -- 시료 버전 (예: R0.4)
+);
+
+-- 태그 표준 목록(20종) — 이슈 작성 시 클릭 선택 & 교차검색
+CREATE TABLE IF NOT EXISTS tag (
+    name        TEXT PRIMARY KEY,
+    sort_order  INTEGER
+);
+
+-- 자주 쓰는 문구 템플릿 (이슈 작성 시 원클릭 삽입)
+CREATE TABLE IF NOT EXISTS phrase_template (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    text  TEXT NOT NULL
+);
+
+-- 이슈별 사진 첨부 (검증 세션 사진과 별개)
+CREATE TABLE IF NOT EXISTS issue_photo (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id   INTEGER REFERENCES issue_history(id),
+    file_path  TEXT,
+    photo_type TEXT,                             -- 불량부위/조치후/파형 등
+    caption    TEXT,                             -- 사진 설명(메모)
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- 챗봇 대화 이력 (+북마크)
+CREATE TABLE IF NOT EXISTS chat_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    question   TEXT,
+    reply      TEXT,
+    mode       TEXT,
+    bookmarked INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- 변경 감사 로그 (누가/언제/무엇을)
+CREATE TABLE IF NOT EXISTS audit_log (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      TEXT DEFAULT (datetime('now','localtime')),
+    action  TEXT,
+    target  TEXT,
+    detail  TEXT
 );
 
 -- ===================================================================================

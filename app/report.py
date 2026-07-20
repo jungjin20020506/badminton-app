@@ -242,3 +242,89 @@ def build_weekly_report(start_date, end_date):
 
     filename = f"주간업무보고_{start_date}_{end_date}.xlsx"
     return buf.read(), filename
+
+
+# ---------------------------------------------------------------------------
+# 히스토리 내보내기 — 검색 필터에 걸린 검증 이력을 목록 형태로 출력
+# ---------------------------------------------------------------------------
+def build_history_export(rows):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "검증이력"
+
+    headers = ["run_id", "검증일", "모델명", "REV", "검사기종류", "호기", "고객사", "검사자", "모드", "판정", "검사자 의견"]
+    widths = [8, 18, 20, 10, 14, 6, 14, 12, 10, 10, 50]
+    for col, (h, w) in enumerate(zip(headers, widths), start=1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+        c = ws.cell(row=1, column=col, value=h)
+        c.font = HEADER_FONT
+        c.fill = HEADER_FILL
+        c.border = BORDER
+        c.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 22
+
+    row = 2
+    for r in rows:
+        values = [
+            r["run_id"], r["run_date"], r["model_name"], r["model_rev"] or "-",
+            r["tester_type"], r["unit_no"] or "-", r["customer"] or "-",
+            r["inspector"] or "-", r["verify_mode"] or "-", r["result"], r["inspector_comment"] or "",
+        ]
+        for col, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=col, value=v)
+            cell.border = BORDER
+            if col == 10:
+                if v == "PASS":
+                    cell.fill = PASS_FILL
+                elif v == "FAIL":
+                    cell.fill = FAIL_FILL
+        row += 1
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from datetime import datetime
+    filename = f"검증이력_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return buf.read(), filename
+
+
+def build_issues_export(rows):
+    """이슈 이력 목록(필터 반영)을 엑셀로 — 구조화 칸(증상/원인/조치/상태/태그) 포함."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "이슈이력"
+
+    headers = ["ID", "검증일", "모델명", "고객사", "검사기종류", "호기", "시료", "증상분류",
+               "태그", "제목", "증상", "원인", "조치", "상태"]
+    widths = [6, 12, 18, 10, 12, 10, 8, 16, 24, 30, 45, 25, 45, 14]
+    for col, (h, w) in enumerate(zip(headers, widths), start=1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+        c = ws.cell(row=1, column=col, value=h)
+        c.font = HEADER_FONT
+        c.fill = HEADER_FILL
+        c.border = BORDER
+        c.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 22
+
+    row = 2
+    for r in rows:
+        values = [
+            r["id"], (r.get("issue_date") or "")[:10], r["model_name"], r.get("customer") or "-",
+            r.get("tester_type") or "-", r.get("unit_label") or "-", r.get("sample_rev") or "-",
+            r.get("symptom_type") or "-", (r.get("tags") or "").strip(","),
+            r.get("title") or "", r.get("symptom") or "", r.get("cause") or "",
+            r.get("action") or "", r.get("status") or "-",
+        ]
+        for col, v in enumerate(values, start=1):
+            cell = ws.cell(row=row, column=col, value=v)
+            cell.border = BORDER
+            cell.alignment = Alignment(vertical="top", wrap_text=(col in (11, 13)))
+        row += 1
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime
+    filename = f"이슈이력_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return buf.read(), filename

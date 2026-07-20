@@ -9,7 +9,8 @@ import statistics
 
 
 def judge_value(value, spec_low, spec_high, margin_pct=0.05):
-    """단일 측정값 판정. spec_low/high 중 하나가 None이면 그 방향은 무한대로 간주."""
+    """단일 측정값 판정. spec_low/high 중 하나가 None이면 그 방향은 무한대로 간주.
+    규격을 벗어나면 알림, 규격 경계(=)이거나 경계 여유(margin) 이내면 주의."""
     try:
         v = float(value)
     except (TypeError, ValueError):
@@ -18,9 +19,11 @@ def judge_value(value, spec_low, spec_high, margin_pct=0.05):
     lo = float(spec_low) if spec_low is not None else float("-inf")
     hi = float(spec_high) if spec_high is not None else float("inf")
 
-    # 규격 이탈
-    if v <= lo or v >= hi:
+    # 규격 이탈 (경계값 자체는 주의로 처리)
+    if v < lo or v > hi:
         return "알림"
+    if v == lo or v == hi:
+        return "주의"
 
     # 경계(주의) 판정: 유효 범위 기준 margin 이내로 경계에 근접
     span = (hi - lo) if (hi != float("inf") and lo != float("-inf")) else None
@@ -32,8 +35,13 @@ def judge_value(value, spec_low, spec_high, margin_pct=0.05):
 
 
 def judge_measurements(rows, specs):
-    """rows: [{item,value,spec_low,spec_high,repeat_index}], specs: {item: judge_spec dict}
-    반환: 판정이 채워진 rows (단일 측정만; 반복성은 analyze_repeatability에서 별도 처리)."""
+    """rows: [{item,value,spec_low,spec_high,repeat_index,device_judge?}]
+    specs: {item: judge_spec dict}
+    반환: 판정이 채워진 rows (단일 측정만; 반복성은 analyze_repeatability에서 별도 처리).
+
+    device_judge: 장비 로그 자체의 합부 표시($F6=OK/$F1=NG). 장비가 NG로 판정한 라인은
+    무조건 알림. 장비가 OK인데 값이 규격 경계와 정확히 같으면(포화 측정치 등) 정상 처리.
+    """
     out = []
     for r in rows:
         item = r["item"]
@@ -45,7 +53,21 @@ def judge_measurements(rows, specs):
         if hi is None:
             hi = base.get("spec_high")
         margin = base.get("margin_pct", 0.05) or 0.05
-        j = judge_value(r["value"], lo, hi, margin)
+        dev = r.get("device_judge")
+        if dev == "NG":
+            j = "알림"
+        else:
+            j = judge_value(r["value"], lo, hi, margin)
+            if dev == "OK":
+                if j == "알림":
+                    j = "주의"  # 장비는 OK — 규격 표기 차이일 수 있어 확인 권장 수준으로 완화
+                try:
+                    v = float(r["value"])
+                    if ((lo is not None and v == float(lo))
+                            or (hi is not None and v == float(hi))):
+                        j = "정상"  # 경계 포화값(예: MATRX 15000/15000)은 장비 OK면 정상
+                except (TypeError, ValueError):
+                    pass
         out.append({**r, "spec_low": lo, "spec_high": hi, "judge": j})
     return out
 

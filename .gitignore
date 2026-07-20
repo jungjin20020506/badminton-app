@@ -5,16 +5,30 @@ __pycache__/
 .venv/
 venv/
 
-# 로컬 DB (런타임 생성, 커밋하지 않음)
-data/*.db
-data/*.db-journal
+# ===================================================================
+# 고객사 실데이터 — 절대 커밋 금지 (공개 저장소)
+#   출하이슈 원문·모델명·사내 서버 경로·첨부사진이 들어있음
+# ===================================================================
+data/
+tools/all_issues.json
+tools/selected_issues.json
+tools/*_issues.json
+*.db
+*.db-journal
+
+# 개인/임시 파일 (프로젝트와 무관)
+*.jpg
+*.jpeg
+KakaoTalk_*
+*_image.png
 
 # Logs
 *.log
 
-# Editor
+# Editor / local tooling
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
 *.sw?
+.claude/settings.local.json

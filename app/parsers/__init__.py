@@ -1,14 +1,46 @@
-"""파서 레지스트리 — 모델/검사기 종류별 파서 선택.
+"""파서 레지스트리 — 로그 내용 자동 감지 + 모델/검사기 종류별 수동 지정.
 
-현재는 모든 모델이 기본 GenericCsvParser 를 사용한다.
-새 포맷이 확정되면 아래 REGISTRY 에 (매칭조건 → 파서)를 추가하면 된다.
-예: REGISTRY["방수:SM-S952 SUB"] = WaterproofParser()
+기본 동작(AutoParser): 로그 내용을 보고 형식을 자동 판별한다.
+  1) TSP 장비 로그      : "*Verify Start" + KEYRAW 배열          → TspParser
+  2) KNK 장비 공통 로그 : "Test START." / $$·? 헤더 / $F 색상코드 → KnkEquipParser
+     (기능검사기 FUNC · 방수 WP · PROXIMITY · VSWR · LNA)
+  3) 그 외              : 기본 CSV 형식                           → GenericCsvParser
+
+특정 모델/검사기 종류에 전용 파서를 강제하려면 REGISTRY 에 등록하면 된다.
+  예: REGISTRY["방수:SM-S952 SUB"] = WaterproofParser()
+key 형식: "검사기종류:모델명" 또는 "검사기종류" 또는 "모델명"
 """
+from app.parsers.base import BaseParser
 from app.parsers.generic_csv import GenericCsvParser
+from app.parsers.knk_equip import KnkEquipParser
+from app.parsers.tsp import TspParser
 
-_DEFAULT = GenericCsvParser()
+_CSV = GenericCsvParser()
+_EQUIP = KnkEquipParser()
+_TSP = TspParser()
 
-# key 형식: "검사기종류:모델명" 또는 "검사기종류" 또는 "모델명"
+
+class AutoParser(BaseParser):
+    name = "auto"
+
+    def sniff(self, text):
+        t = text or ""
+        if "Verify Start" in t and "KEYRAW" in t:
+            return _TSP
+        if ("Test START" in t or "$$M" in t or "?M00" in t
+                or "$F6" in t or "$F1" in t or "$$L" in t):
+            return _EQUIP
+        return _CSV
+
+    def parse(self, text):
+        parser = self.sniff(text)
+        parsed = parser.parse(text)
+        parsed.setdefault("parser_name", parser.name)
+        return parsed
+
+
+_DEFAULT = AutoParser()
+
 REGISTRY = {}
 
 
@@ -20,6 +52,6 @@ def get_parser(tester_type=None, model_name=None):
 
 
 def available_parsers():
-    names = {_DEFAULT.name}
+    names = {_DEFAULT.name, _CSV.name, _EQUIP.name, _TSP.name}
     names.update(p.name for p in REGISTRY.values())
     return sorted(names)

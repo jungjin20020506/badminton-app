@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0b0f14" />
   <title>KNK 검사기 출하검증 시스템</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="stylesheet" href="/css/style.css" />
@@ -18,6 +20,11 @@
         <nav>
           <button class="navbtn" data-nav="home" onclick="App.go('home')"><span>홈</span></button>
           <button class="navbtn" data-nav="setup" onclick="App.go('setup')"><span>새 검증</span></button>
+          <button class="navbtn" data-nav="history" onclick="App.go('history')"><span>히스토리</span></button>
+          <button class="navbtn" data-nav="issues" onclick="App.go('issues')"><span>이슈 관리</span></button>
+          <button class="navbtn" data-nav="analytics" onclick="App.go('analytics')"><span>📊 분석</span></button>
+          <button class="navbtn" data-nav="chat" onclick="App.go('chat')"><span>🤖 AI 도우미</span></button>
+          <button class="navbtn" title="단축키 도움말 (?)" onclick="App.showHelp()">⌨</button>
         </nav>
       </div>
     </header>
