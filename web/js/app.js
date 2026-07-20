@@ -93,6 +93,11 @@ const App = (() => {
   const resultBadge = (r) => r === 'PASS' ? 'j-정상' : r === 'FAIL' ? 'j-알림' : 'j-주의';
 
   // ------------------------------------------------------------ 홈 (대시보드)
+  // 온라인 데모(Vercel) 여부 — 사내망·파일저장이 없는 환경이라 안내가 필요
+  function isDemo() {
+    return /vercel\.app$/.test(location.hostname);
+  }
+
   async function renderHome() {
     const st = state.stats = await api.get('/api/stats');
     const recentRows = (st.recent || []).map(r => `
@@ -107,6 +112,10 @@ const App = (() => {
       </tr>`).join('');
 
     view().innerHTML = `
+      ${isDemo() ? `<div class="demo-banner">
+        <b>온라인 데모</b> — 기능을 둘러보는 용도입니다. 데이터는 비어 있고 새로고침 시 초기화됩니다.
+        실제 이슈 축적·사내 서버(Z:) 동기화는 <b>회사 PC에서 프로그램 실행</b> 시 동작합니다.
+      </div>` : ''}
       <section class="hero">
         <span class="tag">케이엔케이 품질팀 · 검사기 출하검증 자동화</span>
         <h1>출하 검사 순서도대로 검증하고,<br>데이터로 자동 판정합니다.</h1>

@@ -148,6 +148,13 @@ details.card > summary::-webkit-details-marker { display: none; }
 details.card > summary::before { content: "▸"; color: var(--text-3); margin-right: 8px; font-size: 11px; transition: .15s; display: inline-block; }
 details.card[open] > summary::before { transform: rotate(90deg); }
 
+/* ---------- 온라인 데모 안내 ---------- */
+.demo-banner {
+  border: 1px solid rgba(251,191,36,.28); background: var(--warn-dim); color: var(--text-2);
+  border-radius: 9px; padding: 11px 15px; font-size: 12.5px; line-height: 1.6; margin-bottom: 14px;
+}
+.demo-banner b { color: var(--warn); }
+
 /* ---------- Hero ---------- */
 .hero {
   position: relative; overflow: hidden; border-radius: 14px; padding: 40px 36px;

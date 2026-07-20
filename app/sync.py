@@ -40,6 +40,13 @@ def start():
     with _LOCK:
         if STATE["running"]:
             return {"started": False, "reason": "이미 동기화가 진행 중입니다."}
+        # Vercel 등 서버리스(읽기전용·사내망 미연결)에서는 동기화 불가
+        if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            return {"started": False,
+                    "reason": "온라인 데모에서는 사내 서버(Z:)에 접근할 수 없습니다. "
+                              "회사 PC에서 프로그램을 실행해 사용하세요."}
+        if not os.path.isfile(_IMPORTER_PATH):
+            return {"started": False, "reason": "동기화 도구(tools/import_issues.py)를 찾을 수 없습니다."}
         STATE.update(running=True, message="동기화 시작…", error=None, result=None, done_at=None)
         threading.Thread(target=_run, daemon=True).start()
         return {"started": True}

@@ -5,6 +5,7 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/photos/(.*)", "dest": "/api/index.py" },
     { "src": "/", "dest": "/web/index.html" },
     { "src": "/(.*)", "dest": "/web/$1" }
   ]
