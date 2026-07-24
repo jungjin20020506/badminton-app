@@ -638,11 +638,32 @@ def model_profile(name):
 
 
 def delete_issue(issue_id):
-    row = db.query("SELECT model_name,title FROM issue_history WHERE id=?", (int(issue_id),), one=True)
-    db.execute("DELETE FROM issue_history WHERE id = ?", (int(issue_id),))
-    if row:
-        audit("이슈 삭제", f"{row['model_name']} #{issue_id}", row["title"] or "")
-    return {"ok": True}
+    issue_id = int(issue_id)
+    row = db.query("SELECT * FROM issue_history WHERE id=?", (issue_id,), one=True)
+    if not row:
+        return {"ok": True}
+
+    # 이 프로그램이 서버 출하이슈사항 엑셀에 기록한 이슈면, 엑셀의 그 행도 함께
+    # 지운다. 엑셀에 남겨둔 채 여기서만 지우면 다음 서버 동기화가 되살린다.
+    from app import issue_export
+    r = issue_export.remove_exported(row)
+    if not r.get("ok"):
+        return {"error": "서버 출하이슈사항 엑셀에서 이 이슈를 지우지 못해 삭제를 중단했습니다.\n"
+                         + (r.get("error") or "")}
+
+    # 첨부 사진(파일+레코드)을 먼저 지운다 — FK 제약 때문에 사진이 남아 있으면
+    # 이슈 삭제가 실패한다 (사진 있는 이슈가 안 지워지던 원인)
+    for p in db.query("SELECT * FROM issue_photo WHERE issue_id=?", (issue_id,)):
+        try:
+            os.remove(os.path.join(db.DATA_DIR,
+                                   p["file_path"].replace("photos/", "photos" + os.sep, 1)))
+        except OSError:
+            pass
+    db.execute("DELETE FROM issue_photo WHERE issue_id=?", (issue_id,))
+    db.execute("DELETE FROM issue_history WHERE id = ?", (issue_id,))
+    audit("이슈 삭제", f"{row['model_name']} #{issue_id}", (row["title"] or "")
+          + (" (서버 엑셀 행도 함께 삭제)" if not r.get("not_found") else ""))
+    return {"ok": True, "excel_removed": not r.get("not_found")}
 
 
 def _spec_map():

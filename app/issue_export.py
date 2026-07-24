@@ -209,6 +209,55 @@ def _verify_written(path, row, content):
         wb.close()
 
 
+# ---------------------------------------------------------------- 기록 행 삭제
+def remove_entry(path, content):
+    """엑셀에서 이 프로그램이 기록한 행(내용 일치)을 비운다 — 이슈 삭제 시 사용.
+
+    행을 지우지 않고 '비우기'만 한다(행 삭제는 아래 병합·서식을 밀어 깨뜨린다).
+    빈 행은 다음 기록 때 그대로 재사용된다. 그 행에 앵커된 사진도 제거.
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(path)
+    ws = wb.active
+    row = _find_duplicate(ws, content)
+    if row is None:
+        wb.close()
+        return {"ok": True, "not_found": True}       # 엑셀에 이미 없음 — 지울 것 없음
+    ws.cell(row=row, column=1).value = None
+    ws.cell(row=row, column=5).value = None
+    ws._images = [im for im in ws._images
+                  if getattr(getattr(im.anchor, "_from", None), "row", None) != row - 1]
+    ws.row_dimensions[row].height = None
+    wb.save(path)
+    wb.close()
+    return {"ok": True, "row": row}
+
+
+def remove_exported(issue):
+    """이슈 삭제 전 — 서버 엑셀에 기록해 둔 행을 함께 제거한다.
+
+    엑셀에 행이 남은 채 프로그램에서만 지우면, 다음 서버 동기화가 그 행을
+    '자동수집' 이슈로 되살린다. 그래서 엑셀 제거가 실패하면 삭제를 중단시킨다.
+    """
+    keys = issue.keys()
+    content = issue["server_export_text"] if "server_export_text" in keys else None
+    marker = issue["server_export"] if "server_export" in keys else None
+    if not content:
+        return {"ok": True, "not_found": True}       # 서버에 기록한 적 없음
+    path = (marker or "").rsplit(" @ ", 1)[0].strip()
+    if not path or not os.path.isfile(path):
+        return {"ok": True, "not_found": True}       # 파일이 이동/삭제됨 — 지울 것 없음
+    d, n = os.path.split(path)
+    if os.path.exists(os.path.join(d, "~$" + n)):
+        return {"ok": False, "locked": True, "error": _LOCK_MSG.format(name=n)}
+    try:
+        return remove_entry(path, content)
+    except PermissionError:
+        return {"ok": False, "locked": True, "error": _LOCK_MSG.format(name=n)}
+    except Exception as e:                            # noqa: BLE001
+        return {"ok": False, "error": f"서버 엑셀에서 행을 지우지 못했습니다: {e}\n파일: {path}"}
+
+
 # ---------------------------------------------------------------- 진입점
 def export_issue(issue_id):
     """이슈 1건을 서버 출하이슈사항 엑셀에 기록하고 결과를 반환.

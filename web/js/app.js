@@ -2517,8 +2517,10 @@ const App = (() => {
   }
 
   async function deleteIssue(id) {
-    if (!confirm('이 이슈 이력을 삭제할까요?')) return;
-    await api.post('/api/issue/delete', { id });
+    if (!confirm('이 이슈 이력을 삭제할까요?\n(서버 출하이슈사항 엑셀에 기록된 이슈면 그 행도 함께 지워집니다)')) return;
+    const res = await api.post('/api/issue/delete', { id });
+    if (res && res.error) { alert('삭제 실패\n\n' + res.error); return; }
+    if (res && res.excel_removed) toast('서버 출하이슈사항 엑셀의 행도 함께 삭제했습니다.');
     loadIssues();
   }
 
