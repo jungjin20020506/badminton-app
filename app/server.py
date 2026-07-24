@@ -327,6 +327,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/issue/export_server":
                 from app import issue_export
                 return self._send_json(issue_export.export_issue(body.get("issue_id")))
+            if path == "/api/issue/check_excel":
+                from app import issue_export
+                return self._send_json(issue_export.check_excel(
+                    body.get("model"), body.get("tester_type")))
+            if path == "/api/issue/update_raw":
+                from app import issue_export
+                return self._send_json(issue_export.update_issue_text(
+                    body.get("issue_id"), body.get("text", "")))
             if path == "/api/issue/delete":
                 return self._send_json(api.delete_issue(body.get("id")))
             # ---- Z: 파일서버 (열기 / 이슈 이관) — 서버 파일은 읽기 전용 ----

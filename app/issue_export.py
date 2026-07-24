@@ -209,6 +209,120 @@ def _verify_written(path, row, content):
         wb.close()
 
 
+# ---------------------------------------------------------------- 잠금 사전 확인
+def check_excel(model, tester_type=None):
+    """이슈 저장 전 — 대상 출하이슈사항 엑셀이 열려 있는지(잠김) 미리 확인.
+
+    저장을 눌렀는데 그제서야 실패하는 것보다, 저장 전에 '엑셀을 닫아 주세요'를
+    보여주는 편이 낫다. 반환: {"ok", "locked"?, "not_found"?, "name"?, "error"?}
+    """
+    target = find_issue_file(model, tester_type)
+    if not target.get("ok"):
+        return {"ok": True, "not_found": True, "error": target.get("error")}
+    if target.get("locked"):
+        return {"ok": False, "locked": True, "name": target["name"],
+                "error": _LOCK_MSG.format(name=target["name"])}
+    return {"ok": True, "name": target["name"], "path": target["path"]}
+
+
+# ---------------------------------------------------------------- 기록 행 수정
+def replace_entry(path, old_content, new_content):
+    """기록해 둔 행의 내역(E열)을 새 내용으로 교체. 행 못 찾으면 {"not_found"}."""
+    import openpyxl
+    from openpyxl.styles import Alignment
+    wb = openpyxl.load_workbook(path)
+    ws = wb.active
+    row = _find_duplicate(ws, old_content)
+    if row is None:
+        wb.close()
+        return {"ok": False, "not_found": True}
+    e = ws.cell(row=row, column=5, value=new_content)
+    e.alignment = Alignment(vertical="center", wrap_text=True)
+    n_lines = new_content.count("\n") + 1
+    cur_h = ws.row_dimensions[row].height or 0
+    ws.row_dimensions[row].height = min(max(18 * n_lines + 6, 24, cur_h), 400)
+    wb.save(path)
+    wb.close()
+    return {"ok": True, "row": row}
+
+
+def update_issue_text(issue_id, new_text):
+    """이슈 원문(엑셀에 쓰는 그대로의 생 텍스트) 수정 — 서버 엑셀과 함께 갱신.
+
+    · 프로그램이 기록한 행(server_export_text)이나 자동수집 원문(raw_text)과
+      일치하는 엑셀 행을 찾아 내용을 교체한다.
+    · 행이 없으면(수기로 지워짐 등) 새 행으로 기록한다 — 수정 저장의 의미는
+      '이 내용이 서버에 있어야 한다'이므로.
+    · DB 는 원문·증상/조치(재파싱)·제목·분류·태그를 함께 갱신한다.
+    """
+    new_text = (new_text or "").replace("\r\n", "\n").strip()
+    if not new_text:
+        return {"ok": False, "error": "내용이 비어 있습니다. 삭제하려면 [삭제] 버튼을 사용하세요."}
+
+    issue = db.query("SELECT * FROM issue_history WHERE id=?", (int(issue_id),), one=True)
+    if not issue:
+        return {"ok": False, "error": f"이슈 #{issue_id}를 찾을 수 없습니다."}
+    keys = issue.keys()
+    old = (issue["server_export_text"] if "server_export_text" in keys else None) \
+        or (issue["raw_text"] or "")
+
+    target = find_issue_file(issue["model_name"], issue["tester_type"])
+    if not target.get("ok"):
+        return target                                    # 모델 폴더/파일 못 찾음 — 명확한 오류
+    if target.get("locked"):
+        return {"ok": False, "locked": True,
+                "error": _LOCK_MSG.format(name=target["name"])}
+
+    appended = False
+    try:
+        r = replace_entry(target["path"], old, new_text) if _norm_text(old) else \
+            {"ok": False, "not_found": True}
+        if r.get("not_found"):                           # 원본 행 없음 → 새 행으로 기록
+            date_str = (issue["issue_date"] or "").strip() or \
+                datetime.date.today().strftime("%Y-%m-%d")
+            r = append_entry(target["path"], date_str, new_text)
+            appended = True
+    except PermissionError:
+        return {"ok": False, "locked": True,
+                "error": _LOCK_MSG.format(name=target["name"])}
+    except Exception as e:                               # noqa: BLE001
+        return {"ok": False, "error":
+                f"서버 엑셀 수정 중 오류가 발생했습니다: {e}\n파일: {target['path']}"}
+
+    try:
+        if not _verify_written(target["path"], r["row"], new_text):
+            return {"ok": False, "error":
+                    "수정 후 검증에 실패했습니다(파일에서 수정한 내용을 찾지 못함).\n"
+                    f"파일을 직접 확인해 주세요: {target['path']}"}
+    except Exception:                                    # noqa: BLE001
+        pass
+
+    # DB 갱신 — 원문 그대로 + 목록 표시용 필드 재구성
+    from app import tagging
+    import importlib.util
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    spec = importlib.util.spec_from_file_location(
+        "knk_import_issues", os.path.join(base, "tools", "import_issues.py"))
+    imp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(imp)
+    unit, symptoms, actions = imp.split_symptom_action(new_text)
+    title = imp.make_title(unit, " / ".join(symptoms), new_text)
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        "UPDATE issue_history SET raw_text=?, symptom=?, action=?, title=?, item=?, "
+        "unit_label=COALESCE(NULLIF(?,''), unit_label), symptom_type=?, tags=?, "
+        "server_export=?, server_export_text=?, updated_at=? WHERE id=?",
+        (new_text, " / ".join(symptoms) or new_text, " / ".join(actions), title, title,
+         unit, tagging.classify_category(new_text),
+         tagging.tags_field(tagging.auto_tags(new_text)),
+         f"{target['path']} @ {now}", new_text, now, int(issue_id)))
+    from app import api
+    api.audit("이슈 원문수정", f"{issue['model_name']} #{issue_id}",
+              f"{os.path.basename(target['path'])} {r['row']}행"
+              + (" (원본 행 없음 — 새로 기록)" if appended else ""))
+    return {"ok": True, "row": r["row"], "appended": appended, "path": target["path"]}
+
+
 # ---------------------------------------------------------------- 기록 행 삭제
 def remove_entry(path, content):
     """엑셀에서 이 프로그램이 기록한 행(내용 일치)을 비운다 — 이슈 삭제 시 사용.

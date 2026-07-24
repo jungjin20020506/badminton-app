@@ -1717,6 +1717,17 @@ const App = (() => {
               <button type="button" class="btn btn-ghost btn-mini" onclick="event.stopPropagation();App.pasteFromClipboard()">📋 클립보드에서 붙여넣기</button></div>
           </div>
           <div class="photo-grid mt12" id="issuePhotoGrid"></div></div>
+        <!-- 원문 편집 (수정 시에만 표시) — 엑셀에 쓰는 그대로의 생 텍스트를 수정하면
+             서버 출하이슈사항 엑셀의 해당 행도 같은 내용으로 함께 바뀐다 -->
+        <div id="rawEditBox" class="hidden mt16" style="border-top:1px solid var(--line);padding-top:14px">
+          <div class="field"><label>📝 서버 기록 원문으로 수정
+            <span class="hint" style="font-weight:400">— 엑셀에 적는 그대로. 저장하면 서버 출하이슈사항 엑셀의 이 행이 함께 수정됩니다</span></label>
+            <textarea class="input" id="i_raw" rows="6" style="font-family:var(--mono);font-size:12.5px"
+              placeholder="예)&#10;1,2호기&#10;-.R0.3 시료로 검토진행&#10;-.반복성 시 가성불량 발생&#10;->핀블록 교체 후 정상 확인"></textarea></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px">
+            <button class="btn btn-primary" onclick="App.saveIssueRaw()">원문 저장 (서버 엑셀 함께 수정)</button>
+          </div>
+        </div>
         <div class="row-between mt12">
           <button class="btn btn-ghost" onclick="App.resetIssueForm()">새로 작성</button>
           <button class="btn btn-primary" id="issueSaveBtn" onclick="App.saveIssue()">저장</button>
@@ -1947,6 +1958,33 @@ const App = (() => {
     loadIssuePhotos(null);
     $('issueSaveBtn').textContent = '저장';
     $('issueErr').textContent = '';
+    if ($('rawEditBox')) { $('rawEditBox').classList.add('hidden'); $('i_raw').value = ''; }
+  }
+
+  // 원문(생 텍스트) 수정 저장 — 서버 출하이슈사항 엑셀의 해당 행도 함께 수정된다.
+  async function saveIssueRaw() {
+    const id = Number($('i_id').value);
+    if (!id) { alert('수정할 이슈를 먼저 목록에서 선택하세요.'); return; }
+    const text = $('i_raw').value;
+    if (!text.trim()) { alert('내용이 비어 있습니다. 삭제하려면 [삭제] 버튼을 사용하세요.'); return; }
+    let r;
+    try { r = await api.post('/api/issue/update_raw', { issue_id: id, text }); }
+    catch (e) { alert('서버 요청에 실패했습니다. 네트워크를 확인해 주세요.'); return; }
+    if (!r || !r.ok) {
+      const err = (r && r.error) || '알 수 없는 오류';
+      $('issueErr').innerHTML = `<div class="warn-box"><b>⚠ 원문 수정 실패</b>
+        <div class="mt8" style="white-space:pre-line">${esc(err)}</div></div>`;
+      alert((r && r.locked)
+        ? '이 모델의 출하이슈사항 엑셀이 열려 있습니다.\n\n엑셀을 닫은 뒤 다시 [원문 저장]을 눌러 주세요.'
+        : '원문 수정 실패\n\n' + err);
+      return;
+    }
+    toast(r.appended
+      ? `서버 엑셀에서 기존 행을 찾지 못해 새 행(${r.row}행)으로 기록했습니다.`
+      : `서버 출하이슈사항 엑셀 ${r.row}행이 함께 수정되었습니다.`);
+    resetIssueForm();
+    if ($('issueForm')) $('issueForm').open = false;
+    loadIssues();
   }
 
   function editIssue(id) {
@@ -1970,6 +2008,11 @@ const App = (() => {
     state.issues.baseUpdatedAt = i.updated_at || '';   // 충돌 감지 기준 시각
     renderTagPicker();
     loadIssuePhotos(i.id);
+    // 원문 편집칸 — 서버 엑셀에 기록된(또는 자동수집된) 원문을 생 텍스트로 수정
+    if ($('rawEditBox')) {
+      $('rawEditBox').classList.remove('hidden');
+      $('i_raw').value = i.server_export_text || i.raw_text || '';
+    }
     $('issueSaveBtn').textContent = '수정 저장';
     if (i.updated_by) {
       $('issueErr').innerHTML = `<span class="hint">최근 수정: ${esc(i.updated_by)} · ${esc(i.updated_at || '')}</span>`;
@@ -1999,7 +2042,20 @@ const App = (() => {
     if (!payload.model_name || !payload.symptom) {
       $('issueErr').textContent = '모델명과 증상은 필수입니다.'; return;
     }
-    const isNew = !payload.id;               // 신규 등록만 서버 엑셀에 기록(수정은 제외)
+    const isNew = !payload.id;               // 신규 등록만 서버 엑셀에 기록(수정은 원문 편집으로)
+    // 저장 전에 서버 엑셀이 열려 있는지 미리 확인 — 열려 있으면 닫으라고 안내하고 중단
+    if (isNew) {
+      let chk = null;
+      try { chk = await api.post('/api/issue/check_excel', { model: payload.model_name, tester_type: payload.tester_type }); }
+      catch (e) { /* 확인 실패 — 저장 단계의 기존 오류 처리에 맡김 */ }
+      if (chk && chk.locked) {
+        $('issueErr').innerHTML = `<div class="warn-box"><b>⚠ 서버 출하이슈사항 엑셀이 열려 있습니다.</b>
+          <div class="mt8" style="white-space:pre-line">${esc(chk.error || '')}</div></div>`;
+        alert('이 모델의 출하이슈사항 엑셀이 다른 곳에서 열려 있습니다.\n\n' +
+              '엑셀을 닫은 뒤 다시 [저장]을 눌러 주세요.\n(닫지 않으면 서버에 기록할 수 없습니다)');
+        return;
+      }
+    }
     const res = await api.post('/api/issue/save', payload);
     if (res.conflict) {
       $('issueErr').innerHTML = `⚠ ${esc(res.message)}<br>` +
@@ -5283,7 +5339,7 @@ const App = (() => {
     resetHistoryFilter, searchHistory, toggleHistoryRow, toggleAllHistory, deleteSelectedHistory, exportHistory,
     historyPage,
     openRun, deleteRun, resumeRun,
-    loadIssues, resetIssueForm, editIssue, saveIssue, deleteIssue, retryIssueExport,
+    loadIssues, resetIssueForm, editIssue, saveIssue, saveIssueRaw, deleteIssue, retryIssueExport,
     issuePage, toggleIssue, toggleFormTag, filterByTag,
     suggestTags, autoTagInput,
     renderAnalytics, genDraft, copyDraft, openIssuesFor,
