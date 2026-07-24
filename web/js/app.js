@@ -4844,11 +4844,34 @@ const App = (() => {
     if (isNaN(l) && isNaN(h)) return false;
     return (!isNaN(l) && v < l) || (!isNaN(h) && v > h);
   }
-  // 빨간 표시는 '검사 항목'(First/Last/Diff 같은 실측값)에만 한다.
+  // 스펙 경계(MIN/MAX) 10% 이내 근접 — 이탈은 아니지만 주의(노란색).
+  // 양쪽 스펙: 유효 범위(span)의 10% 이내로 경계에 붙으면 근접.
+  // 한쪽 스펙(Diff ≤45 등): 그 한계값의 10% 이내.
+  function monSpecWarn(value, lo, hi) {
+    const v = parseFloat(value);
+    if (isNaN(v)) return false;
+    if (monSpecNg(value, lo, hi)) return false;        // 이탈은 빨강이 우선
+    const l = parseFloat(lo), h = parseFloat(hi);
+    const hasL = !isNaN(l), hasH = !isNaN(h);
+    if (hasL && hasH) {
+      const m = (h - l) * 0.10;
+      if (m <= 0) return false;
+      // 경계값이 0인 쪽은 근접 경고에서 제외 — 0은 물리적 바닥(First/Last 0~750 등)이라
+      // 0에 가까운 값은 위험 신호가 아니다. (0이 아닌 경계에 붙을 때만 노랑)
+      return (l !== 0 && (v - l) <= m) || (h !== 0 && (h - v) <= m);
+    }
+    if (!hasL && !hasH) return false;
+    const lim = hasL ? l : h;
+    const m = Math.abs(lim) * 0.10;
+    return m > 0 && Math.abs(v - lim) <= m;
+  }
+  // 빨간/노란 표시는 '검사 항목'(First/Last/Diff 같은 실측값)에만 한다.
   // WATERPROOF 처럼 항목을 묶는 그룹 판정($L·?G)은 값이 아니라 묶음 결과라 제외.
   const MON_GROUP_TYPES = new Set(['L', 'G']);
   const monMeasNg = (m) => !MON_GROUP_TYPES.has(m.type)
     && (String(m.result || '').toUpperCase() === 'NG' || monSpecNg(m.value, m.spec_min, m.spec_max));
+  const monMeasWarn = (m) => !MON_GROUP_TYPES.has(m.type)
+    && monSpecWarn(m.value, m.spec_min, m.spec_max);
 
   function monDlBuild(runs) {
     const cols = [], meta = {};
@@ -4876,13 +4899,16 @@ const App = (() => {
     const rows = runs.map((r, i) => {
       const vals = {};
       keyed(r).forEach(([key, m]) => {
-        vals[key] = { v: m.value, ng: monMeasNg(m) };
+        vals[key] = { v: m.value, ng: monMeasNg(m), warn: monMeasWarn(m) };
       });
+      const warnCols = cols.map(c => !!(vals[c] && vals[c].warn));
       return {
         cells: [i + 1, r.time, r.equip_no, r.model, r.process,
                 ...cols.map(c => (vals[c] ? vals[c].v : '')), r.tact, r.result],
         ngCols: cols.map(c => !!(vals[c] && vals[c].ng)),
+        warnCols,
         isNg: r.is_ng,
+        isWarn: !r.is_ng && warnCols.some(Boolean),   // 경계 근접 회차 (불량이면 빨강 우선)
       };
     });
     return { head, typeRow, minRow, maxRow, rows, cols, meta };
@@ -4954,10 +4980,12 @@ const App = (() => {
         ${d.rows.map(r => {
           const last = r.cells.length - 1;
           return `<tr>${r.cells.map((c, ci) => {
-            if (ci === 0) return `<td class="${r.isNg ? 'dl-ngno' : ''}">${esc(c)}</td>`;
+            if (ci === 0) return `<td class="${r.isNg ? 'dl-ngno' : (r.isWarn ? 'dl-warnno' : '')}">${esc(c)}</td>`;
             if (ci === last) return `<td><span class="jbadge ${r.isNg ? 'j-알림' : 'j-정상'}">${esc(c)}</span></td>`;
-            const ng = ci >= 5 && ci < 5 + d.cols.length && r.ngCols[ci - 5];
-            return `<td class="${ci >= 5 ? 'val' : ''}${ng ? ' dl-ng' : ''}">${esc(c)}</td>`;
+            const inCols = ci >= 5 && ci < 5 + d.cols.length;
+            const ng = inCols && r.ngCols[ci - 5];
+            const warn = inCols && !ng && r.warnCols[ci - 5];
+            return `<td class="${ci >= 5 ? 'val' : ''}${ng ? ' dl-ng' : ''}${warn ? ' dl-warn' : ''}">${esc(c)}</td>`;
           }).join('')}</tr>`;
         }).join('')}
       </tbody>

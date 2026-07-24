@@ -873,9 +873,13 @@ table.mon-dl tr.dl-meta td { font-family: var(--mono); font-size: 10.5px; color:
   background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 4px 11px; }
 /* 스펙을 벗어난 검사값 — 빨간 글씨 (PBA 데이터로거와 동일) */
 table.mon-dl td.dl-ng { color: var(--danger); font-weight: 700; }
-/* 불량이 난 회차의 검사 순서 번호 — 빨간 바탕 */
+/* 스펙 경계(MIN/MAX) 10% 이내 근접 — 노란 글씨 (주의) */
+table.mon-dl td.dl-warn { color: var(--warn); font-weight: 700; }
+/* 불량이 난 회차의 검사 순서 번호 — 빨간 바탕 / 경계 근접 회차 — 노란 바탕 */
 table.mon-dl tbody td.dl-ngno,
 table.mon-dl tbody tr:hover td.dl-ngno { background: var(--danger); color: #fff; font-weight: 700; }
+table.mon-dl tbody td.dl-warnno,
+table.mon-dl tbody tr:hover td.dl-warnno { background: var(--warn); color: #14171C; font-weight: 700; }
 
 /* VIEW SUMMARY — PBA 데이터로거 하단 요약(AVG/MIN/MAX/Peak-peak/CPK) */
 table.mon-dl tfoot tr.dl-sum td { position: sticky; bottom: 0; font-family: var(--mono);
