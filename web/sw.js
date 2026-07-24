@@ -1,7 +1,7 @@
 /* KNK 지킴 — 서비스워커.
    목적: PWA 설치 요건 충족(홈 화면에 추가) + 정적 자원 캐시.
    API 요청은 절대 캐시하지 않는다(검증 데이터는 항상 최신이어야 함). */
-const CACHE = 'knk-jikim-v1';
+const CACHE = 'knk-jikim-v2';   // v2: 설치 이름 KNK JIKIM · 아이콘(파랑+KNK) 교체
 const STATIC = ['/', '/index.html', '/css/style.css', '/js/app.js',
                 '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
                 '/manifest.json'];
