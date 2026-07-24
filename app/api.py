@@ -10,6 +10,27 @@ from app.parsers import get_parser
 SAMPLE_LOG = os.path.join(os.path.dirname(__file__), "parsers", "samples", "sample_pass_data.csv")
 
 
+def _model_match(model_name, column="model_name", bidirectional=False):
+    """콤마로 구분된 여러 모델명을 OR 로 묶어 부분 일치 조건을 만든다.
+
+    'SM-S95,SM-A2' → 모델명에 SM-S95 '또는' SM-A2 가 들어 있으면 모두 매칭.
+    bidirectional=True 면 검색어가 저장된 모델명을 포함하는 경우도 매칭(이슈 유연검색).
+    반환: (sql_조각, args) — 유효한 term 이 없으면 (None, []).
+    """
+    terms = [t.strip() for t in str(model_name or "").split(",") if t.strip()]
+    if not terms:
+        return None, []
+    parts, args = [], []
+    for t in terms:
+        if bidirectional:
+            parts.append(f"(? LIKE '%'||{column}||'%' OR {column} LIKE '%'||?||'%')")
+            args += [t, t]
+        else:
+            parts.append(f"{column} LIKE ?")
+            args.append(f"%{t}%")
+    return "(" + " OR ".join(parts) + ")", args
+
+
 # ---------------------------------------------------------------- 조회
 def bootstrap():
     return {
@@ -20,6 +41,7 @@ def bootstrap():
         "symptom_types": [r["name"] for r in db.query("SELECT name FROM symptom_type ORDER BY sort_order")],
         "tags": [r["name"] for r in db.query("SELECT name FROM tag ORDER BY sort_order")],
         "issue_photo_types": ISSUE_PHOTO_TYPES,
+        "storage": db.storage_info(),
         # 태그 자동 추천용 정규식(클라이언트에서 즉시 매칭 — 서버왕복 없이 실시간 추천)
         "tag_rules": [{"name": n, "pattern": p} for n, p in tagging.TAG_RULES],
         "sample_logs": sample_log_names(),
@@ -45,7 +67,7 @@ def get_stats():
         "GROUP BY t.tester_type ORDER BY c DESC")
     recent = db.query(
         "SELECT r.run_id, r.run_date, r.result, r.verify_mode, "
-        "       t.model_name, t.tester_type, t.unit_no, t.customer "
+        "       t.model_name, t.tester_type, t.unit_no, t.unit_label, t.unit_list, t.customer "
         "FROM inspection_run r JOIN tester t ON t.tester_id = r.tester_id "
         "ORDER BY r.run_date DESC, r.run_id DESC LIMIT 5")
     return {
@@ -64,8 +86,10 @@ def get_issues(model_name=None, tester_type=None):
     sql = "SELECT * FROM issue_history WHERE 1=1"
     args = []
     if model_name:
-        sql += " AND (? LIKE '%'||model_name||'%' OR model_name LIKE '%'||?||'%')"
-        args += [model_name, model_name]
+        clause, a = _model_match(model_name, "model_name", bidirectional=True)
+        if clause:
+            sql += " AND " + clause
+            args += a
     if tester_type:
         sql += " AND tester_type = ?"
         args.append(tester_type)
@@ -78,8 +102,10 @@ def list_issues(model_name=None, tester_type=None, customer=None, symptom_type=N
     sql = "SELECT * FROM issue_history WHERE 1=1"
     args = []
     if model_name:
-        sql += " AND model_name LIKE ?"
-        args.append(f"%{model_name}%")
+        clause, a = _model_match(model_name, "model_name")
+        if clause:
+            sql += " AND " + clause
+            args += a
     if tester_type:
         sql += " AND tester_type = ?"
         args.append(tester_type)
@@ -451,8 +477,15 @@ def quick_add_issue(text):
     })
     audit("이슈 퀵등록", model, text[:120])
     row = db.query("SELECT * FROM issue_history WHERE id=?", (res["id"],), one=True)
+    # 서버 출하이슈사항에도 기록 — 실패해도 등록 자체는 유지하되 결과를 함께 알린다
+    from app import issue_export
+    try:
+        server_export = issue_export.export_issue(res["id"])
+    except Exception as e:                                   # noqa: BLE001
+        server_export = {"ok": False, "error": str(e)}
     return {"id": res["id"], "model": model, "unit": unit, "customer": cust,
-            "tags": row["tags"], "symptom_type": row["symptom_type"]}
+            "tags": row["tags"], "symptom_type": row["symptom_type"],
+            "server_export": server_export}
 
 
 # ---------------------------------------------------------------- 문구 템플릿
@@ -635,17 +668,24 @@ def prior_unit_values(model_name, tester_type, current_unit_no, item="DIFF"):
 
 # ---------------------------------------------------------------- 검증 세션
 def start_run(payload):
+    from app import zserver
     model_name = payload.get("model_name", "").strip()
     tester_type = payload.get("tester_type", "").strip()
-    unit_no = payload.get("unit_no")
     customer = payload.get("customer", "").strip()
     mode = payload.get("verify_mode", "신규").strip()
 
+    # 호기: "1" · "3~7" · "1,2,5" 처럼 여러 검사기를 한 번에 묶어 검증할 수 있다.
+    #       unit_no 는 대표(첫) 호기 — 기존 통계/비교 로직과의 호환을 위해 유지.
+    units = zserver.parse_units(str(payload.get("units") or payload.get("unit_no") or ""))
+    unit_no = units[0] if units else None
+    label = zserver.unit_label(units)
+
     tester_id = db.execute(
-        """INSERT INTO tester(model_name,model_rev,tester_type,unit_no,board_type,
-                              made_date,legal_transfer_date,verify_mode,status,customer)
-           VALUES (?,?,?,?,?,?,?,?, '검증중', ?)""",
-        (model_name, payload.get("model_rev", ""), tester_type, unit_no,
+        """INSERT INTO tester(model_name,model_rev,tester_type,unit_no,unit_label,unit_list,
+                              board_type,made_date,legal_transfer_date,verify_mode,status,customer)
+           VALUES (?,?,?,?,?,?,?,?,?,?, '검증중', ?)""",
+        (model_name, payload.get("model_rev", ""), tester_type, unit_no, label,
+         ",".join(str(u) for u in units),
          payload.get("board_type", ""), payload.get("made_date", ""),
          payload.get("legal_transfer_date", ""), mode, customer),
     )
@@ -672,6 +712,8 @@ def start_run(payload):
     return {
         "run_id": run_id,
         "tester_id": tester_id,
+        "units": units,
+        "unit_label": label,
         "mode": mode,
         "mode_guide": _mode_guide(mode),
         "issues": get_issues(model_name, tester_type),
@@ -760,7 +802,7 @@ def parse_log(run_id, text, tester_type=None, model_name=None):
         summary[m["judge"]] = summary.get(m["judge"], 0) + 1
 
     # 호기 편차 비교 (양산 모드, DIFF 기준)
-    run = db.query("SELECT r.*, t.model_name, t.tester_type, t.unit_no, t.verify_mode "
+    run = db.query("SELECT r.*, t.model_name, t.tester_type, t.unit_no, t.unit_label, t.verify_mode "
                    "FROM inspection_run r JOIN tester t ON t.tester_id=r.tester_id "
                    "WHERE r.run_id=?", (run_id,), one=True)
     unit_cmp = None
@@ -791,7 +833,8 @@ def finish_run(run_id, comment="", component=None, symptom_type=None, issue=None
     db.execute("UPDATE inspection_run SET result = ?, inspector_comment = ? WHERE run_id = ?",
                (result, comment, run_id))
     run = db.query(
-        "SELECT r.tester_id, r.inspector, t.model_name, t.model_rev, t.tester_type, t.unit_no, t.customer "
+        "SELECT r.tester_id, r.inspector, t.model_name, t.model_rev, t.tester_type, "
+        "       t.unit_no, t.unit_label, t.unit_list, t.customer "
         "FROM inspection_run r JOIN tester t ON t.tester_id = r.tester_id WHERE r.run_id = ?",
         (run_id,), one=True,
     )
@@ -811,7 +854,7 @@ def finish_run(run_id, comment="", component=None, symptom_type=None, issue=None
                 "model_name": run["model_name"],
                 "tester_type": run["tester_type"],
                 "customer": run["customer"] or "",
-                "unit_label": f"{run['unit_no']}호기" if run["unit_no"] else "",
+                "unit_label": run["unit_label"] or (f"{run['unit_no']}호기" if run["unit_no"] else ""),
                 "issue_date": time.strftime("%Y-%m-%d"),
                 "sample_rev": issue.get("sample_rev") or run["model_rev"] or "",
                 "symptom": issue.get("symptom", ""),
@@ -820,7 +863,21 @@ def finish_run(run_id, comment="", component=None, symptom_type=None, issue=None
                 "status": issue.get("status", ""),
                 "tags": issue.get("tags") or [],
             })["id"]
-    return {"run_id": run_id, "result": result, "comment": comment, "issue_id": issue_id}
+    # 서버(Z:)의 출하이슈사항 엑셀을 읽어 이슈관리에 반영.
+    # 실패(엑셀 열려 있음 등)해도 검증 완료 자체는 되돌리지 않고, 경고만 함께 돌려준다.
+    server_issues = None
+    if run:
+        try:
+            from app import zserver
+            server_issues = zserver.import_model_issues(
+                run["model_name"], run["tester_type"], run["customer"] or "")
+        except Exception as e:                                      # noqa: BLE001
+            server_issues = {"ok": False, "error": str(e)}
+
+    return {"run_id": run_id, "result": result, "comment": comment,
+            "issue_id": issue_id, "server_issues": server_issues,
+            "model_name": run["model_name"] if run else "",
+            "tester_type": run["tester_type"] if run else ""}
 
 
 def get_issue_records(model_name=None, component=None):
@@ -828,8 +885,10 @@ def get_issue_records(model_name=None, component=None):
     sql = "SELECT * FROM issue_record WHERE 1=1"
     args = []
     if model_name:
-        sql += " AND (? LIKE '%'||model_name||'%' OR model_name LIKE '%'||?||'%')"
-        args += [model_name, model_name]
+        clause, a = _model_match(model_name, "model_name", bidirectional=True)
+        if clause:
+            sql += " AND " + clause
+            args += a
     if component:
         sql += " AND component = ?"
         args.append(component)
@@ -841,7 +900,7 @@ def search_history(filters):
     """검증 완료 이력 검색 — 날짜/모델명/고객사/검사기종류/판정결과로 필터링."""
     sql = """
         SELECT r.run_id, r.run_date, r.result, r.verify_mode, r.inspector, r.inspector_comment,
-               t.model_name, t.model_rev, t.tester_type, t.unit_no, t.customer
+               t.model_name, t.model_rev, t.tester_type, t.unit_no, t.unit_label, t.unit_list, t.customer
         FROM inspection_run r
         JOIN tester t ON t.tester_id = r.tester_id
         WHERE 1=1
@@ -860,8 +919,10 @@ def search_history(filters):
         sql += " AND date(r.run_date) <= date(?)"
         args.append(end)
     if model:
-        sql += " AND t.model_name LIKE ?"
-        args.append(f"%{model}%")
+        clause, a = _model_match(model, "t.model_name")
+        if clause:
+            sql += " AND " + clause
+            args += a
     if customer:
         sql += " AND t.customer LIKE ?"
         args.append(f"%{customer}%")
@@ -966,7 +1027,7 @@ def backup_db():
 
 def get_run(run_id):
     run = db.query(
-        "SELECT r.*, t.model_name, t.model_rev, t.tester_type, t.unit_no, t.customer "
+        "SELECT r.*, t.model_name, t.model_rev, t.tester_type, t.unit_no, t.unit_label, t.unit_list, t.customer "
         "FROM inspection_run r JOIN tester t ON t.tester_id=r.tester_id WHERE r.run_id=?",
         (run_id,), one=True,
     )

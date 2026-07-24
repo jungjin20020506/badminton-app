@@ -1,5 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1f37db"/>
-  <path d="M18 44V20h6l10 15V20h6v24h-6L24 29v15z" fill="#fff"/>
-  <circle cx="47" cy="41" r="4" fill="#12b981"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- KNK 지킴(JIKIM) — 네이비 위 원+체크(품질을 지킨다), 이음(레드) 아이콘의 형제 문법 -->
+  <rect width="512" height="512" rx="113" fill="#12233D"/>
+  <circle cx="250" cy="218" r="104" fill="none" stroke="#FFFFFF" stroke-width="24"/>
+  <path d="M196 224 L247 275 L364 138" fill="none" stroke="#2E7DE1" stroke-width="34"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="416" text-anchor="middle" fill="#FFFFFF"
+        font-family="Arial, 'Malgun Gothic', sans-serif" font-weight="bold"
+        font-size="96" letter-spacing="4">KNK</text>
 </svg>

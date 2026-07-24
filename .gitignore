@@ -22,6 +22,9 @@ tools/*_issues.json
 KakaoTalk_*
 *_image.png
 
+# 동봉 Python 런타임 (37MB) — 저장소에는 넣지 않고 폴더 복사로 배포
+runtime/
+
 # Logs
 *.log
 

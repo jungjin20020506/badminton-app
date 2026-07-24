@@ -4,9 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#0b0f14" />
-  <title>KNK 검사기 출하검증 시스템</title>
+  <meta name="theme-color" content="#12233D" />
+  <title>KNK 지킴 — 검사기 출하검증</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="KNK JIKIM" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -14,8 +20,8 @@
     <header class="header">
       <div class="container">
         <button class="logo" onclick="App.go('home')">
-          <span class="logo-mark">KNK</span>
-          <span class="logo-txt"><b>검사기 출하검증 시스템</b><span>Tester Shipment Verification</span></span>
+          <img class="logo-img" src="/favicon.svg" alt="KNK 지킴" width="32" height="32" />
+          <span class="logo-txt"><b>KNK 지킴</b><span>KNK JIKIM · Quality Guard</span></span>
         </button>
         <nav>
           <button class="navbtn" data-nav="home" onclick="App.go('home')"><span>홈</span></button>
@@ -24,10 +30,18 @@
           <button class="navbtn" data-nav="issues" onclick="App.go('issues')"><span>이슈 관리</span></button>
           <button class="navbtn" data-nav="analytics" onclick="App.go('analytics')"><span>📊 분석</span></button>
           <button class="navbtn" data-nav="chat" onclick="App.go('chat')"><span>🤖 AI 도우미</span></button>
+          <button class="navbtn" data-nav="monitor" onclick="App.go('monitor')"><span>📡 모니터</span></button>
           <button class="navbtn" title="단축키 도움말 (?)" onclick="App.showHelp()">⌨</button>
         </nav>
       </div>
     </header>
+
+    <!-- 홈 화면에 추가(앱 설치) 유도 — 설치 전이면 계속 표시, 설치하면 사라짐 -->
+    <div id="a2hsBar" class="a2hs hidden">
+      <span class="a2hs-txt">📲 <b>KNK 지킴</b>을 앱처럼 쓰세요 — 홈 화면에 추가하면 전체 화면으로 바로 열립니다.</span>
+      <button class="btn btn-primary btn-mini" id="a2hsBtn" onclick="App.installApp()">홈 화면에 추가</button>
+      <span class="a2hs-ios hidden" id="a2hsIos">Safari 하단 <b>공유 <span style="font-size:15px">⎋</span></b> → <b>홈 화면에 추가</b>를 눌러 주세요</span>
+    </div>
 
     <main class="main">
       <div class="container" id="view"><!-- JS 렌더링 --></div>
@@ -35,8 +49,8 @@
 
     <footer class="footer">
       <div class="container">
-        <span>© <span id="year"></span> 케이엔케이(KNK) · 품질팀 · 로컬 실행 프로그램</span>
-        <span class="demo">1단계 · 검사기 검증 (AI 미연동 완전 동작)</span>
+        <span>© <span id="year"></span> 케이엔케이(KNK) · 품질팀 · KNK 지킴</span>
+        <span class="demo">이음이 사람을 잇는다면, 지킴은 품질을 지킵니다</span>
       </div>
     </footer>
   </div>

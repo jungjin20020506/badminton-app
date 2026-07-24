@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS tester (
     model_name           TEXT NOT NULL,
     model_rev            TEXT,
     tester_type          TEXT NOT NULL,        -- 기능검사기 / 방수 / VSWR / LNA / PROXIMITY / 지문 / TSP
-    unit_no              INTEGER,              -- 호기 번호 (1,2,3 …)
+    unit_no              INTEGER,              -- 대표 호기 번호 (묶음이면 첫 호기)
+    unit_label           TEXT,                 -- 호기 표기 (예: "1호기", "3~7호기", "1,2,5호기")
+    unit_list            TEXT,                 -- 묶음 호기 원본 (예: "3,4,5,6,7")
     board_type           TEXT,
     made_date            TEXT,
     legal_transfer_date  TEXT,

@@ -4,14 +4,44 @@ import sqlite3
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+def is_network_path(p):
+    """UNC(\\\\서버\\공유) 또는 매핑된 네트워크 드라이브(Z: 등)인지."""
+    try:
+        p = os.path.abspath(p)
+    except (OSError, ValueError):
+        return False
+    if p.startswith("\\\\"):
+        return True
+    if os.name == "nt" and len(p) > 2 and p[1] == ":":
+        try:
+            import ctypes
+            # DRIVE_REMOTE(4) = 네트워크 드라이브
+            return ctypes.windll.kernel32.GetDriveTypeW(p[:3]) == 4
+        except Exception:                                    # noqa: BLE001
+            return False
+    return False
+
+
+def _local_app_dir():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "KNK출하검증")
+
+
 # 데이터 디렉터리:
 #  - KNK_DATA_DIR 환경변수가 있으면 그 경로
 #  - Vercel/서버리스(읽기전용 FS)면 /tmp (쓰기 가능)
+#  - 프로그램이 사내 서버(네트워크 드라이브/UNC)에 있으면 → 내 PC의 로컬 폴더
+#    (SQLite 파일을 SMB 공유에 두고 여러 명이 동시에 쓰면 DB가 깨진다.
+#     프로그램만 서버에서 공유하고, 데이터는 각 PC에 안전하게 보관한다.)
 #  - 그 외 로컬 실행이면 프로젝트/data
+_SEED_FROM = None
 if os.environ.get("KNK_DATA_DIR"):
     DATA_DIR = os.environ["KNK_DATA_DIR"]
 elif os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
     DATA_DIR = "/tmp/knk-data"
+elif is_network_path(BASE_DIR):
+    DATA_DIR = os.path.join(_local_app_dir(), "data")
+    _SEED_FROM = os.path.join(BASE_DIR, "data")     # 최초 1회 복사해 올 원본
 else:
     DATA_DIR = os.path.join(BASE_DIR, "data")
 
@@ -19,16 +49,59 @@ DB_PATH = os.path.join(DATA_DIR, "quality.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
 
 
+def storage_info():
+    """DB 위치와 공유 상태 — 화면에서 '지금 데이터가 어디 쌓이는지' 안내용.
+       네트워크 드라이브/UNC 에 DB가 있으면 동시 사용 시 손상 위험이 있어 경고한다."""
+    p = os.path.abspath(DB_PATH)
+    return {"db_path": p,
+            "on_network": is_network_path(p),
+            # 프로그램(실행 파일)이 사내 서버에 있는지 — 데이터는 내 PC에 저장된다는 안내용
+            "app_on_network": is_network_path(BASE_DIR),
+            "app_dir": os.path.abspath(BASE_DIR)}
+
+
+def seed_local_data():
+    """프로그램이 서버에 있을 때, 처음 실행하면 서버의 기존 데이터를 내 PC로 1회 복사.
+
+    서버 원본은 그대로 두고 복사만 한다(읽기 전용 취급). 이미 로컬 DB가 있으면
+    아무것도 하지 않으므로, 두 번째 실행부터는 내 PC 데이터만 쓴다.
+    """
+    if not _SEED_FROM or os.path.exists(os.path.join(DATA_DIR, "quality.db")):
+        return
+    src_db = os.path.join(_SEED_FROM, "quality.db")
+    if not os.path.isfile(src_db):
+        return
+    import shutil
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        shutil.copy2(src_db, os.path.join(DATA_DIR, "quality.db"))
+        for name in ("server_path.txt", "chatbot_config.json"):
+            s = os.path.join(_SEED_FROM, name)
+            if os.path.isfile(s):
+                shutil.copy2(s, os.path.join(DATA_DIR, name))
+        for sub in ("photos", "zthumb"):
+            s = os.path.join(_SEED_FROM, sub)
+            if os.path.isdir(s):
+                shutil.copytree(s, os.path.join(DATA_DIR, sub), dirs_exist_ok=True)
+        print(f"[안내] 서버의 기존 데이터를 내 PC로 복사했습니다 → {DATA_DIR}")
+    except OSError as e:
+        print(f"[안내] 서버 데이터 복사를 건너뜁니다: {e}")
+
+
 def get_conn():
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    # timeout: 여러 사람이 동시에 쓸 때 'database is locked' 로 즉시 실패하지 않고
+    #          최대 15초까지 재시도하도록 (팀 서버 모드에서 동시 저장 대비)
+    conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 15000")
     return conn
 
 
 def init_db():
     """스키마 생성 후, 비어 있으면 초기 데이터를 시딩한다."""
+    seed_local_data()          # 서버 실행 시 기존 데이터 1회 인계
     conn = get_conn()
     with open(SCHEMA_PATH, encoding="utf-8") as f:
         conn.executescript(f.read())
@@ -45,9 +118,18 @@ def init_db():
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(issue_history)").fetchall()}
     for col in ("issue_date", "unit_label", "customer", "board_type", "raw_text", "title",
                 "symptom_type", "tags", "cause", "status", "sample_rev",
-                "updated_at", "updated_by"):
+                "updated_at", "updated_by", "server_export"):
         if col not in cols:
             conn.execute(f"ALTER TABLE issue_history ADD COLUMN {col} TEXT")
+    # tester 호기 묶음 컬럼 보강 — 3~7호기처럼 여러 검사기를 한 번에 검증하는 경우
+    tcols = {r["name"] for r in conn.execute("PRAGMA table_info(tester)").fetchall()}
+    for col in ("unit_label", "unit_list"):
+        if col not in tcols:
+            conn.execute(f"ALTER TABLE tester ADD COLUMN {col} TEXT")
+    # 기존 행: 단일 호기 표기를 채워 화면 표시가 끊기지 않게 한다
+    conn.execute("UPDATE tester SET unit_label = unit_no || '호기', unit_list = unit_no "
+                 "WHERE unit_label IS NULL AND unit_no IS NOT NULL")
+
     # issue_photo 메타 컬럼 보강
     pcols = {r["name"] for r in conn.execute("PRAGMA table_info(issue_photo)").fetchall()}
     for col in ("photo_type", "caption", "created_at"):

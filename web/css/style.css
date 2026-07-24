@@ -1,38 +1,38 @@
 /* ===================================================================================
-   KNK 검사기 출하검증 시스템 — Dark Console Theme
-   설계 원칙
-     · 깊은 뉴트럴 다크 배경 + 얕은 표면(surface) 단계로 깊이 표현 (그림자 대신 경계선)
-     · 액센트는 시안 1색으로 절제 — 상태색(성공/주의/위험)만 예외
+   KNK 지킴 (KNK JIKIM) — Deep Steel Blue Dark Theme
+   설계 원칙 (컨셉 지시서)
+     · 정갈하고 냉정한 '계측기' 감성 — 장식 없음, 플랫, 정보 우선
+     · 포인트는 블루 단일 계열로 절제 — 빨강은 오직 FAIL/에러에만
      · 숫자·코드·식별자는 모노스페이스 → 계측 데이터를 다루는 도구다운 인상
-     · 장식 없음. 여백·정렬·타이포 위계로만 정돈
+     · 이음(레드)이 사람을 잇는다면, 지킴(블루)은 품질을 지킨다 — 형제 프로그램
    =================================================================================== */
 :root {
-  /* 표면 단계 */
-  --bg:        #0b0f14;   /* 페이지 바닥 */
-  --surface-1: #11161d;   /* 카드 */
-  --surface-2: #161c25;   /* 카드 안쪽 블록 */
-  --surface-3: #1c242f;   /* 입력·호버 */
-  --line:      #222b36;   /* 기본 경계선 */
-  --line-2:    #2c3746;   /* 강한 경계선 */
+  /* 표면 단계 (3단계 엘리베이션) */
+  --bg:        #0D0F12;   /* 페이지 바닥 — 푸른 기가 도는 근사 검정 */
+  --surface-1: #14171C;   /* 카드/패널 */
+  --surface-2: #1B1F26;   /* 상위 카드·모달·팝업 */
+  --surface-3: #20252E;   /* 입력·호버 */
+  --line:      #262B33;   /* 기본 경계선 */
+  --line-2:    #363C47;   /* 강한 경계선 */
 
   /* 텍스트 */
-  --text:      #e6edf3;
-  --text-2:    #adbccd;   /* 보조 */
-  --text-3:    #8496a9;   /* 흐림 — WCAG AA(4.5:1) 충족하도록 조정 */
+  --text:      #F2F4F7;
+  --text-2:    #A8B0BC;   /* 보조 */
+  --text-3:    #8B95A3;   /* 흐림 — 지시서 #6B7380 은 대비가 낮아 한 단계 밝게 */
 
-  /* 액센트 — 시안 계열 1색 */
-  --accent:    #22d3ee;
-  --accent-2:  #06b6d4;
-  --accent-dim:rgba(34,211,238,.12);
-  --accent-line:rgba(34,211,238,.32);
+  /* 포인트 — 블루 단일 계열 (메인 #2E7DE1 · 호버 #4C93F2 · 눌림 #1E5FB8) */
+  --accent:    #4C93F2;   /* 링크·강조 텍스트·활성 표시 */
+  --accent-2:  #2E7DE1;   /* 주요 버튼 채움 */
+  --accent-dim:rgba(46,125,225,.14);
+  --accent-line:rgba(76,147,242,.38);
 
-  /* 상태색 */
-  --ok:        #34d399;
-  --ok-dim:    rgba(52,211,153,.12);
-  --warn:      #fbbf24;
-  --warn-dim:  rgba(251,191,36,.12);
-  --danger:    #f87171;
-  --danger-dim:rgba(248,113,113,.12);
+  /* 판정/상태색 (의미 전용 — 장식 사용 금지) */
+  --ok:        #3DBE7B;
+  --ok-dim:    rgba(61,190,123,.13);
+  --warn:      #F5A524;
+  --warn-dim:  rgba(245,165,36,.13);
+  --danger:    #E5484D;
+  --danger-dim:rgba(229,72,77,.14);
 
   /* 하위호환 별칭 (기존 마크업이 참조) */
   --brand: var(--accent); --brand-700: var(--accent); --brand-800: var(--accent-2);
@@ -94,11 +94,21 @@ body.wide .container { max-width: 1440px; }
 }
 .header .container { display: flex; align-items: center; justify-content: space-between; height: 58px; gap: 20px; }
 .logo { display: flex; align-items: center; gap: 11px; background: none; border: 0; padding: 0; }
+.logo-img { width: 32px; height: 32px; border-radius: 8px; display: block; }
 .logo-mark {
   width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
   background: var(--surface-3); border: 1px solid var(--accent-line); color: var(--accent);
   font-family: var(--mono); font-weight: 700; font-size: 11px; letter-spacing: -.03em;
 }
+
+/* 📲 홈 화면에 추가(앱 설치) 안내 바 — 설치 전에는 계속, 설치하면 사라짐 */
+.a2hs {
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 16px; font-size: 12.5px; color: var(--text-2);
+  background: var(--accent-dim); border-bottom: 1px solid var(--line);
+}
+.a2hs b { color: var(--text); }
+.a2hs-ios { font-size: 12px; color: var(--accent); }
 .logo-txt b { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
 .logo-txt span { display: block; font-size: 10px; color: var(--text-3); font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .header nav { display: flex; gap: 2px; }
@@ -577,4 +587,361 @@ mark.hl { background: rgba(251,191,36,.22); color: var(--warn); padding: 0 3px; 
   .header nav .navbtn span { display: none; }
   .msg { max-width: 92%; }
   .card { padding: 16px; }
+}
+
+/* ---------- 서버 경로 설정 ---------- */
+.sync-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; }
+.sync-path .input { flex: 1; min-width: 220px; max-width: 380px; }
+
+/* ---------- 검사항목 접기 (마킹·인주TEST는 .pin 으로 항상 표시) ---------- */
+.check-list.collapsed > .ck-group,
+.check-list.collapsed > .check-row:not(.pin) { display: none; }
+.check-row.pin .info b::after { content: ' 📌'; font-size: 11px; opacity: .8; }
+.check-list.collapsed > .check-row.pin { background: var(--surface-2); }
+
+/* ---------- 안내 박스 ---------- */
+.warn-box { padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6;
+  border: 1px solid var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.ok-box { padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6;
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* ---------- Z: 서버 자료 ---------- */
+.z-open-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.z-open-row .hint { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
+.z-tester { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.z-tester:last-child { border-bottom: 0; }
+.z-session { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.z-session > summary { cursor: pointer; font-size: 13px; }
+.z-video { display: flex; align-items: center; justify-content: center; height: 110px;
+  background: var(--surface-2); color: var(--text-3); text-decoration: none; font-size: 13px; }
+/* 검사항목을 펼쳤을 때만 나오는 직전 호기 사진 */
+.ck-photo-tag { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--brand-700);
+  background: var(--brand-50); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.ck-photos { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); cursor: default; }
+.ck-photo-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; }
+.ck-photos .photo-grid { grid-template-columns: repeat(auto-fill, minmax(128px,1fr)); }
+
+/* ---------- 엑셀 미리보기 모달 ---------- */
+.modal { position: fixed; inset: 0; z-index: 190; background: rgba(5,8,11,.75);
+  backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 24px; }
+.modal.on { display: flex; }
+.modal-box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  width: min(1100px, 100%); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line); font-size: 15px; }
+.modal-body { padding: 18px; overflow: auto; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table.xl-preview { border-collapse: collapse; font-size: 12.5px; width: max-content; min-width: 100%; }
+table.xl-preview th, table.xl-preview td { border: 1px solid var(--line); padding: 6px 10px;
+  vertical-align: top; white-space: pre-wrap; max-width: 420px; }
+table.xl-preview th { background: var(--surface-2); font-weight: 600; text-align: left; position: sticky; top: 0; }
+/* 엑셀에 박힌 출하이슈 사진 — 앵커된 행 옆에 캡처처럼 표시 */
+.xl-preview .xl-photo-col { max-width: none; }
+.xl-photo { display: inline-block; margin: 2px 6px 2px 0; vertical-align: top; }
+.xl-photo img { display: block; max-width: 360px; height: auto; border: 1px solid var(--line);
+  border-radius: 6px; cursor: zoom-in; background: var(--surface-2); }
+.xl-photo img:hover { border-color: var(--brand-400); }
+
+/* ---------- 📡 KNK 모니터 (TinyUK3 검사기 연동) ---------- */
+.mon-conn { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.mon-conn > label { font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.mon-conn select.input, .mon-conn input.input { width: auto; padding: 8px 10px; font-family: var(--mono); font-size: 12.5px; }
+.mon-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); box-shadow: 0 0 0 3px var(--surface-3); flex: 0 0 auto; }
+.mon-dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-dim); }
+.mon-unsafe { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--warn);
+  cursor: pointer; padding: 6px 11px; border: 1px solid rgba(251,191,36,.25); border-radius: 7px; background: var(--warn-dim); }
+
+.mon-tabs { display: flex; gap: 2px; margin-top: 18px; border-bottom: 1px solid var(--line); }
+.mon-tab { border: 0; background: none; padding: 9px 16px; font-weight: 700; font-size: 13px; color: var(--text-3);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: .14s; }
+.mon-tab:hover { color: var(--text); }
+.mon-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+.mon-split { display: grid; grid-template-columns: minmax(0,5fr) minmax(0,4fr); gap: 14px; align-items: start; }
+table.meas tr.m-ng td { background: var(--danger-dim); }
+table.meas tr.m-sel td { background: var(--accent-dim); }
+table.meas tr.m-sel td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
+.mon-term, .mon-screen { background: #0a0e13; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55; height: 430px; overflow: auto;
+  white-space: pre-wrap; word-break: break-all; color: #d8dee9; }
+.mon-screen { white-space: pre; word-break: normal; height: 520px; }
+.mon-term .tx { color: var(--accent); font-weight: 700; }
+.mon-cmd { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+
+/* 카드 3장(DI/DO/검사 시작)이 같은 높이로 늘어나도록 stretch(기본값) 사용 */
+.mon-io { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin-top: 14px; }
+.mon-io .card { padding: 16px 18px; }
+.mon-io > .card + .card { margin-top: 0; }   /* 전역 .card+.card 마진이 그리드 높이를 어긋나게 하는 것 방지 */
+/* 세로 우선 배치 — 왼쪽 열 CH01-08, 오른쪽 열 CH09-16 (장비 I/O Block Test 화면과 동일) */
+.lamp-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+  grid-template-rows: repeat(8, auto); grid-auto-flow: column;
+  gap: 4px 18px; align-content: start; }
+.lamp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lamp-name { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); }
+.lamp { min-width: 54px; text-align: center; padding: 3px 8px; border-radius: 5px; font-family: var(--mono);
+  font-size: 11px; font-weight: 700; background: var(--surface-3); color: var(--text-3);
+  border: 1px solid var(--line-2); user-select: none; transition: .12s; }
+.lamp.hi { background: var(--ok-dim); color: var(--ok); border-color: rgba(52,211,153,.4); }
+.lamp.lo { background: var(--surface-2); color: var(--text-3); }
+.lamp.click { cursor: pointer; }
+.lamp.click:hover { border-color: var(--accent-line); }
+
+.mon-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mon-grp { min-width: 82px; font-size: 10.5px; font-weight: 700; color: var(--text-3);
+  font-family: var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+.mon-note { font-size: 11.5px; color: var(--text-3); line-height: 1.6; margin-top: 12px; font-family: var(--mono); }
+
+/* ---------- ⚙ 터미널 설정 (KNK터미널 Configuration 과 같은 구성) ---------- */
+/* ⚡ 반자동 시작 버튼 — 평소 숨김(Ctrl+T 5연타로 표시), 켜면 색이 채워진다 */
+.mon-auto { border-color: var(--line-2); color: var(--text-3); transition: .14s; }
+.mon-auto:hover { color: var(--text); border-color: var(--accent-line); }
+.mon-auto.on { background: var(--warn); border-color: var(--warn); color: #1a1400;
+  font-weight: 800; box-shadow: 0 0 0 3px var(--warn-dim); }
+.mon-auto.on:hover { color: #1a1400; }
+
+/* 반자동 시작 설정 창 — 시작 순서 편집 */
+.auto-cfg .cfg-box legend { color: var(--warn); }
+.auto-steps { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.auto-step { display: flex; align-items: center; gap: 6px; }
+.auto-step .as-no { width: 18px; flex: 0 0 auto; font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--warn); text-align: center; }
+.auto-step .as-cmd { flex: 1; min-width: 0; padding: 6px 9px; font-size: 12.5px; }
+.auto-step .as-wait { width: 64px; flex: 0 0 auto; padding: 6px 6px; font-size: 12px;
+  font-family: var(--mono); }
+.auto-step .btn-ghost { padding: 3px 7px; }
+
+/* 터미널 슬롯 상단 카운터 — 총/OK/NG */
+.mon-cnt { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 7px;
+  padding: 4px 9px; background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: 6px; font-size: 11px; font-family: var(--mono); }
+.mon-cnt b { font-size: 12.5px; }
+.mon-cnt .mc-model { color: var(--accent); font-weight: 700; max-width: 190px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-right: 8px; border-right: 1px solid var(--line-2); }
+.mon-cnt .mc-t { color: var(--text-2); }
+.mon-cnt .mc-ok { color: var(--ok); }
+.mon-cnt .mc-ng { color: var(--danger); }
+.mon-cnt .mc-warn { color: var(--warn); }
+.mon-cnt .mc-auto { color: #1a1400; background: var(--warn); border-radius: 5px;
+  padding: 1px 8px; font-weight: 700; }
+.mon-cnt .mc-dim { color: var(--text-3); }
+
+/* 터미널 화면에 직접 타이핑 — KNK터미널과 같은 입력 커서 */
+.mon-screen { cursor: text; }
+.mon-screen:focus { outline: none; border-color: var(--accent-line);
+  box-shadow: inset 0 0 0 1px var(--accent-line); }
+.mon-caretline .typed { color: #ffffff; font-weight: 700; }
+.mon-caretline .caret { color: var(--accent); opacity: .25; }
+.mon-screen:focus .mon-caretline .caret { animation: mon-blink 1.05s step-end infinite; opacity: 1; }
+@keyframes mon-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+
+.cfg-wrap { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cfg-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.cfg-box { border: 1px solid var(--line); border-radius: 9px; padding: 6px 14px 14px;
+  margin: 0; background: var(--surface-2); }
+.cfg-box legend { font-size: 11.5px; font-weight: 700; color: var(--accent); padding: 0 7px;
+  letter-spacing: .02em; }
+.cfg-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 9px; }
+.cfg-row > label:first-child { width: 84px; flex: 0 0 auto; font-size: 12px; font-weight: 600;
+  color: var(--text-2); }
+.cfg-row .input { width: auto; padding: 6px 9px; font-family: var(--mono); font-size: 12.5px; }
+.cfg-radios { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; }
+.cfg-radios label { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+  color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.cfg-radios label.off { color: var(--text-3); opacity: .5; cursor: not-allowed; }
+.cfg-note { font-size: 11.5px; color: var(--text-3); }
+.cfg-inf { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ok);
+  background: var(--ok-dim); border: 1px solid rgba(52,211,153,.3); border-radius: 6px; padding: 4px 12px; }
+/* 항목 설명 버튼 — 각 줄 오른쪽 끝 */
+.cfg-q { margin-left: auto; width: 21px; height: 21px; flex: 0 0 auto; border-radius: 50%;
+  border: 1px solid var(--line-2); background: var(--surface-3); color: var(--text-3);
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; transition: .12s; }
+.cfg-q:hover { border-color: var(--accent-line); color: var(--accent); background: var(--accent-dim); }
+.cfg-box legend .cfg-q { margin-left: 6px; vertical-align: middle; }
+/* 화면 배색 편집 — $F0~$FF 16색 + 미리보기 */
+.cfg-col-in { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line-2);
+  border-radius: 5px; background: var(--surface-3); cursor: pointer; flex: 0 0 auto; }
+.cfg-pal { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 4px 12px; margin-top: 10px; }
+.cfg-pal-item { display: flex; align-items: center; gap: 7px; cursor: pointer; min-width: 0; }
+.cfg-pal-item .cp-code { font-family: var(--mono); font-size: 11.5px; font-weight: 700;
+  color: var(--text-2); flex: 0 0 auto; }
+.cfg-pal-item .cp-use { font-size: 11px; color: var(--text-3); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.cfg-pal-prev { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 7px; font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  white-space: pre; overflow-x: auto; }
+
+.cfg-help { margin-top: 10px; padding: 10px 12px; background: var(--surface-3);
+  border: 1px solid var(--line); border-radius: 7px; font-size: 12px; line-height: 1.8; }
+/* OK/취소는 스크롤과 무관하게 항상 아래에 보이도록 */
+.cfg-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+  padding: 14px 0 4px; border-top: 1px solid var(--line);
+  position: sticky; bottom: -18px; background: var(--surface-1); z-index: 2; }
+
+/* 초보자용 설명 팝업 — 설정 창 위에 겹쳐 뜬다 */
+.help-pop { position: fixed; inset: 0; z-index: 220; background: rgba(5,8,11,.6);
+  backdrop-filter: blur(3px); display: none; align-items: center; justify-content: center; padding: 24px; }
+.help-pop.on { display: flex; }
+.help-box { background: var(--surface-1); border: 1px solid var(--accent-line); border-radius: 12px;
+  width: min(560px, 100%); max-height: 80vh; display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: var(--shadow-soft); }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.help-body { padding: 14px 18px; overflow: auto; font-size: 13.5px; line-height: 1.75; color: var(--text-2); }
+.help-body p { margin: 0 0 10px; }
+.help-body ul { margin: 0 0 10px; padding-left: 18px; }
+.help-body li { margin-bottom: 4px; }
+.help-body b { color: var(--text); }
+.help-body .hp-tip { background: var(--accent-dim); border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0; padding: 9px 12px; margin-top: 12px; font-size: 13px; }
+.help-body .hp-mono, .help-body .hp-tbl .hp-mono { font-family: var(--mono); font-size: 12px;
+  color: var(--accent); background: var(--surface-3); border-radius: 4px; padding: 1px 6px; }
+.help-body .hp-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.help-body .hp-tbl td { border-top: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+.help-body .hp-tbl td:first-child { white-space: nowrap; width: 1%; }
+.help-foot { padding: 12px 16px; border-top: 1px solid var(--line); text-align: right; }
+
+@media (max-width: 900px) {
+  .cfg-wrap { grid-template-columns: 1fr; }
+}
+
+/* 공통 소품 — 칩·액션 묶음·구분선·체크 라벨 */
+.mon-chips { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }
+.mon-chips .chip { padding: 4px 10px; font-size: 11.5px; }
+.mon-chips .chip .num { font-size: 12.5px; }
+.mon-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mon-sep { width: 1px; height: 22px; background: var(--line-2); margin: 0 5px; flex: 0 0 auto; }
+.mon-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-2); cursor: pointer; white-space: nowrap; }
+
+/* 표 — 높이를 고정해 카드가 흐트러지지 않게 */
+.mon-tbl { max-height: 480px; overflow: auto; }
+.mon-tbl thead th { position: sticky; top: 0; z-index: 1; }
+.mon-empty { padding: 34px 16px !important; text-align: center; color: var(--text-3); font-size: 12.5px; line-height: 1.7; }
+
+/* 데이터로거 슬롯 미니 통계 — 슬롯 상단 한 줄 요약 */
+.mon-slot-stats { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin: 7px 0 8px; font-family: var(--mono); font-size: 11.5px; line-height: 1.4; }
+.mon-slot-stats .ms-k { color: var(--text-3); font-size: 9px; font-weight: 700; letter-spacing: .07em; }
+.mon-slot-stats .ms-v { color: var(--text); font-weight: 700; }
+.mon-slot-stats .ms-ok { color: var(--ok); font-weight: 700; }
+.mon-slot-stats .ms-ng { color: var(--danger); font-weight: 700; }
+.mon-slot-stats .ms-warn { color: var(--warn); font-weight: 700; }
+.mon-slot-stats .ms-sep { width: 1px; height: 12px; background: var(--line-2); flex: 0 0 auto; }
+.mon-slot-stats .ms-dim { color: var(--text-3); }
+
+/* 터미널 탭 — KNK터미널 ↔ PBA 데이터로거 전환 스위치 */
+.mon-seg { display: flex; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; flex: 0 0 auto; }
+.mon-seg button { border: 0; background: var(--surface-2); padding: 8px 18px; font-weight: 700;
+  font-size: 12.5px; color: var(--text-3); transition: .12s; }
+.mon-seg button:hover { background: var(--surface-3); color: var(--text); }
+.mon-seg button.on { background: var(--accent-dim); color: var(--accent); }
+
+/* 데이터로거 (PBA) — 와이드 피벗 표 */
+table.mon-dl { width: max-content; min-width: 100%; }
+table.mon-dl th, table.mon-dl td { white-space: nowrap; padding: 7px 11px; font-size: 12px; }
+table.mon-dl td.val { text-align: right; }
+/* 좌우로 스크롤해도 맨 왼쪽 '검사 순서 번호' 열은 계속 보이도록 고정
+   (PBA 데이터로거와 동일) — 세로 스크롤용 sticky thead 와 겹치는 왼쪽 위
+   모서리는 z-index 를 더 높여 헤더가 값 위로 올라오게 한다 */
+table.mon-dl th:first-child, table.mon-dl td:first-child {
+  position: sticky; left: 0; z-index: 2; background: var(--surface-1);
+  box-shadow: inset -1px 0 0 var(--line-2); }
+table.mon-dl thead th:first-child { z-index: 3; background: var(--surface-2); }
+table.mon-dl tr.dl-meta td:first-child { background: var(--surface-2); }
+table.mon-dl tbody tr:hover td:first-child { background: var(--surface-2); }
+table.mon-dl tr.dl-meta td { font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
+  background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 4px 11px; }
+table.mon-dl td.dl-ng { background: var(--danger-dim); color: var(--danger); font-weight: 700; }
+
+/* VIEW SUMMARY — PBA 데이터로거 하단 요약(AVG/MIN/MAX/Peak-peak/CPK) */
+table.mon-dl tfoot tr.dl-sum td { position: sticky; bottom: 0; font-family: var(--mono);
+  font-size: 11px; text-align: right; color: var(--text-2); background: var(--surface-2);
+  border-top: 1px solid var(--line); }
+table.mon-dl tfoot tr.dl-sum td:first-child { text-align: left; font-weight: 700;
+  color: var(--text); z-index: 2; }
+
+/* 모델명 다중 검색 — 입력칸 + ＋(추가) / −(제거) 버튼을 한 줄로 */
+.model-multi { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.model-multi .model-extra { display: inline-flex; align-items: center; gap: 4px; }
+.model-multi .model-add { flex: 0 0 auto; font-weight: 700; padding: 6px 11px; }
+.model-multi .model-add:hover { background: var(--accent-dim); color: var(--accent); }
+.model-multi .model-del { flex: 0 0 auto; color: var(--danger); padding: 6px 10px; }
+.model-multi .model-del:hover { background: var(--danger-dim); }
+
+/* ⇄ 옆칸 교환 버튼 — 분할된 두 로그 영역 '사이(경계)'에 떠 있는 둥근 아이콘.
+   슬롯의 오른쪽 모서리에 걸쳐, 옆 칸과의 12px 간격 한가운데에 놓인다. */
+.mon-swap-fab { position: absolute; top: 50%; right: -19px; transform: translateY(-50%);
+  z-index: 6; width: 32px; height: 32px; border-radius: 50%; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  font-size: 16px; line-height: 1; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 1px 5px rgba(0,0,0,.28); transition: .12s; }
+.mon-swap-fab:hover { background: var(--accent); color: #fff; border-color: var(--accent);
+  transform: translateY(-50%) scale(1.12); }
+.mon-swap-fab:active { transform: translateY(-50%) scale(.96); }
+.card.mon-max .mon-swap-fab { top: 50%; }
+
+/* 드래그앤드랍 — 모니터 화면 위로 파일을 끌고 오면 표시.
+   슬롯 위에 올리면 그 슬롯이 강조되고, 놓으면 그 슬롯으로 들어간다. */
+#view.mon-dropping { outline: 2px dashed var(--accent); outline-offset: -6px;
+  border-radius: 14px; background: var(--accent-dim); }
+.mon-slot.drop-hot { outline: 2px dashed var(--accent); outline-offset: -3px; background: var(--accent-dim); }
+
+/* 멀티 슬롯 — 검사기 최대 3대 분할 보기 */
+.mon-slots { display: grid; gap: 12px; }
+.mon-slots.cols1 { grid-template-columns: 1fr; }
+.mon-slots.cols2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.mon-slots.cols3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.mon-slot { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 10px 12px; min-width: 0; position: relative; }
+.mon-slot-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mon-slot-head b { font-size: 12.5px; white-space: nowrap; }
+.mon-slot-head select.input { padding: 6px 8px; font-family: var(--mono); font-size: 12px; width: auto; }
+.mon-slot .mon-screen { margin-top: 8px; height: 380px; }
+.mon-fs { width: auto !important; padding: 5px 6px !important; font-size: 11.5px !important; }
+/* 터미널 글씨 크기 3단계 */
+.mon-screen.fs-s { font-size: 11px; }
+.mon-screen.fs-m { font-size: 12.5px; }
+.mon-screen.fs-l { font-size: 15.5px; }
+.mon-slots.cols1 .mon-slot .mon-screen { height: 480px; }
+.mon-seg-sm button { padding: 6px 14px; font-size: 12px; }
+
+/* 확장 모드 — 터미널/데이터로거 카드를 창에 거의 가득 채움 (Esc = 축소).
+   고정 높이 대신 플렉스로 로그 영역이 남는 공간을 끝까지 채운다. */
+body.mon-maxed { overflow: hidden; }
+.card.mon-max {
+  position: fixed; inset: 12px; z-index: 130; margin: 0 !important;
+  overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.75);
+  display: flex; flex-direction: column;
+  padding: 14px 18px 12px;
+}
+.card.mon-max #mScrKnk, .card.mon-max #mScrDl {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.card.mon-max #mScrKnk.hidden, .card.mon-max #mScrDl.hidden { display: none; }
+.card.mon-max .mon-slots { flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.card.mon-max .mon-slot { display: flex; flex-direction: column; min-height: 0; }
+.card.mon-max .mon-slot .mon-screen { flex: 1; height: auto; min-height: 0; }
+.card.mon-max #mScrDl .mon-slot .mon-tbl { flex: 1; max-height: none !important; min-height: 0; }
+.card.mon-max #mDlCompare { flex: 0 0 auto; }
+.card.mon-max #mDlCompare .mon-tbl { max-height: 220px !important; }
+
+/* 검사기 간 비교 표 */
+.mon-cmp { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; }
+table.meas tr.cmp-warn td { background: var(--warn-dim); }
+table.meas tr.cmp-bad td { background: var(--danger-dim); }
+
+
+/* 검사 시작 시퀀스 폼 */
+.mon-form { display: grid; grid-template-columns: 112px 1fr; gap: 10px 12px; align-items: center; }
+.mon-form > label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.mon-form .input { font-family: var(--mono); }
+
+@media (max-width: 1100px) {
+  .mon-io { grid-template-columns: 1fr; }
+  .mon-split { grid-template-columns: 1fr; }
 }

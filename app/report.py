@@ -20,7 +20,7 @@ BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 def _run_data(run_id):
     run = db.query(
-        "SELECT r.*, t.model_name, t.model_rev, t.tester_type, t.unit_no, t.customer "
+        "SELECT r.*, t.model_name, t.model_rev, t.tester_type, t.unit_no, t.unit_label, t.customer "
         "FROM inspection_run r JOIN tester t ON t.tester_id = r.tester_id WHERE r.run_id = ?",
         (run_id,), one=True,
     )

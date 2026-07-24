@@ -488,15 +488,48 @@ if __name__ == "__main__":
 # 서버 스캔(파이썬) — 앱의 "서버 동기화" 버튼용. Z:\<고객사> 를 얕게 훑어
 # '출하검증' 폴더를 찾고, 그 안의 '출하이슈사항' 파일만 나열한다. (읽기 전용)
 # ---------------------------------------------------------------------------
-SCAN_ROOT = os.environ.get("KNK_SERVER_ROOT", "Z:\\")
+def _server_root():
+    """사내 서버 루트 경로를 찾는다.
+       우선순위: 환경변수 → 설정파일(data/server_path.txt) → 흔한 후보 자동탐색.
+       PC마다 드라이브 문자가 다르거나(Z:/Y:) UNC(\\\\서버\\공유)로 붙는 경우를 모두 지원."""
+    env = os.environ.get("KNK_SERVER_ROOT", "").strip()
+    if env:
+        return env
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from app import db as _db
+        cfg = os.path.join(_db.DATA_DIR, "server_path.txt")
+        if os.path.isfile(cfg):
+            saved = open(cfg, encoding="utf-8").read().strip()
+            if saved:
+                return saved
+    except Exception:
+        pass
+    # 후보 자동 탐색 — 고객사 폴더가 실제로 보이는 경로를 채택
+    for cand in ("Z:\\", "Y:\\", "X:\\", "W:\\", "V:\\", "U:\\",
+                 r"\\knkwork\KNKWORK", r"\\192.168.123.6\KNKWORK"):
+        try:
+            if os.path.isdir(cand) and any(
+                    os.path.isdir(os.path.join(cand, c)) for c in CUSTOMERS):
+                return cand
+        except OSError:
+            continue
+    return "Z:\\"
+
+
+SCAN_ROOT = _server_root()
 SKIP_DIRS = ("DATA", "출하사진", "동영상", "Cal_data", "검사 항목별", "SURGE")
 
 
-def scan_customer(customer, max_depth=6, progress=None):
+def scan_customer(customer, max_depth=6, progress=None, root_dir=None):
     """고객사 폴더에서 출하이슈사항 파일 경로 목록을 수집(BFS, 깊이 제한)."""
-    root = os.path.join(SCAN_ROOT, customer)
+    base = root_dir or SCAN_ROOT
+    root = os.path.join(base, customer)
     if not os.path.isdir(root):
-        raise FileNotFoundError(f"서버 경로를 찾을 수 없습니다: {root}")
+        raise FileNotFoundError(
+            f"서버 폴더를 찾을 수 없습니다: {root}\n"
+            f"· 이 PC에 사내 서버가 연결(드라이브 매핑)돼 있는지 확인하세요.\n"
+            f"· 드라이브 문자가 다르면(예: Y:) 이슈관리 화면의 '서버 경로 설정'에서 바꿔 주세요.")
     files, queue = [], [(root, 0)]
     scanned = 0
     while queue:
@@ -531,12 +564,14 @@ def scan_customer(customer, max_depth=6, progress=None):
     return files
 
 
-def sync_from_server(progress=lambda msg: None):
+def sync_from_server(progress=lambda msg: None, root_dir=None):
     """전체 동기화: 스캔 → 필터 → 파싱 → DB 재반영(멱등). 진행 콜백으로 상태 보고."""
+    base = root_dir or _server_root()
+    progress(f"서버 경로 확인: {base}")
     result = []
     for c in CUSTOMERS:
         progress(f"[1/3] {c} 서버 폴더 스캔 중…")
-        found = scan_customer(c, progress=progress)
+        found = scan_customer(c, progress=progress, root_dir=base)
         progress(f"[2/3] {c} 이슈파일 {len(found)}개 파싱 중… (모델 필터 적용)")
         result.extend(collect_all(c, files=found))
     progress("[3/3] 데이터베이스 반영 중…")

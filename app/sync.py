@@ -23,10 +23,42 @@ def _load_importer():
     return mod
 
 
+def get_server_path():
+    """설정된 서버 경로와 접근 가능 여부를 반환(이슈관리 화면 표시용)."""
+    from app import db
+    cfg = os.path.join(db.DATA_DIR, "server_path.txt")
+    saved = ""
+    if os.path.isfile(cfg):
+        try:
+            saved = open(cfg, encoding="utf-8").read().strip()
+        except OSError:
+            pass
+    try:
+        mod = _load_importer()
+        detected = saved or mod._server_root()
+        customers = [c for c in mod.CUSTOMERS
+                     if os.path.isdir(os.path.join(detected, c))]
+    except Exception:
+        detected, customers = saved or "Z:\\", []
+    return {"path": detected, "saved": saved,
+            "accessible": bool(customers), "customers": customers}
+
+
+def set_server_path(path):
+    from app import db
+    path = (path or "").strip()
+    os.makedirs(db.DATA_DIR, exist_ok=True)
+    cfg = os.path.join(db.DATA_DIR, "server_path.txt")
+    with open(cfg, "w", encoding="utf-8") as f:
+        f.write(path)
+    return get_server_path()
+
+
 def _run():
     try:
         mod = _load_importer()
-        res = mod.sync_from_server(progress=lambda m: STATE.update(message=m))
+        res = mod.sync_from_server(progress=lambda m: STATE.update(message=m),
+                                   root_dir=get_server_path()["path"])
         STATE.update(result=res, error=None)
         from app import api
         api.audit("서버 동기화", "Z:", f"파일 {res['files']}개 · 이슈 {res['issues']}건")

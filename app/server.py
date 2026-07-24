@@ -16,11 +16,14 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".csv": "text/csv; charset=utf-8",
     ".png": "image/png",
+    ".json": "application/manifest+json; charset=utf-8",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".gif": "image/gif",
     ".webp": "image/webp",
     ".bmp": "image/bmp",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
 }
 
 XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -48,6 +51,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", CONTENT_TYPES.get(ext, "application/octet-stream"))
         self.send_header("Content-Length", str(len(body)))
+        if ext in (".html", ".css", ".js"):
+            # 프로그램 업데이트 후에도 브라우저가 옛 JS/CSS 캐시를 계속 쓰는 문제 방지
+            self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
@@ -79,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/" or path == "/index.html":
                 return self._send_file(os.path.join(WEB_DIR, "index.html"))
-            if path.startswith("/css/") or path.startswith("/js/"):
+            if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/icons/"):
                 # URL은 항상 '/' 구분자를 쓰므로 os.path.normpath로 바로 처리하면 안 됨
                 # (Windows에서 '\'로 변환된 뒤 os.path.join이 절대경로로 취급해 엉뚱한 위치를
                 #  가리키는 문제가 있었음). '/'로 직접 분해하고 '..'/''는 걸러 안전하게 조립한다.
@@ -88,8 +94,8 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/photos/"):
                 parts = [p for p in path.split("/") if p not in ("", ".", "..")]
                 return self._send_file(os.path.join(db.DATA_DIR, *parts))
-            if path == "/favicon.svg":
-                return self._send_file(os.path.join(WEB_DIR, "favicon.svg"))
+            if path in ("/favicon.svg", "/manifest.json", "/sw.js"):
+                return self._send_file(os.path.join(WEB_DIR, path.lstrip("/")))
 
             if path == "/api/bootstrap":
                 return self._send_json(api.bootstrap())
@@ -127,6 +133,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sync/status":
                 from app import sync
                 return self._send_json(sync.status())
+            if path == "/api/sync/path":
+                from app import sync
+                return self._send_json(sync.get_server_path())
             if path == "/api/models/duplicates":
                 return self._send_json(api.model_duplicates())
             if path == "/api/report/draft":
@@ -139,6 +148,44 @@ class Handler(BaseHTTPRequestHandler):
                 from app import chatbot
                 return self._send_json({"config": chatbot.get_config(),
                                         "ollama": chatbot.ollama_status()})
+            # ---- Z: 파일서버 연동 (읽기 전용) ----
+            if path == "/api/z/model":
+                from app import zserver
+                return self._send_json(zserver.model_assets(
+                    _first(qs, "model"), _first(qs, "type")))
+            if path == "/api/z/prior-photos":
+                from app import zserver
+                return self._send_json(zserver.prior_unit_photos(
+                    _first(qs, "model"), _first(qs, "type"),
+                    zserver.parse_units(_first(qs, "units") or "")))
+            if path == "/api/z/excel":
+                from app import zserver
+                return self._send_json(zserver.excel_preview(_first(qs, "path")))
+            if path == "/api/z/excel-image":
+                from app import zserver
+                content, ext = zserver.excel_image(
+                    _first(qs, "path"), _first(qs, "sheet"), _first(qs, "idx") or 0)
+                self.send_response(200)
+                self.send_header("Content-Type",
+                                 CONTENT_TYPES.get(ext, "application/octet-stream"))
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "private, max-age=600")
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            if path == "/api/z/file":
+                from app import zserver
+                p = _first(qs, "path")
+                content, ext = (zserver.read_thumbnail(p) if _first(qs, "thumb")
+                                else zserver.read_file(p))
+                self.send_response(200)
+                self.send_header("Content-Type",
+                                 CONTENT_TYPES.get(ext, "application/octet-stream"))
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "private, max-age=600")
+                self.end_headers()
+                self.wfile.write(content)
+                return
             if path == "/api/photos":
                 return self._send_json(api.get_photos(int(_first(qs, "run_id") or 0)))
             if path == "/api/backup":
@@ -173,6 +220,25 @@ class Handler(BaseHTTPRequestHandler):
                     "model": _first(qs, "model"), "customer": _first(qs, "customer"),
                     "tester_type": _first(qs, "tester_type"), "result": _first(qs, "result"),
                 }))
+            # ---- 📡 KNK 모니터 (TinyUK3 검사기 연동) ----
+            if path == "/api/monitor/state":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.state())
+            if path == "/api/monitor/poll":
+                from app.monitor import manager as monitor
+                cursors = {}
+                for k in (0, 1, 2, 3):
+                    raw = _first(qs, f"s{k}") or "0,0"
+                    try:
+                        seq_s, runs_s = (raw.split(",") + ["0"])[:2]
+                        cursors[k] = (int(seq_s or 0), int(runs_s or 0))
+                    except ValueError:
+                        cursors[k] = (0, 0)
+                return self._send_json(monitor.poll(cursors))
+            if path == "/api/monitor/export":
+                from app.monitor import manager as monitor
+                content, filename = monitor.export_csv(_first(qs, "slot") or 1)
+                return self._send_download(content, filename, "text/csv; charset=utf-8")
             if path == "/api/history/export":
                 content, filename = api.build_history_export({
                     "start": _first(qs, "start"), "end": _first(qs, "end"),
@@ -246,6 +312,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sync/start":
                 from app import sync
                 return self._send_json(sync.start())
+            if path == "/api/sync/path":
+                from app import sync
+                return self._send_json(sync.set_server_path(body.get("path", "")))
             if path == "/api/models/merge":
                 return self._send_json(api.merge_models(
                     body.get("from", []), body.get("to", "")))
@@ -255,8 +324,67 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"config": cfg, "ollama": chatbot.ollama_status()})
             if path == "/api/issue/save":
                 return self._send_json(api.save_issue(body))
+            if path == "/api/issue/export_server":
+                from app import issue_export
+                return self._send_json(issue_export.export_issue(body.get("issue_id")))
             if path == "/api/issue/delete":
                 return self._send_json(api.delete_issue(body.get("id")))
+            # ---- Z: 파일서버 (열기 / 이슈 이관) — 서버 파일은 읽기 전용 ----
+            if path == "/api/z/open":
+                from app import zserver
+                return self._send_json(zserver.open_folder(body.get("path", "")))
+            if path == "/api/z/import-issues":
+                from app import zserver
+                return self._send_json(zserver.import_model_issues(
+                    body.get("model", ""), body.get("tester_type"),
+                    body.get("customer", "")))
+            # ---- 📡 KNK 모니터 (TinyUK3 검사기 연동) ----
+            if path == "/api/monitor/connect":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.connect(
+                    body.get("slot"), body.get("port"), body.get("baud")))
+            if path == "/api/monitor/disconnect":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.disconnect(body.get("slot")))
+            if path == "/api/monitor/send":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.send(
+                    body.get("slot"), body.get("command", ""),
+                    bool(body.get("unsafe_ok"))))
+            if path == "/api/monitor/start":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.start_sequence(
+                    body.get("slot"), body.get("ch", 0), body.get("level", 0),
+                    body.get("settle", 2.0), bool(body.get("unsafe_ok"))))
+            if path == "/api/monitor/autoprobe":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.auto_probe(body.get("slot")))
+            if path == "/api/monitor/autostart":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.set_auto_start(
+                    body.get("slot"), bool(body.get("on")),
+                    bool(body.get("unsafe_ok"))))
+            if path == "/api/monitor/quiet":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.set_io_quiet(body.get("on")))
+            if path == "/api/monitor/settings":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.set_settings(
+                    body.get("settings") or {}))
+            if path == "/api/monitor/save":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.save_log(
+                    body.get("slot"), body.get("name", "")))
+            if path == "/api/monitor/import":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.import_text(
+                    body.get("slot"), body.get("text", "")))
+            if path == "/api/monitor/clear":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.clear(body.get("slot")))
+            if path == "/api/monitor/swap":
+                from app.monitor import manager as monitor
+                return self._send_json(monitor.swap(body.get("a"), body.get("b")))
             if path == "/api/run/photo":
                 return self._send_json(api.save_photo(
                     body.get("run_id"), body.get("photo_type"),
@@ -286,8 +414,10 @@ def make_server(host, port):
 
 def serve(httpd):
     host, port = httpd.server_address[0], httpd.server_address[1]
-    print(f"  KNK 검사기 출하검증 시스템")
-    print(f"  → 브라우저에서 접속: http://{host}:{port}")
+    # 0.0.0.0 은 '모든 랜카드에서 수신'이라는 뜻이라 브라우저 주소로는 쓸 수 없다.
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    print(f"  KNK 지킴 - 검사기 출하검증")
+    print(f"  → 이 PC에서 접속: http://{shown}:{port}")
     print(f"  종료: Ctrl + C  (또는 이 창을 닫기)")
     try:
         httpd.serve_forever()
