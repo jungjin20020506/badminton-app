@@ -853,10 +853,13 @@ table.meas tr.m-sel td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 .mon-seg button:hover { background: var(--surface-3); color: var(--text); }
 .mon-seg button.on { background: var(--accent-dim); color: var(--accent); }
 
-/* 데이터로거 (PBA) — 와이드 피벗 표 */
+/* 데이터로거 (PBA) — 와이드 피벗 표.
+   검사항목(헤더)·검사값 모두 중앙 정렬 + 아주 희미한 세로 구분선 */
 table.mon-dl { width: max-content; min-width: 100%; }
-table.mon-dl th, table.mon-dl td { white-space: nowrap; padding: 7px 11px; font-size: 12px; }
-table.mon-dl td.val { text-align: right; }
+table.mon-dl th, table.mon-dl td { white-space: nowrap; padding: 7px 11px; font-size: 12px;
+  text-align: center; border-right: 1px solid rgba(139,149,163,.08); }
+table.mon-dl th:last-child, table.mon-dl td:last-child { border-right: 0; }
+table.mon-dl td.val { text-align: center; }
 /* 좌우로 스크롤해도 맨 왼쪽 '검사 순서 번호' 열은 계속 보이도록 고정
    (PBA 데이터로거와 동일) — 세로 스크롤용 sticky thead 와 겹치는 왼쪽 위
    모서리는 z-index 를 더 높여 헤더가 값 위로 올라오게 한다 */
@@ -868,11 +871,15 @@ table.mon-dl tr.dl-meta td:first-child { background: var(--surface-2); }
 table.mon-dl tbody tr:hover td:first-child { background: var(--surface-2); }
 table.mon-dl tr.dl-meta td { font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
   background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 4px 11px; }
-table.mon-dl td.dl-ng { background: var(--danger-dim); color: var(--danger); font-weight: 700; }
+/* 스펙을 벗어난 검사값 — 빨간 글씨 (PBA 데이터로거와 동일) */
+table.mon-dl td.dl-ng { color: var(--danger); font-weight: 700; }
+/* 불량이 난 회차의 검사 순서 번호 — 빨간 바탕 */
+table.mon-dl tbody td.dl-ngno,
+table.mon-dl tbody tr:hover td.dl-ngno { background: var(--danger); color: #fff; font-weight: 700; }
 
 /* VIEW SUMMARY — PBA 데이터로거 하단 요약(AVG/MIN/MAX/Peak-peak/CPK) */
 table.mon-dl tfoot tr.dl-sum td { position: sticky; bottom: 0; font-family: var(--mono);
-  font-size: 11px; text-align: right; color: var(--text-2); background: var(--surface-2);
+  font-size: 11px; text-align: center; color: var(--text-2); background: var(--surface-2);
   border-top: 1px solid var(--line); }
 table.mon-dl tfoot tr.dl-sum td:first-child { text-align: left; font-weight: 700;
   color: var(--text); z-index: 2; }

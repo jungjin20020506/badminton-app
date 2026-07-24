@@ -95,6 +95,32 @@ def _split(payload, *widths):
     return out
 
 
+def _spec_judge(value, spec_min, spec_max):
+    """측정값을 스펙 범위로 판정 — PBA 데이터로거와 같은 기준.
+
+    장비가 측정 레코드($I/$R/$B)에는 합부를 따로 싣지 않으므로 값으로 판정한다.
+    스펙 한쪽이 비어 있으면(Diff 의 min 등) 그쪽은 검사하지 않는다.
+    숫자가 아니면 판정 보류('').
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return ""
+    try:
+        lo = float(spec_min) if str(spec_min).strip() else None
+    except (TypeError, ValueError):
+        lo = None
+    try:
+        hi = float(spec_max) if str(spec_max).strip() else None
+    except (TypeError, ValueError):
+        hi = None
+    if lo is None and hi is None:
+        return ""
+    if (lo is not None and v < lo) or (hi is not None and v > hi):
+        return "NG"
+    return "OK"
+
+
 def parse_record(line):
     """Parse one '$$X....' line into a Record, or return None.
 
@@ -178,6 +204,7 @@ def _parse_body(line):
         cap, _, mn, _, mx, _, _, val = _split(payload, 15, 1, 15, 1, 15, 1, 1, 14)
         rec.caption, rec.spec_min, rec.spec_max = cap.strip(), mn.strip(), mx.strip()
         rec.value = val.strip()
+        rec.result = _spec_judge(rec.value, rec.spec_min, rec.spec_max)
         return rec
 
     if n == W_STR:                               # $T : text value

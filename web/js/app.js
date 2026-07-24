@@ -4835,6 +4835,21 @@ const App = (() => {
   // <측정 항목 열…>/Tact Time/Result + Type·Spec MIN·Spec MAX 헤더 행.
   const MON_TYPE_MAP = { R: 'F', T: 'S', L: 'G' };   // 장비 레코드 → PBA 표기
 
+  // 측정값 스펙 판정 (클라이언트 보강) — 서버 판정(NG)이 없어도 값이 스펙을
+  // 벗어나면 불량으로 표시한다. 스펙 한쪽이 비어 있으면 그쪽은 검사하지 않음.
+  function monSpecNg(value, lo, hi) {
+    const v = parseFloat(value);
+    if (isNaN(v)) return false;
+    const l = parseFloat(lo), h = parseFloat(hi);
+    if (isNaN(l) && isNaN(h)) return false;
+    return (!isNaN(l) && v < l) || (!isNaN(h) && v > h);
+  }
+  // 빨간 표시는 '검사 항목'(First/Last/Diff 같은 실측값)에만 한다.
+  // WATERPROOF 처럼 항목을 묶는 그룹 판정($L·?G)은 값이 아니라 묶음 결과라 제외.
+  const MON_GROUP_TYPES = new Set(['L', 'G']);
+  const monMeasNg = (m) => !MON_GROUP_TYPES.has(m.type)
+    && (String(m.result || '').toUpperCase() === 'NG' || monSpecNg(m.value, m.spec_min, m.spec_max));
+
   function monDlBuild(runs) {
     const cols = [], meta = {};
     const keyed = (r) => {           // 같은 항목이 반복되면 PBA 처럼 -1, -2… 붙임
@@ -4861,7 +4876,7 @@ const App = (() => {
     const rows = runs.map((r, i) => {
       const vals = {};
       keyed(r).forEach(([key, m]) => {
-        vals[key] = { v: m.value, ng: String(m.result || '').toUpperCase() === 'NG' };
+        vals[key] = { v: m.value, ng: monMeasNg(m) };
       });
       return {
         cells: [i + 1, r.time, r.equip_no, r.model, r.process,
@@ -4929,15 +4944,17 @@ const App = (() => {
     const metaTr = (row, cls) => `<tr class="${cls}">${row.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`;
     const summary = monState().dlSummary
       ? `<tfoot>${monDlSummary(d).map(row => metaTr(row, 'dl-sum')).join('')}</tfoot>` : '';
+    // Type 행은 화면에 표시하지 않는다 (CSV 내보내기에는 PBA 호환용으로 유지)
     tbl.innerHTML = `
       <thead>
         <tr>${d.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
-        ${metaTr(d.typeRow, 'dl-meta')}${metaTr(d.minRow, 'dl-meta')}${metaTr(d.maxRow, 'dl-meta')}
+        ${metaTr(d.minRow, 'dl-meta')}${metaTr(d.maxRow, 'dl-meta')}
       </thead>
       <tbody>
         ${d.rows.map(r => {
           const last = r.cells.length - 1;
           return `<tr>${r.cells.map((c, ci) => {
+            if (ci === 0) return `<td class="${r.isNg ? 'dl-ngno' : ''}">${esc(c)}</td>`;
             if (ci === last) return `<td><span class="jbadge ${r.isNg ? 'j-알림' : 'j-정상'}">${esc(c)}</span></td>`;
             const ng = ci >= 5 && ci < 5 + d.cols.length && r.ngCols[ci - 5];
             return `<td class="${ci >= 5 ? 'val' : ''}${ng ? ' dl-ng' : ''}">${esc(c)}</td>`;
@@ -4967,14 +4984,20 @@ const App = (() => {
     box.classList.remove('hidden');
 
     const stats = {};   // caption → {slot: {sum, n, ng}}
-    act.forEach(k => mon.slots[k].runs.forEach(r => (r.measurements || []).forEach(m => {
-      const c = m.caption || '(항목)';
-      const s = (stats[c] = stats[c] || {});
-      const e = (s[k] = s[k] || { sum: 0, n: 0, ng: 0 });
-      const v = parseFloat(m.value);
-      if (!isNaN(v)) { e.sum += v; e.n++; }
-      if (String(m.result || '').toUpperCase() === 'NG') e.ng++;
-    })));
+    act.forEach(k => mon.slots[k].runs.forEach(r => {
+      // 불량은 '회차(가로줄)' 단위로 센다 — 한 회차에서 같은 항목이 여러 번
+      // 스펙을 벗어나도 그 항목의 불량은 1회. (검사항목만 — 그룹 판정 제외)
+      const ngInRun = new Set();
+      (r.measurements || []).forEach(m => {
+        const c = m.caption || '(항목)';
+        const s = (stats[c] = stats[c] || {});
+        const e = (s[k] = s[k] || { sum: 0, n: 0, ng: 0 });
+        const v = parseFloat(m.value);
+        if (!isNaN(v)) { e.sum += v; e.n++; }
+        if (monMeasNg(m)) ngInRun.add(c);
+      });
+      ngInRun.forEach(c => { stats[c][k].ng++; });
+    }));
 
     const rows = Object.entries(stats).map(([cap, s]) => {
       const avgs = act.map(k => (s[k] && s[k].n) ? s[k].sum / s[k].n : null);
