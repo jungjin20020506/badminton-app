@@ -2853,6 +2853,16 @@ const App = (() => {
             <span class="hint" id="aiStatus">확인 중…</span>
           </div>
         </div>
+        <div class="row-between mt12" style="border-top:1px solid var(--line);padding-top:12px">
+          <label class="ai-toggle"><input type="checkbox" id="openaiToggle" onchange="App.toggleOpenAI(this.checked)">
+            <span>☁ OpenAI(GPT) 사용</span></label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="input" id="openaiKey" type="password" placeholder="API 키 (sk-…)"
+              style="width:190px;font-family:var(--mono);font-size:11.5px" autocomplete="off">
+            <button class="btn btn-mini" onclick="App.saveOpenAIKey()">키 저장</button>
+            <span class="hint" id="openaiStatus"></span>
+          </div>
+        </div>
       </div>
       <details class="card mt12" style="padding:14px 16px">
         <summary style="cursor:pointer;font-weight:700;font-size:14px">🕘 지난 대화 / ★ 북마크
@@ -2922,6 +2932,17 @@ const App = (() => {
       const c = await api.get('/api/chat/config');
       const on = c.config && c.config.provider === 'ollama';
       if ($('aiToggle')) $('aiToggle').checked = on;
+      // OpenAI 상태 — 키는 서버가 원문을 보내지 않는다(설정 여부만)
+      const oaOn = c.config && c.config.provider === 'openai';
+      if ($('openaiToggle')) $('openaiToggle').checked = oaOn;
+      if ($('openaiStatus')) {
+        const keySet = c.config && c.config.openai_key_set;
+        $('openaiStatus').textContent = keySet
+          ? `✅ 키 저장됨 · ${(c.config.openai_model || 'gpt-4o-mini')}${oaOn ? ' 사용 중' : ''}`
+          : '키를 입력하고 [키 저장]을 눌러 주세요';
+        $('openaiStatus').style.color = keySet ? 'var(--accent)' : 'var(--text-3)';
+        if (keySet && $('openaiKey')) $('openaiKey').placeholder = '저장됨 (바꾸려면 새 키 입력)';
+      }
       const models = (c.ollama && c.ollama.models) || [];
       const sel = $('aiModel');
       const st = $('aiStatus');
@@ -2955,12 +2976,38 @@ const App = (() => {
   }
 
   async function toggleLocalAI(on) {
+    if (on && $('openaiToggle')) $('openaiToggle').checked = false;   // 엔진은 하나만
     await api.post('/api/chat/config', { provider: on ? 'ollama' : '' });
     await loadChatConfig();
     const msg = on ? '로컬 AI(Ollama)를 켰어요. 설치·모델이 있으면 자연스러운 답변, 아니면 규칙기반으로 자동 전환됩니다.'
                    : '규칙기반(무료·오프라인)으로 전환했어요.';
     state.chat.messages.push({ role: 'bot', reply: msg, sources: [], chips: CHAT_CHIPS, mode: on ? 'llm' : 'rule' });
     renderChatMessages();
+  }
+
+  async function toggleOpenAI(on) {
+    if (on && $('aiToggle')) $('aiToggle').checked = false;           // 엔진은 하나만
+    const r = await api.post('/api/chat/config', { provider: on ? 'openai' : '' });
+    await loadChatConfig();
+    let msg;
+    if (on && !(r.config && r.config.openai_key_set)) {
+      msg = 'OpenAI를 켰지만 API 키가 아직 없어요. 위 입력칸에 키를 넣고 [키 저장]을 눌러 주세요. 키가 없으면 규칙기반으로 동작합니다.';
+    } else {
+      msg = on ? `OpenAI(GPT)를 켰어요 — ${(r.config && r.config.openai_model) || 'gpt-4o-mini'} 모델로 답변합니다.`
+               : '규칙기반(무료·오프라인)으로 전환했어요.';
+    }
+    state.chat.messages.push({ role: 'bot', reply: msg, sources: [], chips: CHAT_CHIPS, mode: on ? 'llm' : 'rule' });
+    renderChatMessages();
+  }
+
+  async function saveOpenAIKey() {
+    const inp = $('openaiKey');
+    const key = (inp.value || '').trim();
+    if (!key) { alert('API 키를 입력해 주세요. (sk- 로 시작)'); return; }
+    await api.post('/api/chat/config', { api_key: key });
+    inp.value = '';
+    await loadChatConfig();
+    toast('OpenAI API 키를 저장했습니다. (이 PC의 데이터 폴더에만 보관 — 깃허브에 올라가지 않음)');
   }
 
   function renderChatMessages() {
@@ -5418,7 +5465,7 @@ const App = (() => {
     monStart, monAbort, monImportFiles, monClear,
     monAutoscroll, monFreeze, monScreenClear, monSaveScreen, monDlExport, monTermMode,
     monTermSlots, monDlSlots, monMax, monFontSize, monSwap, monDlSummaryToggle,
-    addModelBox,
+    addModelBox, toggleOpenAI, saveOpenAIKey,
     // ⚙ 터미널 설정 · 초보자용 ? 도움말
     monSettings, monSettingsSave, monSettingsDefault, monCfgPorts,
     monHelp, monHelpClose, monPalPreview, monPalPreset,

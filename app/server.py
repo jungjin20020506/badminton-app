@@ -146,7 +146,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({"backups": backup.list_backups()})
             if path == "/api/chat/config":
                 from app import chatbot
-                return self._send_json({"config": chatbot.get_config(),
+                # public_config — API 키 원문은 브라우저로 절대 내보내지 않는다
+                return self._send_json({"config": chatbot.public_config(),
                                         "ollama": chatbot.ollama_status()})
             # ---- Z: 파일서버 연동 (읽기 전용) ----
             if path == "/api/z/model":
@@ -320,8 +321,10 @@ class Handler(BaseHTTPRequestHandler):
                     body.get("from", []), body.get("to", "")))
             if path == "/api/chat/config":
                 from app import chatbot
-                cfg = chatbot.set_config(body.get("provider"), body.get("model"))
-                return self._send_json({"config": cfg, "ollama": chatbot.ollama_status()})
+                chatbot.set_config(body.get("provider"), body.get("model"),
+                                   body.get("api_key"), body.get("openai_model"))
+                return self._send_json({"config": chatbot.public_config(),
+                                        "ollama": chatbot.ollama_status()})
             if path == "/api/issue/save":
                 return self._send_json(api.save_issue(body))
             if path == "/api/issue/export_server":

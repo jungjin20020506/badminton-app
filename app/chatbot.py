@@ -22,8 +22,13 @@ OLLAMA_URL = os.environ.get("KNK_OLLAMA_URL", "http://127.0.0.1:11434")
 
 
 def get_config():
-    """챗봇 엔진 설정 — 파일 우선, 환경변수로 보완. UI 토글이 파일을 갱신."""
-    cfg = {"provider": "", "model": "llama3.2"}
+    """챗봇 엔진 설정 — 파일 우선, 환경변수로 보완. UI 토글이 파일을 갱신.
+
+    api_key(OpenAI)는 data/chatbot_config.json 에만 저장된다 — data/ 는
+    깃허브에 절대 커밋되지 않는 폴더라 공개 저장소로 새어나가지 않는다.
+    """
+    cfg = {"provider": "", "model": "llama3.2",
+           "api_key": "", "openai_model": "gpt-4o-mini"}
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             cfg.update({k: v for k, v in json.load(f).items() if v is not None})
@@ -33,18 +38,35 @@ def get_config():
         cfg["provider"] = os.environ["KNK_LLM_PROVIDER"]
     if os.environ.get("KNK_LLM_MODEL"):
         cfg["model"] = os.environ["KNK_LLM_MODEL"]
+    if not cfg.get("api_key") and os.environ.get("OPENAI_API_KEY"):
+        cfg["api_key"] = os.environ["OPENAI_API_KEY"]
     return cfg
 
 
-def set_config(provider=None, model=None):
+def public_config():
+    """화면에 보내는 설정 — API 키 원문은 절대 내보내지 않는다(설정 여부만)."""
+    cfg = get_config()
+    return {"provider": cfg["provider"], "model": cfg["model"],
+            "openai_model": cfg.get("openai_model") or "gpt-4o-mini",
+            "openai_key_set": bool((cfg.get("api_key") or "").strip())}
+
+
+def set_config(provider=None, model=None, api_key=None, openai_model=None):
     cfg = get_config()
     if provider is not None:
         cfg["provider"] = provider
     if model:
         cfg["model"] = model
+    if api_key is not None and api_key.strip():          # 빈 문자열로는 못 지움(실수 방지)
+        cfg["api_key"] = api_key.strip()
+    if openai_model:
+        cfg["openai_model"] = openai_model.strip()
     os.makedirs(db.DATA_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump({"provider": cfg["provider"], "model": cfg["model"]}, f, ensure_ascii=False)
+        json.dump({"provider": cfg["provider"], "model": cfg["model"],
+                   "api_key": cfg.get("api_key") or "",
+                   "openai_model": cfg.get("openai_model") or "gpt-4o-mini"},
+                  f, ensure_ascii=False)
     return cfg
 
 
@@ -452,11 +474,43 @@ def _pick_model(cfg):
     return max(avail, key=size)
 
 
+def _openai_answer(question, ctx, cfg):
+    """OpenAI Chat Completions 호출 — 같은 검색 근거(ctx)를 프롬프트로 재사용."""
+    api_key = (cfg.get("api_key") or "").strip()
+    if not api_key:
+        raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
+    model = (cfg.get("openai_model") or "gpt-4o-mini").strip()
+    tag_line = ("관련 태그: " + ", ".join(ctx.get("tags") or []) + "\n") if ctx.get("tags") else ""
+    prompt = (f"{tag_line}[과거 조치 사례]\n{_build_context_text(ctx)}\n\n"
+              f"[질문]\n{question}\n\n위 형식(①~④)에 맞춰 답해주세요.")
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+                     {"role": "user", "content": prompt}],
+        "temperature": 0.3,
+    }
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    reply = (((data.get("choices") or [{}])[0].get("message") or {})
+             .get("content") or "").strip()
+    if not reply:
+        raise ValueError("빈 응답")
+    hl = (ctx.get("keywords") or []) + (ctx.get("tags") or [])
+    return {"reply": reply, "sources": [_source(x, hl) for x in ctx["hits"][:5]],
+            "chips": _default_chips(), "mode": "llm", "model": model}
+
+
 def _llm_answer(question, ctx, cfg):
     provider = cfg.get("provider", "")
     if provider == "ollama":
         return _ollama_answer(question, ctx, _pick_model(cfg))
-    # 사내 OpenAI 연결 시 여기에 provider == 'openai' 분기 추가(같은 ctx 재사용)
+    if provider == "openai":
+        return _openai_answer(question, ctx, cfg)
     raise NotImplementedError(f"LLM provider '{provider}' 미구현")
 
 
