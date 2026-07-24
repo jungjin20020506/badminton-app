@@ -166,10 +166,12 @@ const App = (() => {
         실제 이슈 축적·사내 서버(Z:) 동기화는 <b>회사 PC에서 프로그램 실행</b> 시 동작합니다.
       </div>` : storageBanner()}
       <section class="hero">
-        <span class="tag">케이엔케이 품질팀 · 검사기 출하검증 자동화</span>
-        <h1>출하 검사 순서도대로 검증하고,<br>데이터로 자동 판정합니다.</h1>
-        <p>모델을 선택하면 과거 이슈를 먼저 안내하고, 순서도 22단계를 따라 검사 항목을 체크하며,
-           검사 로그를 넣으면 Open/Short·경계·이탈을 자동 판정합니다. 모든 데이터는 로컬 DB에 축적됩니다.</p>
+        <span class="tag">HAIST Innovation · KNK 품질 전용 시스템 「지킴」</span>
+        <h1>지킴은 검증과 기록을<br>분리하지 않습니다.</h1>
+        <p class="hero-lead">검사의 모든 순간이, 그대로 <b>품질의 이력</b>이 됩니다.</p>
+        <p class="hero-sub">출하 검증 22단계 순서도 · 과거 이슈 사전 안내 · Open/Short·경계·이탈 자동 판정 ·
+           호기 간 편차 비교 — 사람의 경험과 데이터의 판정을 <b>하나의 흐름</b>으로 설계했습니다.</p>
+        <p class="hero-close">KNK가 만드는 모든 검사기는, <b>지킴</b>을 거쳐 출하됩니다.</p>
         <div class="actions">
           <button class="btn btn-lg" onclick="App.go('setup')">＋ 새 검증 시작</button>
           <button class="btn btn-lg secondary" onclick="App.go('history')">🗂 히스토리 보기</button>
