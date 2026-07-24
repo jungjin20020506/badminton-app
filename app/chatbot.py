@@ -19,6 +19,17 @@ from app import db
 
 CONFIG_PATH = os.path.join(db.DATA_DIR, "chatbot_config.json")
 OLLAMA_URL = os.environ.get("KNK_OLLAMA_URL", "http://127.0.0.1:11434")
+# 내장 키 파일 — 프로그램 폴더에 동봉(X서버 배포로 전파). 깃허브에는 올라가지 않는다
+# (.gitignore). 공개 저장소에 키를 넣으면 OpenAI 가 자동 폐기하므로 이 방식을 쓴다.
+BUNDLED_KEY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openai_key.txt")
+
+
+def _bundled_key():
+    try:
+        raw = open(BUNDLED_KEY_PATH, encoding="utf-8").read().strip()
+        return raw.split("=", 1)[1].strip() if raw.startswith("OPENAI_API_KEY=") else raw
+    except OSError:
+        return ""
 
 
 def get_config():
@@ -29,17 +40,25 @@ def get_config():
     """
     cfg = {"provider": "", "model": "llama3.2",
            "api_key": "", "openai_model": "gpt-4o-mini"}
+    provider_chosen = False                   # 사용자가 엔진을 직접 정한 적 있는가
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg.update({k: v for k, v in json.load(f).items() if v is not None})
+            loaded = json.load(f)
+        provider_chosen = "provider" in loaded
+        cfg.update({k: v for k, v in loaded.items() if v is not None})
     except Exception:
         pass
     if os.environ.get("KNK_LLM_PROVIDER"):
         cfg["provider"] = os.environ["KNK_LLM_PROVIDER"]
+        provider_chosen = True
     if os.environ.get("KNK_LLM_MODEL"):
         cfg["model"] = os.environ["KNK_LLM_MODEL"]
-    if not cfg.get("api_key") and os.environ.get("OPENAI_API_KEY"):
-        cfg["api_key"] = os.environ["OPENAI_API_KEY"]
+    if not cfg.get("api_key"):
+        cfg["api_key"] = os.environ.get("OPENAI_API_KEY", "") or _bundled_key()
+    # 내장 키가 있으면 기본 엔진 = OpenAI — 아무 설정 없이 누구나 GPT 답변을 받는다.
+    # (사용자가 화면에서 엔진을 직접 바꾼 적이 있으면 그 선택을 존중)
+    if not provider_chosen and cfg.get("api_key"):
+        cfg["provider"] = "openai"
     return cfg
 
 

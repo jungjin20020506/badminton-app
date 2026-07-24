@@ -10,6 +10,8 @@ venv/
 #   출하이슈 원문·모델명·사내 서버 경로·첨부사진이 들어있음
 # ===================================================================
 data/
+# 내장 OpenAI 키 — 공개 저장소에 올리면 OpenAI가 자동 폐기함. X서버 배포로만 전파.
+app/openai_key.txt
 tools/all_issues.json
 tools/selected_issues.json
 tools/*_issues.json
