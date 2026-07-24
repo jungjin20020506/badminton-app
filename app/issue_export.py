@@ -265,8 +265,10 @@ def export_issue(issue_id):
         pass                                                 # 검증 자체 실패는 기록 성공을 뒤집지 않음
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    db.execute("UPDATE issue_history SET server_export=? WHERE id=?",
-               (f"{target['path']} @ {now}", int(issue_id)))
+    # server_export_text: 엑셀에 실제로 기록한 내역 원문 — 이후 '서버 동기화'가
+    # 같은 엑셀을 다시 읽을 때 이 내용과 일치하는 행은 건너뛰어 중복 등록을 막는다.
+    db.execute("UPDATE issue_history SET server_export=?, server_export_text=? WHERE id=?",
+               (f"{target['path']} @ {now}", content, int(issue_id)))
     from app import api
     api.audit("서버 이슈 기록", f"{model} #{issue_id}",
               f"{os.path.basename(target['path'])} {res['row']}행"

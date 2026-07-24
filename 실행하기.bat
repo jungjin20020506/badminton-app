@@ -59,18 +59,17 @@ REM 이미 켜져 있으면 창만 하나 더 붙인다(서버 재기동 없음)
 netstat -an | find ":8000" | find "LISTENING" >nul 2>nul
 if not errorlevel 1 goto ATTACH
 
-REM 새로 시작 — 서버 기동 + 네이티브 창(프로그램 창)으로 표시
+REM 새로 시작 — 크롬(기본 브라우저)으로 열기. 홈 화면 추가(앱 설치)가 되려면
+REM 브라우저로 열어야 한다 (네이티브 창은 설치 기능이 없음)
 pushd "%RUNDIR%"
-start "" "%RUNDIR%runtime\pythonw.exe" "%RUNDIR%run.py"
+start "" "%RUNDIR%runtime\pythonw.exe" "%RUNDIR%run.py" --browser
 popd
 REM robocopy 는 "복사 성공"에도 1 을 돌려주므로, 성공 종료는 0 으로 명시한다
 exit 0
 
 
 :ATTACH
-pushd "%RUNDIR%"
-start "" "%RUNDIR%runtime\pythonw.exe" "%RUNDIR%run.py" --attach
-popd
+start "" http://localhost:8000
 exit 0
 
 

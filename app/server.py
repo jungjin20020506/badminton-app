@@ -94,7 +94,7 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/photos/"):
                 parts = [p for p in path.split("/") if p not in ("", ".", "..")]
                 return self._send_file(os.path.join(db.DATA_DIR, *parts))
-            if path in ("/favicon.svg", "/manifest.json", "/sw.js"):
+            if path in ("/favicon.svg", "/manifest.json", "/sw.js", "/offline.html"):
                 return self._send_file(os.path.join(WEB_DIR, path.lstrip("/")))
 
             if path == "/api/bootstrap":

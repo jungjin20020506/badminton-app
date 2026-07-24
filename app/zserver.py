@@ -832,6 +832,12 @@ def import_model_issues(model, tester_type=None, customer=""):
 
     conn = db.get_conn()
     added = updated = 0
+    # 이 프로그램이 서버 엑셀에 직접 기록한 내역(server_export_text)은 다시 읽어
+    # 들이지 않는다 — 프로그램에 원본 이슈가 이미 있으므로 중복 등록이 된다.
+    norm = lambda s: re.sub(r"\s+", " ", str(s or "")).strip()      # noqa: E731
+    exported = {norm(r["server_export_text"]) for r in conn.execute(
+        "SELECT server_export_text FROM issue_history "
+        "WHERE server_export_text IS NOT NULL AND server_export_text != ''").fetchall()}
     try:
         for t, x in targets:
             try:
@@ -845,6 +851,9 @@ def import_model_issues(model, tester_type=None, customer=""):
             for e in entries:
                 raw = (e.get("raw") or "").strip()
                 if not raw:
+                    continue
+                if norm(raw) in exported:      # 프로그램이 기록한 행 — 원본이 이미 있음
+                    updated += 1
                     continue
                 symptom = e.get("symptom") or raw
                 title = imp.make_title(e.get("unit", ""), symptom, raw)

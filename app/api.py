@@ -863,6 +863,16 @@ def finish_run(run_id, comment="", component=None, symptom_type=None, issue=None
                 "status": issue.get("status", ""),
                 "tags": issue.get("tags") or [],
             })["id"]
+    # 검증 화면에서 등록한 이슈 → 서버(Z:) 출하이슈사항 엑셀에도 기록.
+    # 실패하면 화면이 결과로 넘어가지 않고 오류·재시도를 안내한다(누락 방지).
+    issue_export_res = None
+    if issue_id:
+        try:
+            from app import issue_export
+            issue_export_res = issue_export.export_issue(issue_id)
+        except Exception as e:                                      # noqa: BLE001
+            issue_export_res = {"ok": False, "error": str(e)}
+
     # 서버(Z:)의 출하이슈사항 엑셀을 읽어 이슈관리에 반영.
     # 실패(엑셀 열려 있음 등)해도 검증 완료 자체는 되돌리지 않고, 경고만 함께 돌려준다.
     server_issues = None
@@ -875,7 +885,8 @@ def finish_run(run_id, comment="", component=None, symptom_type=None, issue=None
             server_issues = {"ok": False, "error": str(e)}
 
     return {"run_id": run_id, "result": result, "comment": comment,
-            "issue_id": issue_id, "server_issues": server_issues,
+            "issue_id": issue_id, "issue_export": issue_export_res,
+            "server_issues": server_issues,
             "model_name": run["model_name"] if run else "",
             "tester_type": run["tester_type"] if run else ""}
 

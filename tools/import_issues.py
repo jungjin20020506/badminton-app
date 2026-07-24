@@ -378,6 +378,17 @@ def commit_to_db(data):
     n_hist = n_rec = n_tester = n_run = 0
     tester_cache = {}   # (model,ttype,unit_no,cust) → tester_id (호기 중복 제거)
 
+    # 프로그램이 서버 엑셀에 직접 기록한 내역은 다시 들이지 않는다(중복 방지) —
+    # 원본 이슈가 issue_history 에 이미 있고, 자동수집 태그가 없어 위 삭제에서도 살아남는다.
+    _norm_exp = lambda s: re.sub(r"\s+", " ", str(s or "")).strip()   # noqa: E731
+    try:
+        exported = {_norm_exp(r["server_export_text"]) for r in conn.execute(
+            "SELECT server_export_text FROM issue_history "
+            "WHERE server_export_text IS NOT NULL AND server_export_text != ''").fetchall()}
+    except Exception:                                   # noqa: BLE001 — 구버전 DB(컬럼 없음)
+        exported = set()
+
+    n_skip_exported = 0
     for m in data:
         cust, model, tdir, ttype = m["customer"], m["model"], m["tester_dir"], m["tester_type"]
         board = m.get("board")
@@ -388,6 +399,9 @@ def commit_to_db(data):
             unit = e["unit"] or ""
             date = e["date"] or ""
             raw = e["raw"]
+            if _norm_exp(raw) in exported:      # 프로그램이 기록한 행 — 건너뜀
+                n_skip_exported += 1
+                continue
 
             # 1) 이슈 이력(이슈관리 화면 + 검사 전 안내 + AS 근거) --------------
             title = make_title(unit, symptom, raw)
@@ -445,7 +459,8 @@ def commit_to_db(data):
     conn.commit()
     conn.close()
     print(f"DB 반영 완료 → issue_history {n_hist}건, 검사기(호기) {n_tester}대, "
-          f"히스토리 세션 {n_run}건, issue_record {n_rec}건")
+          f"히스토리 세션 {n_run}건, issue_record {n_rec}건"
+          + (f" · 프로그램 기록분 건너뜀 {n_skip_exported}건" if n_skip_exported else ""))
 
 
 def main():

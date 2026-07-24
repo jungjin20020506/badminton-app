@@ -499,19 +499,31 @@ const App = (() => {
       </div>
 
       <div class="card">
-        <div class="card-title"><span class="section-num">3</span> 출하이슈사항 작성 & 검증 완료</div>
-        <div class="card-sub">이슈는 <b>사내 서버(Z:)의 출하이슈사항 엑셀</b>에 직접 적습니다.
-          아래 버튼을 누르면 이 모델의 <b>10. 출하검증</b> 폴더가 탐색기로 열립니다.
-          작성 후 <b>엑셀을 저장하고 닫은 다음</b> 검증 완료를 누르면, 그 내용이 프로그램 이슈관리로 자동 반영됩니다.</div>
+        <div class="card-title"><span class="section-num">3</span> 이슈사항 기록 & 검증 완료</div>
+        <div class="card-sub">이 검증에서 발견한 이슈를 아래에 적으면 <b>검증 완료 시 서버(Z:)의 이 모델
+          출하이슈사항 엑셀에 자동으로 기록</b>되고, 프로그램 이슈관리에도 함께 등록됩니다.
+          (엑셀에 직접 적던 방식도 그대로 사용 가능 — 완료 시 자동으로 읽어옵니다)</div>
 
         <div class="z-open-row mt12">
-          <button class="btn btn-primary" onclick="App.openShipFolder()">📂 출하이슈사항 열기</button>
+          <button class="btn" onclick="App.openShipFolder()">📂 출하이슈사항 폴더 열기</button>
           <span class="hint" id="zFolderHint">서버 경로를 확인하는 중…</span>
         </div>
         <div id="zOpenMsg" class="mt8"></div>
 
-        <div class="field mt16"><label>관련 부품</label>
-          <select id="f_component"><option value="">선택 안 함</option>${(state.boot.component_types || []).map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+        <div class="field mt16"><label>이슈 증상 <span class="hint" style="font-weight:400">— 비워 두면 이슈 없이 완료</span></label>
+          <textarea class="input" id="f_iss_symptom" rows="3"
+            placeholder="예) 반복성 시 3번 시료에서 C201 가성불량 발생 (정상 100, 불량 50)"></textarea></div>
+        <div class="grid2 mt12">
+          <div class="field"><label>원인 (선택)</label>
+            <input class="input" id="f_iss_cause" placeholder="예) 푸셔 스프링 깊이값 설정 오류"></div>
+          <div class="field"><label>조치 (선택)</label>
+            <input class="input" id="f_iss_action" placeholder="예) 푸셔 R1으로 교체 후 정상 확인"></div>
+          <div class="field"><label>상태</label>
+            <select id="f_iss_status"><option value=""></option>
+              <option>개선완료</option><option>임시조치·모니터링</option><option>미해결·추후확인</option></select></div>
+          <div class="field"><label>관련 부품</label>
+            <select id="f_component"><option value="">선택 안 함</option>${(state.boot.component_types || []).map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+        </div>
         <div class="field mt12"><label>증상 분류</label>
           <select id="f_symptom"><option value="">선택 안 함</option>${(state.boot.symptom_types || []).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
         <button class="btn btn-accent btn-lg btn-block mt16" onclick="App.finish()">검증 완료 및 판정 →</button>
@@ -1169,12 +1181,43 @@ const App = (() => {
   async function finish() {
     const unchecked = state.checkItems.filter(i => i.result === '미검사').length;
     if (unchecked && !confirm(`미검사 항목이 ${unchecked}건 있습니다.\n그대로 검증을 완료할까요?`)) return;
-    // 기타 의견란은 없앴다 — 이슈 내용은 서버(Z:)의 출하이슈사항 엑셀이 유일한 원본이다.
     const component = $('f_component') ? $('f_component').value : '';
     const symptom_type = $('f_symptom') ? $('f_symptom').value : '';
+    // 검증 화면에서 적은 이슈 — 완료 시 서버 출하이슈사항 엑셀 + 이슈관리에 함께 기록
+    const issSym = $('f_iss_symptom') ? $('f_iss_symptom').value.trim() : '';
+    const issue = issSym ? {
+      symptom: issSym,
+      cause: $('f_iss_cause') ? $('f_iss_cause').value.trim() : '',
+      action: $('f_iss_action') ? $('f_iss_action').value.trim() : '',
+      status: $('f_iss_status') ? $('f_iss_status').value : '',
+    } : null;
     const res = await api.post('/api/run/finish',
-      { run_id: state.run.run_id, component, symptom_type });
+      { run_id: state.run.run_id, component, symptom_type, issue });
     if (res.error) { toast('검증 완료 처리 실패: ' + res.error, 'warn'); return; }
+
+    // 이슈를 적었는데 서버 출하이슈사항 기록에 실패 → 결과 화면으로 넘어가지 않는다 (누락 방지)
+    const ie = res.issue_export;
+    if (res.issue_id && ie && !ie.ok) {
+      state.finish = res;
+      const msg = $('finishMsg');
+      if (msg) {
+        msg.innerHTML = `<div class="warn-box">
+          <b>⚠ 서버 출하이슈사항 기록 실패 — 이슈는 프로그램에 저장됐지만 서버 엑셀에는 아직 없습니다.</b>
+          <div class="mt8" style="white-space:pre-line">${esc(ie.error || '')}</div>
+          <div class="mt12" style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-mini" onclick="App.retryFinishExport(${res.issue_id})">↻ 서버 기록 다시 시도</button>
+            <button class="btn btn-ghost btn-mini" onclick="App.openShipFolder()">📂 폴더 열기</button>
+          </div></div>`;
+        msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      alert('서버 출하이슈사항 기록에 실패했습니다.\n\n' + (ie.error || '') +
+            '\n\n문제를 해결한 뒤 [서버 기록 다시 시도]를 눌러 주세요.');
+      return;
+    }
+    if (res.issue_id && ie && ie.ok) {
+      toast(ie.already ? '서버 출하이슈사항에 같은 내용이 이미 있어 중복 기록하지 않았습니다.'
+        : `서버 출하이슈사항에 기록 완료 (${ie.row}행)`);
+    }
 
     // 서버 출하이슈사항을 읽지 못했으면(엑셀 열려 있음 등) 완료 화면으로 넘어가기 전에 경고
     const si = res.server_issues;
@@ -1198,6 +1241,22 @@ const App = (() => {
     }
     state.finish = res;
     state.finish.issue_saved = !!(res.issue_id);
+    go('done');
+  }
+
+  // 검증 완료 화면의 이슈 서버 기록 재시도 — 성공하면 결과 화면으로 진행.
+  async function retryFinishExport(issueId) {
+    let r;
+    try { r = await api.post('/api/issue/export_server', { issue_id: issueId }); }
+    catch (e) { r = { ok: false, error: '서버 기록 요청에 실패했습니다.' }; }
+    if (!r || !r.ok) {
+      alert('서버 출하이슈사항 기록 실패\n\n' + ((r && r.error) || '알 수 없는 오류'));
+      return;
+    }
+    toast(r.already ? '서버 출하이슈사항에 이미 기록되어 있습니다.'
+      : `서버 출하이슈사항에 기록 완료 (${r.row}행)`);
+    if ($('finishMsg')) $('finishMsg').innerHTML = '';
+    state.finish.issue_saved = true;
     go('done');
   }
 
@@ -5215,7 +5274,7 @@ const App = (() => {
 
   return {
     go, startRun, pickMode, setItem, toggleDetail, markAll, parseLog, loadSample, onFile, finish,
-    installApp, applyUpdate,
+    installApp, applyUpdate, retryFinishExport,
     downloadWeeklyReport, downloadBackup,
     resetHistoryFilter, searchHistory, toggleHistoryRow, toggleAllHistory, deleteSelectedHistory, exportHistory,
     historyPage,

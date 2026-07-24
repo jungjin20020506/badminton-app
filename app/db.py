@@ -118,7 +118,7 @@ def init_db():
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(issue_history)").fetchall()}
     for col in ("issue_date", "unit_label", "customer", "board_type", "raw_text", "title",
                 "symptom_type", "tags", "cause", "status", "sample_rev",
-                "updated_at", "updated_by", "server_export"):
+                "updated_at", "updated_by", "server_export", "server_export_text"):
         if col not in cols:
             conn.execute(f"ALTER TABLE issue_history ADD COLUMN {col} TEXT")
     # tester 호기 묶음 컬럼 보강 — 3~7호기처럼 여러 검사기를 한 번에 검증하는 경우

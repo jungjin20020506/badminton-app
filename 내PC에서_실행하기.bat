@@ -49,22 +49,21 @@ if not exist "%LOCALAPP%\data\quality.db" (
 if not exist "%LOCALAPP%\runtime\pythonw.exe" goto NORUNTIME
 echo   준비 완료. 프로그램을 시작합니다.
 
-REM 이미 켜져 있으면 창만 하나 더 붙인다(서버 재기동 없음)
+REM 이미 켜져 있으면 브라우저만 다시 연다(서버 재기동 없음)
 netstat -an | find ":8000" | find "LISTENING" >nul 2>nul
 if not errorlevel 1 goto ATTACH
 
-REM 새로 시작 — 서버 기동 + 네이티브 창(프로그램 창)으로 표시
+REM 새로 시작 — 크롬(기본 브라우저)으로 열기. 홈 화면 추가(앱 설치)가 되려면
+REM 브라우저로 열어야 한다 (네이티브 창은 설치 기능이 없음)
 pushd "%LOCALAPP%"
-start "" "%LOCALAPP%\runtime\pythonw.exe" "%LOCALAPP%\run.py"
+start "" "%LOCALAPP%\runtime\pythonw.exe" "%LOCALAPP%\run.py" --browser
 popd
 REM robocopy 는 "복사 성공"에도 1 을 돌려주므로, 성공 종료는 0 으로 명시한다
 exit 0
 
 
 :ATTACH
-pushd "%LOCALAPP%"
-start "" "%LOCALAPP%\runtime\pythonw.exe" "%LOCALAPP%\run.py" --attach
-popd
+start "" http://localhost:8000
 exit 0
 
 
