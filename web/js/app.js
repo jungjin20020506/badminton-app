@@ -5115,6 +5115,8 @@ const App = (() => {
     btn.textContent = '↑'; btn.onclick = toTop;
     document.body.appendChild(btn);
     initPwa();                                          // 홈 화면에 추가(앱 설치) 안내
+    initUpdateCheck();                                  // 새 버전 배포 감지
+    if (isDemo() && $('demoBar')) $('demoBar').classList.remove('hidden');   // 데모 전역 안내
     go('home');
   }
   document.addEventListener('DOMContentLoaded', init);
@@ -5153,6 +5155,51 @@ const App = (() => {
     });
   }
 
+  // -------------------------------------------- 🔄 새 버전 배포 감지 (자동 업데이트 안내)
+  // 깃허브 main 에 푸시하면 Vercel 이 자동 재배포한다. 이미 열려 있는 화면은 그대로이므로,
+  // 배포 파일(app.js/style.css/index.html)의 ETag 를 주기적으로 비교해 바뀌면 안내한다.
+  // (버전 번호를 따로 관리할 필요 없음 — 파일 내용이 바뀌면 ETag 가 바뀐다)
+  const UPDATE_FILES = ['/js/app.js', '/css/style.css', '/'];
+  let updateBaseline = null;
+
+  async function updateFingerprint() {
+    const tags = [];
+    for (const u of UPDATE_FILES) {
+      try {
+        const r = await fetch(u, { method: 'HEAD', cache: 'no-store' });
+        tags.push(r.headers.get('etag') || r.headers.get('last-modified') || '');
+      } catch (e) { return null; }              // 오프라인 등 — 이번 확인은 건너뜀
+    }
+    if (!tags.some(Boolean)) return null;       // 로컬 서버(ETag 없음)에서는 비활성
+    return tags.join('|');
+  }
+
+  async function initUpdateCheck() {
+    updateBaseline = await updateFingerprint();
+    if (updateBaseline == null) return;         // 감지 불가 환경(로컬 실행 등)
+    const check = async () => {
+      const now = await updateFingerprint();
+      if (now && updateBaseline && now !== updateBaseline) {
+        const bar = $('updateBar');
+        if (bar) bar.classList.remove('hidden');
+      }
+    };
+    setInterval(check, 5 * 60 * 1000);          // 5분마다
+    document.addEventListener('visibilitychange', () => {   // 탭/앱으로 돌아올 때 즉시
+      if (!document.hidden) check();
+    });
+  }
+
+  async function applyUpdate() {
+    try {                                        // 서비스워커 캐시 비우고 새로 받는다
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    } catch (e) { /* 캐시 정리 실패해도 새로고침으로 진행 */ }
+    location.reload();
+  }
+
   async function installApp() {
     if (deferredInstall) {
       deferredInstall.prompt();
@@ -5168,7 +5215,7 @@ const App = (() => {
 
   return {
     go, startRun, pickMode, setItem, toggleDetail, markAll, parseLog, loadSample, onFile, finish,
-    installApp,
+    installApp, applyUpdate,
     downloadWeeklyReport, downloadBackup,
     resetHistoryFilter, searchHistory, toggleHistoryRow, toggleAllHistory, deleteSelectedHistory, exportHistory,
     historyPage,

@@ -36,6 +36,18 @@
       </div>
     </header>
 
+    <!-- 온라인 데모(Vercel) 안내 — 사내망 밖이라 실데이터·Z: 서버 연동이 없음을 모든 화면에서 알림 -->
+    <div id="demoBar" class="a2hs demo-bar hidden">
+      <span class="a2hs-txt">⚠ <b>온라인 데모</b> — 데이터가 비어 있는 소개용 화면입니다.
+        실제 이슈·히스토리·서버(Z:) 연동은 <b>회사 PC의 KNK 지킴 프로그램</b>(실행하기.bat)에서 동작합니다.</span>
+    </div>
+
+    <!-- 새 버전 배포 감지 — 깃허브 main 푸시로 사이트가 갱신되면 표시 -->
+    <div id="updateBar" class="a2hs update-bar hidden">
+      <span class="a2hs-txt">🔄 <b>새 버전이 배포되었습니다</b> — 업데이트하면 최신 기능이 적용됩니다.</span>
+      <button class="btn btn-primary btn-mini" onclick="App.applyUpdate()">지금 업데이트</button>
+    </div>
+
     <!-- 홈 화면에 추가(앱 설치) 유도 — 설치 전이면 계속 표시, 설치하면 사라짐 -->
     <div id="a2hsBar" class="a2hs hidden">
       <span class="a2hs-txt">📲 <b>KNK 지킴</b>을 앱처럼 쓰세요 — 홈 화면에 추가하면 전체 화면으로 바로 열립니다.</span>
