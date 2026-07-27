@@ -72,6 +72,14 @@ BOARD_NAMES = {"SUB", "MAIN", "POGO", "MMW", "FRC", "CTC", "BTOB", "B TO B",
                "BAROMETER", "DOME", "SENSOR", "LOWER", "UPPER", "SPK", "MIC",
                "RCV", "공용부", "기구부"}
 BOARD_SUFFIXES = ("연배",)                       # "4연배" 등
+# 부위 복합명에 함께 등장하는 보조 토큰 — 단독으로는 부위 판정 근거가 안 된다
+BOARD_EXTRA_TOKENS = {"PBA", "IF", "RF", "FPCB", "B", "TO"}
+
+# 카테고리(분류) 폴더 — 모델명이 될 수 없는 이름들. 부위 건너뛰기가 여기까지
+# 올라와 버리면 잘못 올라온 것이므로 아래에서 되돌린다.
+CATEGORY_NAMES = {"제조", "자동화", "연구소", "PBA", "TSP", "TV", "기타", "설비",
+                  "SUB PBA", "가전TSP", "지문센서", "심박센서", "초음파"}
+CATEGORY_SUFFIXES = ("년", "向", "향", "社", "사업부", "시리즈")
 
 
 def _looks_like_model(seg):
@@ -83,9 +91,23 @@ def _norm_seg(seg):
 
 
 def _is_board_seg(seg):
+    """부위(board) 폴더 판정 — 단독 이름(SUB/DOME) 또는 'IF CTC PBA'처럼
+       부위 토큰이 포함된 복합 이름(나머지 토큰은 보조 토큰일 때)도 부위로 본다."""
     s = _norm_seg(seg)
-    return s in BOARD_NAMES or s.replace(" ", "") in BOARD_NAMES \
-        or any(s.endswith(sfx) for sfx in BOARD_SUFFIXES)
+    if s in BOARD_NAMES or s.replace(" ", "") in BOARD_NAMES \
+            or any(s.endswith(sfx) for sfx in BOARD_SUFFIXES):
+        return True
+    toks = [t for t in re.split(r"[\s\-_/,.()]+", s) if t]
+    if toks and any(t in BOARD_NAMES for t in toks) \
+            and all(t in BOARD_NAMES or t in BOARD_EXTRA_TOKENS for t in toks):
+        return True                       # 예: "IF CTC PBA", "SUB PBA", "B TO B"
+    return False
+
+
+def _is_category_seg(seg):
+    s = _norm_seg(seg)
+    return s in CATEGORY_NAMES or bool(re.match(r"^\d+\s*[.\-]", s)) \
+        or any(s.endswith(sfx) for sfx in CATEGORY_SUFFIXES)
 
 
 def _clean_model(name):
@@ -114,6 +136,12 @@ def derive_model_tester(path, customer):
     while idx > 0 and _is_board_seg(cand[idx]):
         boards.insert(0, cand[idx])
         idx -= 1
+    # 안전장치: 부위를 건너뛰다 카테고리(제조/PBA/…)까지 올라와 버렸으면,
+    # 마지막으로 건너뛴 폴더가 사실 모델이다(모델명에 MIC 등 토큰이 든 경우).
+    if boards and _is_category_seg(cand[idx]):
+        model_seg = boards.pop(0)
+        board = " ".join(boards).strip() or None
+        return _clean_model(model_seg), board, tester_dir
     board = " ".join(boards).strip() or None
     return _clean_model(cand[idx]), board, tester_dir
 

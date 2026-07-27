@@ -20,6 +20,7 @@ KNK RAG(검색 증강 생성) 엔진 — app/rag.py
 """
 import json
 import math
+import os
 import re
 import urllib.request
 from app import db
@@ -225,16 +226,29 @@ def list_knowledge(limit=100, topic=None):
 
 
 # --------------------------------------------------------------------------- AI 인터뷰(학습 가속)
+# 질문 생성은 답변 채팅(gpt-4o-mini)보다 좋은 모델을 쓴다 — 한 번에 짧은 질문
+# 하나라 비용이 매우 작고, 질문 품질이 지식베이스 품질을 좌우하기 때문.
+# 실패(권한 없음 등)하면 설정된 기본 모델로 자동 재시도한다.
+INTERVIEW_MODEL = os.environ.get("KNK_INTERVIEW_MODEL", "gpt-4o")
+
 _INTERVIEW_SYS = (
     "당신은 KNK(케이엔케이) 품질팀의 지식을 수집하는 인터뷰어입니다. 상대는 검사기(테스터)와 "
     "품질 업무를 아주 잘 아는 사내 전문가입니다. 목표는 'KNK 검사기와 품질의 모든 것'을 담은 "
     "지식베이스를 짧은 시간에 채우는 것입니다.\n"
-    "규칙:\n"
-    "1) 이미 알고 있는 내용(아래 목록)은 다시 묻지 말고, 비어 있는 부분을 채우는 질문을 하세요.\n"
-    "2) 처음에는 넓게(검사기 종류·검사 방식·판정 기준), 지식이 쌓일수록 점점 더 구체적이고 "
-    "고차원적인 질문으로 좁혀가세요.\n"
-    "3) 한 번에 '딱 하나'의 질문만, 한국어로, 전문가가 말로 대답하기 쉬운 형태로 하세요.\n"
-    "4) 질문만 출력하세요(번호·설명·머리말 없이 질문 문장 하나)."
+    "KNK는 전자부품(PBA·FPCB·TSP 등) 검사기를 제작·출하검증하는 회사입니다. 검사기 종류: "
+    "기능검사기(Open/Short), 방수, VSWR, LNA, 고주파(TDR/IL), 돔하중, 조도, 지문센서, TSP.\n"
+    "질문 규칙:\n"
+    "1) 이미 수집된 내용(아래 목록)은 다시 묻지 말고, 비어 있는 부분을 채우는 질문을 하세요.\n"
+    "2) 반드시 위 실제 업무 범위 안에서, 실무자가 겪는 '구체적 상황'을 물으세요. "
+    "추상적·철학적·일반론 질문(품질이란 무엇인가 등)은 금지합니다.\n"
+    "3) 좋은 질문의 '형태' 예(그대로 베끼지 말고 형태만 참고): '~검사에서 값이 스펙에 걸칠 때 "
+    "재측정 기준이 있나요?', '~부품은 언제/어떤 기준으로 교체하나요?', '~불량이 반복되면 어느 팀과 "
+    "어떻게 협의하나요?'\n"
+    "4) 나쁜 질문 예: '품질 관리에서 가장 중요한 것은?', '검사란 무엇이라고 생각하시나요?' (금지)\n"
+    "5) 처음에는 넓게(검사기 종류·검사 방식·판정 기준), 지식이 쌓일수록 점점 더 구체적으로 "
+    "좁혀가세요. 한 질문은 '하나의 사실/기준/절차'만 물어야 합니다.\n"
+    "6) 한 번에 '딱 하나'의 질문만, 한국어로, 전문가가 말로 대답하기 쉬운 형태로 하세요.\n"
+    "7) 질문만 출력하세요(번호·설명·머리말 없이 질문 문장 하나)."
 )
 
 # 지식이 거의 없을 때 던질 기본(seed) 질문 — API 없이도 인터뷰 시작 가능
@@ -248,6 +262,20 @@ _SEED_QUESTIONS = [
     "고객사(드림텍·두성테크·한국성전)별로 검사 기준이나 특이사항에 차이가 있나요?",
     "출하 전 반드시 확인하는 핵심 체크포인트 3가지만 꼽는다면 무엇인가요?",
 ]
+
+
+# 최근 낸 인터뷰 질문(중복 방지) — 서버 프로세스 살아있는 동안 최대 12개 기억
+_RECENT_Q = []
+
+
+def _recent_questions():
+    return list(_RECENT_Q)
+
+
+def _remember_question(q):
+    if q and q not in _RECENT_Q:
+        _RECENT_Q.append(q)
+        del _RECENT_Q[:-12]
 
 
 def _known_summary(limit=40):
@@ -269,18 +297,25 @@ def interview_question(cfg=None):
     n = db.query("SELECT COUNT(*) c FROM knowledge", one=True)["c"]
 
     if available(cfg):
-        try:
-            from app import chatbot
-            user = (f"지금까지 수집된 지식({n}건) 요약:\n{known or '(아직 없음 — 가장 기초부터 시작)'}\n\n"
-                    "위를 참고해, 아직 비어 있는 가장 중요한 부분을 채울 질문 '하나'만 해주세요.")
-            reply = chatbot.openai_chat(
-                [{"role": "system", "content": _INTERVIEW_SYS},
-                 {"role": "user", "content": user}], cfg=cfg, temperature=0.5)
-            q = (reply or "").strip().strip('"').split("\n")[0].strip()
-            if q:
-                return {"question": q, "known": n, "mode": "ai"}
-        except Exception:
-            pass
+        from app import chatbot
+        recent = _recent_questions()
+        avoid = ("\n최근에 이미 했던 질문(다시 하지 말 것):\n"
+                 + "\n".join(f"- {q}" for q in recent) + "\n") if recent else ""
+        user = (f"지금까지 수집된 지식({n}건) 요약:\n{known or '(아직 없음 — 가장 기초부터 시작)'}\n"
+                f"{avoid}\n"
+                "위를 참고해, 아직 비어 있는 가장 중요한 부분을 채울 새로운 질문 '하나'만 해주세요.")
+        msgs = [{"role": "system", "content": _INTERVIEW_SYS},
+                {"role": "user", "content": user}]
+        # 좋은 모델 우선 → 실패 시 기본 모델 → 그래도 실패면 seed 질문
+        for model in (INTERVIEW_MODEL, None):
+            try:
+                reply = chatbot.openai_chat(msgs, cfg=cfg, temperature=0.8, model=model)
+                q = (reply or "").strip().strip('"').split("\n")[0].strip()
+                if q:
+                    _remember_question(q)
+                    return {"question": q, "known": n, "mode": "ai"}
+            except Exception:
+                continue
     # 폴백: 아직 안 쓴 seed 질문
     idx = min(n, len(_SEED_QUESTIONS) - 1)
     return {"question": _SEED_QUESTIONS[idx], "known": n, "mode": "seed"}
