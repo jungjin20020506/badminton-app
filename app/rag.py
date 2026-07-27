@@ -109,11 +109,12 @@ def _chunk(text):
     return parts
 
 
-def add_knowledge(content, source="전문가입력", topic="", by="", cfg=None):
+def add_knowledge(content, source="전문가입력", topic="", by="", cfg=None, share=True):
     """지식을 임베딩해서 knowledge 테이블에 저장. 저장된 청크 개수를 반환.
 
     임베딩(OpenAI 키)이 안 되면 벡터 없이 원문만 저장하고(embedding=NULL),
     나중에 reindex()로 한꺼번에 색인할 수 있다 → 키 없이도 데이터는 안 잃는다.
+    share=True면 X서버 공유파일에도 기록해 팀 전체 PC에 전파된다.
     """
     chunks = _chunk(content)
     if not chunks:
@@ -124,12 +125,20 @@ def add_knowledge(content, source="전문가입력", topic="", by="", cfg=None):
             vecs = embed_batch(chunks, cfg=cfg)
         except Exception:
             vecs = None
+    share_entries = []
     for i, ch in enumerate(chunks):
         emb = json.dumps(vecs[i]) if vecs else None
+        uid = _share_uid(ch, topic or None)
         db.execute(
-            "INSERT INTO knowledge(content,source,topic,embedding,embed_model,created_by) "
-            "VALUES (?,?,?,?,?,?)",
-            (ch, source, topic or None, emb, EMBED_MODEL if vecs else None, by or None))
+            "INSERT INTO knowledge(content,source,topic,embedding,embed_model,"
+            "created_by,share_uid) VALUES (?,?,?,?,?,?,?)",
+            (ch, source, topic or None, emb, EMBED_MODEL if vecs else None,
+             by or None, uid))
+        share_entries.append({"uid": uid, "content": ch, "topic": topic or None,
+                              "source": source, "by": by or None,
+                              "created_at": None})
+    if share:
+        _share_append(share_entries)          # 서버 접근 불가면 조용히 넘어감
     return len(chunks)
 
 
@@ -150,7 +159,11 @@ def reindex(cfg=None, limit=200):
 
 
 def delete_knowledge(kid):
+    """지식 삭제 — 공유된 지식이면 삭제도 팀 전체에 전파된다."""
+    row = db.query("SELECT share_uid FROM knowledge WHERE id=?", (int(kid),), one=True)
     db.execute("DELETE FROM knowledge WHERE id=?", (int(kid),))
+    if row and row.get("share_uid"):
+        _share_append([{"op": "del", "uid": row["share_uid"]}])
     return {"ok": True}
 
 
@@ -201,6 +214,141 @@ def context_block(hits):
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- 팀 지식 공유
+# 각 PC의 지식은 로컬 DB(data/quality.db)에 쌓인다 — 그래서 팀장이 자기 PC에서
+# 답한 지식은 다른 PC에 안 보인다. 이를 해결하기 위해 X서버의 공유파일에
+# 추가/삭제를 기록(append)하고, 각 PC가 이를 병합(sync_shared)한다.
+#
+# 공유파일 위치: 프로그램 배포 폴더 '옆'의 지식공유 폴더 (robocopy /MIR 영향 없음)
+#   X:\연구소문서\출하 관련 자료\15. 품질 AI 프로그램\지식공유\knowledge.jsonl
+# 한 줄 = JSON 하나: {"uid","content","topic","source","by","created_at"}
+#                또는 {"op":"del","uid":...} (삭제 전파)
+# uid = 내용+주제 해시 → PC가 달라도 같은 지식이면 같은 uid (중복 방지)
+_DEFAULT_SHARE = r"X:\연구소문서\출하 관련 자료\15. 품질 AI 프로그램\지식공유"
+
+
+def _share_dir():
+    p = os.environ.get("KNK_KNOWLEDGE_SHARE", "").strip()
+    if p:
+        return p
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if db.is_network_path(base):                  # X서버 배포본에서 실행 중
+        return os.path.join(os.path.dirname(base), "지식공유")
+    return _DEFAULT_SHARE                         # 로컬 복사본 → 고정 X서버 경로
+
+
+def _share_file():
+    return os.path.join(_share_dir(), "knowledge.jsonl")
+
+
+def share_available():
+    """공유 폴더(X서버)에 접근 가능한지."""
+    try:
+        d = _share_dir()
+        return os.path.isdir(d) or os.path.isdir(os.path.dirname(d))
+    except OSError:
+        return False
+
+
+def _share_uid(content, topic):
+    import hashlib
+    key = re.sub(r"\s+", " ", (content or "").strip()) + "|" + (topic or "")
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+
+def _share_append(entries):
+    """공유파일에 항목들을 추가 기록. 서버 접근 불가 시 조용히 건너뜀(로컬은 유지)."""
+    if not entries:
+        return False
+    try:
+        os.makedirs(_share_dir(), exist_ok=True)
+        with open(_share_file(), "a", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def _read_share_state():
+    """공유파일 전체를 순서대로 적용한 최종 상태: {uid: entry 또는 None(삭제됨)}."""
+    state = {}
+    try:
+        with open(_share_file(), encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue                      # 동시 기록 등으로 깨진 줄은 무시
+                uid = e.get("uid")
+                if not uid:
+                    continue
+                state[uid] = None if e.get("op") == "del" else e
+    except OSError:
+        pass
+    return state
+
+
+def sync_shared(cfg=None, push=True):
+    """팀 공유 동기화: ① 내 로컬 지식 중 공유 안 된 것을 공유파일로 올리고(push)
+       ② 공유파일의 새 지식을 내 DB로 받아온다(pull, 삭제 전파 포함).
+       반환: {pushed, added, deleted, available}"""
+    if not share_available():
+        return {"available": False, "pushed": 0, "added": 0, "deleted": 0}
+    cfg = cfg or _cfg()
+
+    # ① push — share_uid 없는 로컬 지식(예전에 쌓은 것 포함)을 공유에 올림
+    pushed = 0
+    if push:
+        rows = db.query("SELECT id,content,topic,source,created_by,created_at "
+                        "FROM knowledge WHERE share_uid IS NULL OR share_uid=''")
+        out = []
+        for r in rows:
+            uid = _share_uid(r["content"], r["topic"])
+            db.execute("UPDATE knowledge SET share_uid=? WHERE id=?", (uid, r["id"]))
+            out.append({"uid": uid, "content": r["content"], "topic": r["topic"],
+                        "source": r["source"], "by": r["created_by"],
+                        "created_at": r["created_at"]})
+        # 이미 공유파일에 있는 uid는 다시 올리지 않는다(파일 비대화 방지)
+        existing = set(_read_share_state().keys())
+        out = [e for e in out if e["uid"] not in existing]
+        if out and _share_append(out):
+            pushed = len(out)
+
+    # ② pull — 공유파일의 최종 상태를 내 DB에 반영
+    state = _read_share_state()
+    local = {r["share_uid"] for r in
+             db.query("SELECT share_uid FROM knowledge WHERE share_uid IS NOT NULL")}
+    to_add = [e for uid, e in state.items() if e and uid not in local]
+    to_del = [uid for uid, e in state.items() if e is None and uid in local]
+
+    added = 0
+    if to_add:
+        vecs = None
+        if available(cfg):
+            try:
+                vecs = embed_batch([e["content"] for e in to_add], cfg=cfg)
+            except Exception:
+                vecs = None
+        for i, e in enumerate(to_add):
+            emb = json.dumps(vecs[i]) if vecs else None
+            db.execute(
+                "INSERT INTO knowledge(content,source,topic,embedding,embed_model,"
+                "created_by,share_uid) VALUES (?,?,?,?,?,?,?)",
+                (e["content"], e.get("source") or "팀공유", e.get("topic"),
+                 emb, EMBED_MODEL if vecs else None,
+                 e.get("by") or "팀공유", e["uid"]))
+            added += 1
+    deleted = 0
+    for uid in to_del:
+        db.execute("DELETE FROM knowledge WHERE share_uid=?", (uid,))
+        deleted += 1
+    return {"available": True, "pushed": pushed, "added": added, "deleted": deleted}
+
+
 # --------------------------------------------------------------------------- 통계
 def stats():
     total = db.query("SELECT COUNT(*) c FROM knowledge", one=True)["c"]
@@ -210,19 +358,26 @@ def stats():
         "SELECT topic, COUNT(*) c FROM knowledge WHERE topic IS NOT NULL "
         "GROUP BY topic ORDER BY c DESC LIMIT 12")
     return {"total": total, "indexed": indexed, "unindexed": total - indexed,
-            "topics": topics, "available": available()}
+            "topics": topics, "available": available(),
+            "share_available": share_available()}
 
 
-def list_knowledge(limit=100, topic=None):
+def list_knowledge(limit=100, topic=None, q=None):
+    """지식 목록 — topic(주제) 필터와 q(검색어, 내용·주제·출처 부분일치) 지원."""
+    sql = ("SELECT id,content,source,topic,embedding,created_at FROM knowledge WHERE 1=1")
+    args = []
     if topic:
-        rows = db.query("SELECT id,content,source,topic,embedding,created_at FROM knowledge "
-                        "WHERE topic=? ORDER BY id DESC LIMIT ?", (topic, limit))
-    else:
-        rows = db.query("SELECT id,content,source,topic,embedding,created_at FROM knowledge "
-                        "ORDER BY id DESC LIMIT ?", (limit,))
+        sql += " AND topic=?"
+        args.append(topic)
+    for kw in re.findall(r"\S+", (q or ""))[:5]:      # 공백 구분 단어 = AND 검색
+        sql += " AND (content LIKE ? OR topic LIKE ? OR source LIKE ?)"
+        args += [f"%{kw}%"] * 3
+    total = db.query(f"SELECT COUNT(*) c FROM ({sql})", args, one=True)["c"]
+    sql += " ORDER BY id DESC LIMIT ?"
+    rows = db.query(sql, args + [limit])
     for r in rows:
         r["indexed"] = bool(r.pop("embedding", None))
-    return rows
+    return {"rows": rows, "total": total}
 
 
 # --------------------------------------------------------------------------- AI 인터뷰(학습 가속)

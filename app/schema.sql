@@ -237,6 +237,8 @@ CREATE TABLE IF NOT EXISTS knowledge (
     embedding   TEXT,                          -- 임베딩 벡터(정규화된 JSON float 배열). NULL이면 미색인
     embed_model TEXT,                          -- 임베딩 모델명 (text-embedding-3-small 등)
     created_at  TEXT DEFAULT (datetime('now','localtime')),
-    created_by  TEXT
+    created_by  TEXT,
+    share_uid   TEXT                           -- 팀 공유 ID(내용 해시) — X서버 공유파일과 대응
 );
 CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge(topic);
+-- share_uid 인덱스는 app/db.py 마이그레이션에서 생성 (구버전 DB는 컬럼 추가가 먼저 필요)

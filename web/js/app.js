@@ -3116,12 +3116,32 @@ const App = (() => {
       </div>
 
       <details class="card mt12" style="padding:16px" id="ragListBox">
-        <summary style="cursor:pointer;font-weight:700">📚 쌓인 지식 보기 / 삭제</summary>
+        <summary style="cursor:pointer;font-weight:700">📚 쌓인 지식 보기 / 검색 / 삭제 <span class="hint" id="ragListCnt"></span></summary>
+        <div class="mt12" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="input" id="ragSearch" placeholder="🔍 검색 (내용·주제·출처, 띄어쓰기로 여러 단어)" style="max-width:340px">
+          <select id="ragTopicSel" onchange="App.loadRagList()" style="width:auto;min-width:120px"><option value="">전체 주제</option></select>
+          <button class="btn btn-mini" onclick="App.loadRagList()">검색</button>
+        </div>
         <div id="ragList" class="mt12"><p class="hint">펼치면 불러옵니다…</p></div>
       </details>`;
     loadRagStats();
     const det = view().querySelector('#ragListBox');
     if (det) det.addEventListener('toggle', () => { if (det.open) loadRagList(); });
+    const si = $('ragSearch');
+    if (si) si.addEventListener('keydown', e => { if (e.key === 'Enter') loadRagList(); });
+    ragShareSync();          // 팀 공유 지식 자동 병합(백그라운드)
+  }
+
+  async function ragShareSync() {
+    try {
+      const r = await api.post('/api/rag/share-sync', {});
+      if (!r.available) return;
+      if (r.added || r.deleted) {
+        toast(`🤝 팀 지식 동기화: 받음 ${r.added}건${r.deleted ? ` · 삭제 반영 ${r.deleted}건` : ''}`);
+        await loadRagStats();
+        if ($('ragListBox') && $('ragListBox').open) loadRagList();
+      }
+    } catch (e) { /* 서버 접근 불가 — 조용히 넘어감 */ }
   }
 
   async function loadRagStats() {
@@ -3135,12 +3155,19 @@ const App = (() => {
       `<div class="hint" style="color:var(--amber);margin-top:6px">⚠ OpenAI 키가 없어 '색인(임베딩)'이 안 됩니다. 지식은 저장되지만 검색에 쓰이려면 키가 필요합니다. 🤖 AI 도우미 화면에서 키를 저장하세요.</div>`;
     const reBtn = s.unindexed > 0 && s.available
       ? `<button class="btn btn-mini" onclick="App.ragReindex()">미색인 ${s.unindexed}건 색인하기</button>` : '';
+    const share = s.share_available
+      ? `<span class="hint" style="color:var(--accent)">🤝 팀 공유 켜짐(X서버) — 팀원이 가르친 지식이 자동으로 합쳐집니다</span>`
+      : `<span class="hint">🤝 팀 공유 대기 — X서버 연결 시 팀원 지식과 자동으로 합쳐집니다</span>`;
     box.innerHTML = `
       <div class="row-between" style="flex-wrap:wrap;gap:8px">
         <div><b style="font-size:18px">지식 ${s.total || 0}건</b>
           <span class="hint">· 검색가능(색인) ${s.indexed || 0}건${s.unindexed ? ` · 미색인 ${s.unindexed}건` : ''}</span></div>
-        ${reBtn}
+        <div style="display:flex;gap:8px;align-items:center">
+          ${reBtn}
+          <button class="btn btn-mini" onclick="App.ragShareSync()" title="팀원 PC에서 가르친 지식 즉시 받아오기">🤝 팀 지식 받기</button>
+        </div>
       </div>
+      <div style="margin-top:6px">${share}</div>
       ${topics ? `<div class="hint" style="margin-top:6px">주제: ${esc(topics)}</div>` : ''}
       ${keyWarn}`;
   }
@@ -3197,14 +3224,43 @@ const App = (() => {
   async function loadRagList() {
     const box = $('ragList');
     if (!box) return;
-    const rows = await api.get('/api/rag/list?limit=100');
-    box.innerHTML = (rows || []).map(r => `
+    const q = ($('ragSearch') && $('ragSearch').value.trim()) || '';
+    const tp = ($('ragTopicSel') && $('ragTopicSel').value) || '';
+    const res = await api.get(`/api/rag/list?limit=100&q=${encodeURIComponent(q)}&topic=${encodeURIComponent(tp)}`);
+    const rows = res.rows || [];
+    if ($('ragListCnt')) {
+      $('ragListCnt').textContent = q || tp
+        ? `· 검색결과 ${res.total}건${res.total > rows.length ? ` (상위 ${rows.length}건 표시)` : ''}`
+        : `· 총 ${res.total}건`;
+    }
+    // 주제 드롭다운 채우기(현재 선택 유지)
+    const sel = $('ragTopicSel');
+    if (sel && sel.options.length <= 1) {
+      try {
+        const s = await api.get('/api/rag/stats');
+        (s.topics || []).forEach(t => {
+          const o = document.createElement('option');
+          o.value = t.topic; o.textContent = `${t.topic} (${t.c})`;
+          sel.appendChild(o);
+        });
+      } catch (e) { /* 무시 */ }
+    }
+    const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hl = (text) => {
+      let out = esc(text);
+      for (const kw of q.split(/\s+/).filter(Boolean)) {
+        try { out = out.replace(new RegExp('(' + reEsc(esc(kw)) + ')', 'gi'), '<mark>$1</mark>'); }
+        catch (e) { /* 무시 */ }
+      }
+      return out;
+    };
+    box.innerHTML = rows.map(r => `
       <div class="sim-row">
         <span class="sim-meta">#${r.id} · ${esc((r.created_at || '').slice(0, 16))}
-          ${r.topic ? '· ' + esc(r.topic) : ''} · ${r.indexed ? '🟢 색인됨' : '⚪ 미색인'}
-          <button class="msg-act" onclick="App.ragDelete(${r.id})" title="삭제">🗑</button></span>
-        <div class="sim-act">${esc((r.content || '').slice(0, 200))}${(r.content || '').length > 200 ? '…' : ''}</div>
-      </div>`).join('') || '<p class="hint">아직 쌓인 지식이 없습니다. 위에서 가르쳐 주세요.</p>';
+          ${r.topic ? '· 📁 ' + esc(r.topic) : ''} ${r.source ? '· ' + esc(r.source) : ''} · ${r.indexed ? '🟢 색인됨' : '⚪ 미색인'}
+          <button class="msg-act" onclick="App.ragDelete(${r.id})" title="삭제">🗑 삭제</button></span>
+        <div class="sim-act">${hl((r.content || '').slice(0, 300))}${(r.content || '').length > 300 ? '…' : ''}</div>
+      </div>`).join('') || `<p class="hint">${q || tp ? '검색 결과가 없습니다. 다른 검색어로 시도해 보세요.' : '아직 쌓인 지식이 없습니다. 위에서 가르쳐 주세요.'}</p>`;
   }
 
   async function ragDelete(id) {
@@ -5593,6 +5649,7 @@ const App = (() => {
     renderAnalytics, genDraft, copyDraft, openIssuesFor,
     sendChat, chatChip, toggleLocalAI, setAiModel,
     ragTeach, ragNextQuestion, ragSaveAnswer, ragReindex, ragDelete, teachFromChat,
+    loadRagList, ragShareSync,
     quickIssue, openModel,
     setTplTarget, insertTpl, addTemplate, delTemplate,
     onIssuePhotoFile, deleteIssuePhoto,

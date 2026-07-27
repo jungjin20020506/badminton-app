@@ -135,6 +135,11 @@ def init_db():
     for col in ("photo_type", "caption", "created_at"):
         if col not in pcols:
             conn.execute(f"ALTER TABLE issue_photo ADD COLUMN {col} TEXT")
+    # knowledge 팀 공유 컬럼 보강 (기존 DB 마이그레이션) — 컬럼 추가 후 인덱스 생성
+    kcols = {r["name"] for r in conn.execute("PRAGMA table_info(knowledge)").fetchall()}
+    if "share_uid" not in kcols:
+        conn.execute("ALTER TABLE knowledge ADD COLUMN share_uid TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_share ON knowledge(share_uid)")
     conn.commit()
 
     # 자주 쓰는 문구 템플릿 — 비어 있으면 기본 문구 시딩

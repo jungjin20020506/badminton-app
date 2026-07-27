@@ -156,7 +156,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/rag/list":
                 from app import rag
                 return self._send_json(rag.list_knowledge(
-                    int(_first(qs, "limit") or 100), _first(qs, "topic")))
+                    int(_first(qs, "limit") or 100), _first(qs, "topic"),
+                    _first(qs, "q")))
             # ---- Z: 파일서버 연동 (읽기 전용) ----
             if path == "/api/z/model":
                 from app import zserver
@@ -320,6 +321,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/rag/reindex":
                 from app import rag
                 return self._send_json(rag.reindex())
+            if path == "/api/rag/share-sync":
+                from app import rag
+                return self._send_json(rag.sync_shared())
             if path == "/api/issues/similar":
                 return self._send_json(api.similar_issues(body.get("text", "")))
             if path == "/api/issue/quick":
