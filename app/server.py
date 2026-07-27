@@ -149,6 +149,14 @@ class Handler(BaseHTTPRequestHandler):
                 # public_config — API 키 원문은 브라우저로 절대 내보내지 않는다
                 return self._send_json({"config": chatbot.public_config(),
                                         "ollama": chatbot.ollama_status()})
+            # ---- RAG 지식베이스(AI 학습) ----
+            if path == "/api/rag/stats":
+                from app import rag
+                return self._send_json(rag.stats())
+            if path == "/api/rag/list":
+                from app import rag
+                return self._send_json(rag.list_knowledge(
+                    int(_first(qs, "limit") or 100), _first(qs, "topic")))
             # ---- Z: 파일서버 연동 (읽기 전용) ----
             if path == "/api/z/model":
                 from app import zserver
@@ -289,6 +297,29 @@ class Handler(BaseHTTPRequestHandler):
                 db.execute("UPDATE chat_log SET bookmarked=? WHERE id=?",
                            (1 if body.get("on") else 0, int(body.get("id") or 0)))
                 return self._send_json({"ok": True})
+            # ---- RAG 지식베이스(AI 학습) ----
+            if path == "/api/rag/teach":
+                from app import rag
+                added = rag.add_knowledge(
+                    body.get("content", ""), body.get("source", "전문가입력"),
+                    body.get("topic", ""), body.get("by", ""))
+                return self._send_json({"added": added, "stats": rag.stats()})
+            if path == "/api/rag/interview":
+                from app import rag
+                return self._send_json(rag.interview_question())
+            if path == "/api/rag/teach-qa":
+                from app import rag
+                res = rag.teach_from_qa(
+                    body.get("question", ""), body.get("reply", ""),
+                    body.get("topic", ""), body.get("by", ""))
+                res["stats"] = rag.stats()
+                return self._send_json(res)
+            if path == "/api/rag/delete":
+                from app import rag
+                return self._send_json(rag.delete_knowledge(body.get("id")))
+            if path == "/api/rag/reindex":
+                from app import rag
+                return self._send_json(rag.reindex())
             if path == "/api/issues/similar":
                 return self._send_json(api.similar_issues(body.get("text", "")))
             if path == "/api/issue/quick":

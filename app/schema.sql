@@ -207,3 +207,21 @@ CREATE TABLE IF NOT EXISTS reference_doc (
     description TEXT,
     file_path   TEXT
 );
+
+-- ===================================================================================
+-- RAG 지식베이스 (Vector DB) — app/rag.py
+-- 전문가가 가르친 지식을 "임베딩 벡터"와 함께 저장한다. 질문이 오면 질문도 벡터로
+-- 바꿔, 의미가 가장 가까운 지식을 코사인 유사도로 찾아 AI 답변의 근거로 넘긴다.
+-- (별도 벡터DB 서버·라이브러리 없이 SQLite 한 파일 안에서 동작 = 설치 불필요)
+-- ===================================================================================
+CREATE TABLE IF NOT EXISTS knowledge (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    content     TEXT NOT NULL,                 -- 지식 본문(청크 1개)
+    source      TEXT,                          -- 출처: 전문가입력 / 인터뷰 / Q&A / 파일 …
+    topic       TEXT,                          -- 주제 태그(선택) — 예: 방수검사, 판정기준
+    embedding   TEXT,                          -- 임베딩 벡터(정규화된 JSON float 배열). NULL이면 미색인
+    embed_model TEXT,                          -- 임베딩 모델명 (text-embedding-3-small 등)
+    created_at  TEXT DEFAULT (datetime('now','localtime')),
+    created_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge(topic);

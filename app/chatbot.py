@@ -411,14 +411,17 @@ TAG_CHECK_HINTS = {
 # --------------------------------------------------------------------------- LLM 어댑터
 SYSTEM_PROMPT = (
     "당신은 KNK 품질팀의 '검사기 출하검증 AS 도우미'입니다. 검사기(테스터) 정비 실무자를 돕습니다.\n"
-    "아래 [과거 조치 사례]는 실제 이 회사가 겪고 조치한 이력입니다. 이 사례들의 '조치'를 최우선 근거로 삼되, "
-    "당신의 일반 지식(전자·계측·기구 정비)을 더해 실전적으로 답하세요.\n"
+    "근거는 두 종류가 주어집니다:\n"
+    "· [전문가 지식] — 사내 품질 전문가가 직접 가르친 KNK 고유 지식. 가장 신뢰도 높은 최우선 근거입니다.\n"
+    "· [과거 조치 사례] — 실제 이 회사가 겪고 조치한 이력.\n"
+    "이 둘을 최우선 근거로 삼되, 당신의 일반 지식(전자·계측·기구 정비)을 더해 실전적으로 답하세요.\n"
+    "전문가 지식과 당신의 일반 지식이 충돌하면 '전문가 지식'을 따르세요.\n"
     "다음 형식을 지켜 한국어로 간결하게 답하세요:\n"
     "① 먼저 확인할 곳: (증상으로 볼 때 가장 먼저 점검할 후보 1~3개)\n"
-    "② 과거 조치 사례: (제공된 사례에서 실제로 통했던 조치를 요약. 날짜·모델 언급)\n"
+    "② 근거(전문가 지식·과거 사례): 제공된 지식/사례에서 실제로 통했던 내용을 요약. 날짜·모델 언급.\n"
     "③ 추천 조치: (위를 종합한 단계별 조치 제안)\n"
     "④ 마무리: '이대로 안 되면 증상을 더 알려주세요' 같은 후속 안내.\n"
-    "과거 사례에 근거가 약하면 솔직히 말하고 일반적 점검법을 제시하세요. 사실을 지어내지 마세요."
+    "근거가 약하면 솔직히 말하고 일반적 점검법을 제시하세요. 사실을 지어내지 마세요."
 )
 
 
@@ -443,11 +446,49 @@ def _build_context_text(ctx):
     return "\n".join(lines) if lines else "(관련 과거 이슈 없음)"
 
 
+def _knowledge_block(ctx):
+    """RAG로 검색된 전문가 지식을 프롬프트 근거 텍스트로 포맷(없으면 빈 문자열)."""
+    hits = ctx.get("knowledge") or []
+    if not hits:
+        return ""
+    try:
+        from app import rag
+        return rag.context_block(hits)
+    except Exception:
+        return "\n".join(f"{i}) {h.get('content', '')}" for i, h in enumerate(hits, 1))
+
+
+def _knowledge_sources(ctx):
+    """검색된 전문가 지식을 화면 근거카드로 변환(이슈 근거카드와 같은 모양)."""
+    out = []
+    for h in (ctx.get("knowledge") or [])[:4]:
+        ex = re.sub(r"\s*\n\s*", " / ", (h.get("content") or "").strip())
+        out.append({
+            "id": h.get("id"), "model": "📚 전문가 지식",
+            "customer": None, "tester_type": h.get("topic") or "",
+            "board_type": None, "unit": None, "date": "",
+            "title": h.get("topic") or "지식",
+            "excerpt": ex[:200] + ("…" if len(ex) > 200 else ""),
+            "kind": "knowledge",
+        })
+    return out
+
+
+def _user_prompt(question, ctx):
+    """LLM에 넘길 사용자 프롬프트 — 전문가 지식 + 과거 사례를 함께 근거로 제공."""
+    tag_line = ("관련 태그: " + ", ".join(ctx.get("tags") or []) + "\n") if ctx.get("tags") else ""
+    blocks = []
+    kb = _knowledge_block(ctx)
+    if kb:
+        blocks.append(f"[전문가 지식 — 최우선 근거]\n{kb}")
+    blocks.append(f"[과거 조치 사례]\n{_build_context_text(ctx)}")
+    body = "\n\n".join(blocks)
+    return f"{tag_line}{body}\n\n[질문]\n{question}\n\n위 형식(①~④)에 맞춰 답해주세요."
+
+
 def _ollama_answer(question, ctx, model):
     """로컬 Ollama(무료) 호출. 검색 근거를 프롬프트에 넣어 답변 생성."""
-    tag_line = ("관련 태그: " + ", ".join(ctx.get("tags") or []) + "\n") if ctx.get("tags") else ""
-    prompt = (f"{tag_line}[과거 조치 사례]\n{_build_context_text(ctx)}\n\n"
-              f"[질문]\n{question}\n\n위 형식(①~④)에 맞춰 답해주세요.")
+    prompt = _user_prompt(question, ctx)
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT},
@@ -465,7 +506,8 @@ def _ollama_answer(question, ctx, model):
     if not reply:
         raise ValueError("빈 응답")
     hl = (ctx.get("keywords") or []) + (ctx.get("tags") or [])
-    return {"reply": reply, "sources": [_source(x, hl) for x in ctx["hits"][:5]],
+    sources = _knowledge_sources(ctx) + [_source(x, hl) for x in ctx["hits"][:5]]
+    return {"reply": reply, "sources": sources,
             "chips": _default_chips(), "mode": "llm", "model": model}
 
 
@@ -493,21 +535,13 @@ def _pick_model(cfg):
     return max(avail, key=size)
 
 
-def _openai_answer(question, ctx, cfg):
-    """OpenAI Chat Completions 호출 — 같은 검색 근거(ctx)를 프롬프트로 재사용."""
+def _openai_call(messages, cfg, temperature=0.3, model=None):
+    """OpenAI Chat Completions 저수준 호출 — 답변 문자열만 반환. urllib만 사용."""
     api_key = (cfg.get("api_key") or "").strip()
     if not api_key:
         raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
-    model = (cfg.get("openai_model") or "gpt-4o-mini").strip()
-    tag_line = ("관련 태그: " + ", ".join(ctx.get("tags") or []) + "\n") if ctx.get("tags") else ""
-    prompt = (f"{tag_line}[과거 조치 사례]\n{_build_context_text(ctx)}\n\n"
-              f"[질문]\n{question}\n\n위 형식(①~④)에 맞춰 답해주세요.")
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT},
-                     {"role": "user", "content": prompt}],
-        "temperature": 0.3,
-    }
+    model = (model or cfg.get("openai_model") or "gpt-4o-mini").strip()
+    payload = {"model": model, "messages": messages, "temperature": temperature}
     req = urllib.request.Request(
         "https://api.openai.com/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -519,8 +553,23 @@ def _openai_answer(question, ctx, cfg):
              .get("content") or "").strip()
     if not reply:
         raise ValueError("빈 응답")
+    return reply
+
+
+def openai_chat(messages, cfg=None, temperature=0.3, model=None):
+    """범용 OpenAI 대화 호출 — rag.py(인터뷰·Q&A 요약)에서 재사용하는 공개 헬퍼."""
+    return _openai_call(messages, cfg or get_config(), temperature, model)
+
+
+def _openai_answer(question, ctx, cfg):
+    """OpenAI Chat Completions 호출 — 전문가 지식 + 과거 사례를 근거로 재사용."""
+    model = (cfg.get("openai_model") or "gpt-4o-mini").strip()
+    reply = _openai_call(
+        [{"role": "system", "content": SYSTEM_PROMPT},
+         {"role": "user", "content": _user_prompt(question, ctx)}], cfg)
     hl = (ctx.get("keywords") or []) + (ctx.get("tags") or [])
-    return {"reply": reply, "sources": [_source(x, hl) for x in ctx["hits"][:5]],
+    sources = _knowledge_sources(ctx) + [_source(x, hl) for x in ctx["hits"][:5]]
+    return {"reply": reply, "sources": sources,
             "chips": _default_chips(), "mode": "llm", "model": model}
 
 
@@ -534,10 +583,20 @@ def _llm_answer(question, ctx, cfg):
 
 
 def answer(question):
-    """챗봇 진입점. 검색 컨텍스트를 만든 뒤 (가능하면)LLM, 아니면 규칙기반."""
+    """챗봇 진입점. 검색 컨텍스트(과거 사례 + RAG 전문가 지식)를 만든 뒤
+       (가능하면)LLM, 아니면 규칙기반으로 답한다."""
     question = (question or "").strip()
-    ctx = retrieve(question)
+    ctx = retrieve(question)                       # ① 키워드 기반 과거 이슈 검색(기존)
     cfg = get_config()
+    # ② RAG: 의미 기반 전문가 지식 검색(임베딩). OpenAI 키 있고 지식이 쌓였을 때만 동작.
+    ctx["knowledge"] = []
+    try:
+        from app import rag
+        if rag.available(cfg):
+            ctx["knowledge"] = rag.search(question, k=5, cfg=cfg)
+    except Exception:
+        ctx["knowledge"] = []
+
     if cfg.get("provider"):
         try:
             return _llm_answer(question, ctx, cfg)
@@ -545,4 +604,6 @@ def answer(question):
             pass  # 연결 전/실패 시 규칙기반으로 자동 폴백
     res = _rule_answer(question, ctx)
     res.setdefault("mode", "rule")
+    if ctx.get("knowledge"):                        # 규칙기반이어도 찾은 지식은 근거로 보여줌
+        res["sources"] = _knowledge_sources(ctx) + res.get("sources", [])
     return res

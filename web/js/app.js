@@ -51,6 +51,7 @@ const App = (() => {
     else if (name === 'issues') { setNav('issues'); renderIssues(); }
     else if (name === 'analytics') { setNav('analytics'); renderAnalytics(); }
     else if (name === 'chat') { setNav('chat'); renderChat(); }
+    else if (name === 'rag') { setNav('rag'); renderRag(); }
     else if (name === 'monitor') { setNav('monitor'); await renderMonitor(); }
     // 목록으로 '돌아온' 경우에는 이전 스크롤 위치를 유지한다(맨 위로 튀지 않게)
     if (returning) restoreScroll(name); else window.scrollTo(0, 0);
@@ -3033,6 +3034,7 @@ const App = (() => {
       const acts = (m.log_id || m.q) ? `<div class="msg-acts">
         ${m.log_id ? `<button class="msg-act ${m.bookmarked ? 'on' : ''}" onclick="App.bookmarkChat(${m.log_id}, this)" title="북마크">${m.bookmarked ? '★' : '☆'}</button>` : ''}
         ${m.q ? `<button class="msg-act" onclick="App.chatToIssue('${esc(m.q).replace(/'/g, "\\'")}')" title="이 질문을 이슈로 등록">📝 이슈로 등록</button>` : ''}
+        ${(m.log_id && m.q) ? `<button class="msg-act ${m.taught ? 'on' : ''}" onclick="App.teachFromChat(${m.log_id})" title="이 답변을 AI 지식으로 저장">${m.taught ? '🧠 저장됨' : '🧠 지식으로 저장'}</button>` : ''}
       </div>` : '';
       return `<div class="msg bot"><div class="avatar">🤖</div><div class="bubble">
         ${modeBadge}
@@ -3075,6 +3077,152 @@ const App = (() => {
     if ($('chatSend')) $('chatSend').disabled = false;
     renderChatMessages();
     if ($('chatText')) $('chatText').focus();
+  }
+
+  // ============================================================ 🧠 AI 학습 (RAG)
+  // 전문가가 검사기·품질 지식을 '가르치면' 임베딩되어 knowledge(벡터DB)에 쌓이고,
+  // AI 도우미가 질문을 받을 때 의미가 가까운 지식을 찾아 답변 근거로 쓴다.
+  function renderRag() {
+    view().innerHTML = `
+      <div class="row-between mt8"><h2 style="font-size:22px">🧠 AI 학습 <span class="hint" style="font-weight:600">· RAG 지식베이스</span></h2></div>
+      <p class="hint mt8">여기서 <b>가르친 지식</b>은 AI가 답변할 때 <b>최우선 근거</b>로 사용됩니다.
+        전문가가 아는 검사기·품질 내용을 계속 쌓을수록 <b>🤖 AI 도우미</b>가 점점 더 정확해집니다.</p>
+
+      <div class="card mt12" id="ragStat" style="padding:14px 16px"><p class="hint">상태 불러오는 중…</p></div>
+
+      <div class="card mt12" style="padding:16px">
+        <h3 style="margin:0 0 6px">✍️ 직접 가르치기</h3>
+        <p class="hint" style="margin:0 0 10px">아는 내용을 그냥 적으면 됩니다. 길어도 됩니다(자동으로 나눠 저장). 한 가지 주제씩 적을수록 좋습니다.</p>
+        <input class="input" id="ragTopic" placeholder="주제(선택) 예) 방수검사, 판정기준, 핀블록" style="max-width:360px">
+        <textarea class="input" id="ragText" rows="5" style="margin-top:8px;resize:vertical"
+          placeholder="예) 방수(WP) 검사는 챔버 내부를 감압해 규정 시간 내 압력강하가 기준 이하이면 합격이다. 압력강하가 크면 실링 불량·오링 손상·안착 불량을 먼저 의심한다."></textarea>
+        <div class="row-between mt8">
+          <span class="hint" id="ragTeachMsg"></span>
+          <button class="btn btn-primary" onclick="App.ragTeach()">＋ 지식 추가</button>
+        </div>
+      </div>
+
+      <div class="card mt12" style="padding:16px">
+        <h3 style="margin:0 0 6px">🎤 AI 인터뷰 <span class="hint" style="font-weight:600">· AI가 물어보면 전문가가 답</span></h3>
+        <p class="hint" style="margin:0 0 10px">AI가 '아직 모르는 것'을 골라 질문합니다. 말하듯 답만 적고 저장하면 지식이 빠르게 쌓입니다.</p>
+        <div id="ragQBox" class="src-card" style="cursor:default"><b>[다음 질문 받기]</b> 를 누르면 AI가 질문을 만들어 줍니다.</div>
+        <textarea class="input" id="ragAns" rows="4" style="margin-top:8px;resize:vertical" placeholder="전문가 답변을 여기에 적어주세요…"></textarea>
+        <div class="row-between mt8">
+          <button class="btn secondary" onclick="App.ragNextQuestion()">🔄 다음 질문 받기</button>
+          <button class="btn btn-primary" onclick="App.ragSaveAnswer()">💾 답변 저장하고 다음</button>
+        </div>
+      </div>
+
+      <details class="card mt12" style="padding:16px" id="ragListBox">
+        <summary style="cursor:pointer;font-weight:700">📚 쌓인 지식 보기 / 삭제</summary>
+        <div id="ragList" class="mt12"><p class="hint">펼치면 불러옵니다…</p></div>
+      </details>`;
+    loadRagStats();
+    const det = view().querySelector('#ragListBox');
+    if (det) det.addEventListener('toggle', () => { if (det.open) loadRagList(); });
+  }
+
+  async function loadRagStats() {
+    const box = $('ragStat');
+    if (!box) return;
+    let s;
+    try { s = await api.get('/api/rag/stats'); }
+    catch (e) { box.innerHTML = '<p class="hint">상태를 불러오지 못했습니다.</p>'; return; }
+    const topics = (s.topics || []).map(t => `${esc(t.topic)}(${t.c})`).join(', ');
+    const keyWarn = s.available ? '' :
+      `<div class="hint" style="color:var(--amber);margin-top:6px">⚠ OpenAI 키가 없어 '색인(임베딩)'이 안 됩니다. 지식은 저장되지만 검색에 쓰이려면 키가 필요합니다. 🤖 AI 도우미 화면에서 키를 저장하세요.</div>`;
+    const reBtn = s.unindexed > 0 && s.available
+      ? `<button class="btn btn-mini" onclick="App.ragReindex()">미색인 ${s.unindexed}건 색인하기</button>` : '';
+    box.innerHTML = `
+      <div class="row-between" style="flex-wrap:wrap;gap:8px">
+        <div><b style="font-size:18px">지식 ${s.total || 0}건</b>
+          <span class="hint">· 검색가능(색인) ${s.indexed || 0}건${s.unindexed ? ` · 미색인 ${s.unindexed}건` : ''}</span></div>
+        ${reBtn}
+      </div>
+      ${topics ? `<div class="hint" style="margin-top:6px">주제: ${esc(topics)}</div>` : ''}
+      ${keyWarn}`;
+  }
+
+  async function ragTeach() {
+    const ta = $('ragText'), tp = $('ragTopic'), msg = $('ragTeachMsg');
+    const content = (ta.value || '').trim();
+    if (!content) { alert('가르칠 내용을 적어주세요.'); return; }
+    msg.textContent = '저장 중…';
+    try {
+      const r = await api.post('/api/rag/teach', { content, topic: (tp.value || '').trim() });
+      ta.value = '';
+      msg.textContent = `✅ ${r.added}개 조각으로 저장했어요.`;
+      await loadRagStats();
+      if ($('ragListBox') && $('ragListBox').open) loadRagList();
+    } catch (e) { msg.textContent = '⚠ 저장 실패'; }
+  }
+
+  async function ragNextQuestion() {
+    const box = $('ragQBox');
+    box.innerHTML = '<span class="hint">AI가 질문을 만드는 중…</span>';
+    try {
+      const r = await api.post('/api/rag/interview', {});
+      box._question = r.question;
+      const tag = r.mode === 'ai' ? '🤖 AI 질문' : '🌱 기본 질문';
+      box.innerHTML = `<div class="hint" style="margin-bottom:4px">${tag} · 현재 지식 ${r.known}건</div><b style="font-size:15px">${esc(r.question)}</b>`;
+      $('ragAns').focus();
+    } catch (e) { box.textContent = '⚠ 질문 생성 실패 (OpenAI 키 확인)'; }
+  }
+
+  async function ragSaveAnswer() {
+    const box = $('ragQBox'), ans = $('ragAns');
+    const question = box._question, reply = (ans.value || '').trim();
+    if (!question) { alert('먼저 [다음 질문 받기]를 눌러 질문을 받아주세요.'); return; }
+    if (!reply) { alert('답변을 적어주세요.'); return; }
+    ans.value = '저장 중…'; ans.disabled = true;
+    try {
+      await api.post('/api/rag/teach-qa', { question, reply, topic: '인터뷰' });
+      ans.disabled = false; ans.value = '';
+      await loadRagStats();
+      if ($('ragListBox') && $('ragListBox').open) loadRagList();
+      await ragNextQuestion();          // 곧바로 다음 질문
+    } catch (e) { ans.disabled = false; alert('저장 실패'); }
+  }
+
+  async function ragReindex() {
+    try {
+      const r = await api.post('/api/rag/reindex', {});
+      toast(`${r.indexed}건 색인 완료${r.remaining ? ` · ${r.remaining}건 남음(다시 눌러주세요)` : ''}`);
+      await loadRagStats();
+    } catch (e) { alert('색인 실패 (OpenAI 키 확인)'); }
+  }
+
+  async function loadRagList() {
+    const box = $('ragList');
+    if (!box) return;
+    const rows = await api.get('/api/rag/list?limit=100');
+    box.innerHTML = (rows || []).map(r => `
+      <div class="sim-row">
+        <span class="sim-meta">#${r.id} · ${esc((r.created_at || '').slice(0, 16))}
+          ${r.topic ? '· ' + esc(r.topic) : ''} · ${r.indexed ? '🟢 색인됨' : '⚪ 미색인'}
+          <button class="msg-act" onclick="App.ragDelete(${r.id})" title="삭제">🗑</button></span>
+        <div class="sim-act">${esc((r.content || '').slice(0, 200))}${(r.content || '').length > 200 ? '…' : ''}</div>
+      </div>`).join('') || '<p class="hint">아직 쌓인 지식이 없습니다. 위에서 가르쳐 주세요.</p>';
+  }
+
+  async function ragDelete(id) {
+    if (!confirm('이 지식을 삭제할까요?')) return;
+    await api.post('/api/rag/delete', { id });
+    await loadRagStats();
+    loadRagList();
+  }
+
+  // 채팅 답변을 '정리해서' 지식베이스에 저장 (Q&A → 지식)
+  async function teachFromChat(logId) {
+    const m = state.chat.messages.find(x => x.log_id === logId);
+    if (!m || !m.q) { alert('저장할 대화를 찾지 못했어요.'); return; }
+    if (!confirm('이 질문/답변을 AI 지식으로 저장할까요? (AI가 핵심만 정리해 쌓습니다)')) return;
+    try {
+      const r = await api.post('/api/rag/teach-qa', { question: m.q, reply: m.reply, topic: 'Q&A' });
+      toast(`지식으로 저장했어요 (총 ${r.stats ? r.stats.total : ''}건). 🧠`);
+      m.taught = true;
+      renderChatMessages();
+    } catch (e) { alert('저장 실패 (OpenAI 키 확인)'); }
   }
 
   // ------------------------------------------------------------ 📡 KNK 모니터
@@ -5442,6 +5590,7 @@ const App = (() => {
     suggestTags, autoTagInput,
     renderAnalytics, genDraft, copyDraft, openIssuesFor,
     sendChat, chatChip, toggleLocalAI, setAiModel,
+    ragTeach, ragNextQuestion, ragSaveAnswer, ragReindex, ragDelete, teachFromChat,
     quickIssue, openModel,
     setTplTarget, insertTpl, addTemplate, delTemplate,
     onIssuePhotoFile, deleteIssuePhoto,

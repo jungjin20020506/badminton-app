@@ -12,6 +12,8 @@ venv/
 data/
 # 내장 OpenAI 키 — 공개 저장소에 올리면 OpenAI가 자동 폐기함. X서버 배포로만 전파.
 app/openai_key.txt
+# RAG 기초지식 시딩 — 사내 검사기·품질 지식 요약이 담김. X서버 배포로만 전파.
+tools/기초지식_시딩.py
 tools/all_issues.json
 tools/selected_issues.json
 tools/*_issues.json
