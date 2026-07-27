@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Z: 서버의 고객사(드림텍/두성테크/한국성전) 출하검증 폴더 안 '출하이슈사항' 엑셀을
-읽어 프로그램 DB(issue_history / issue_record) 형식으로 정리한다.
+Z: 서버의 고객사(드림텍/두성테크/한국성전/욱광/엠씨넥스/파트론/파인텍/에스제이아이티)
+출하검증 폴더 안 '출하이슈사항' 엑셀을 읽어 프로그램 DB(issue_history /
+issue_record) 형식으로 정리한다. 2026-07부터 8개사 전 모델 동기화(필터 없음).
 
 - Z: 서버 파일은 '읽기 전용'으로만 접근 (수정/이동/삭제 금지)
 - 고객사별 모델 10개를 랜덤 선정 (내용이 실제로 있는 파일 우선, 모델 중복 제거)
@@ -14,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.tagging import (SYMPTOM_TYPES, TAG_VOCAB,             # noqa: E402
                          classify_category, auto_tags, tags_field)
 
-CUSTOMERS = ["드림텍", "두성테크", "한국성전"]
+CUSTOMERS = ["드림텍", "두성테크", "한국성전", "욱광", "엠씨넥스",
+             "파트론", "파인텍", "에스제이아이티"]
 LIST_DIR = os.environ.get("ISSUE_LIST_DIR", "/tmp")  # /tmp/issue_<customer>.txt (git bash) → win path 변환
 SEED = 20260716
 N_PER_CUSTOMER = 10
@@ -53,38 +55,67 @@ def path_parts(path, customer):
     return [p for p in rel.split("/") if p]
 
 
-# 모델명 판별 규칙 (사용자 확정):
-#   경로: <고객사>/<카테고리루트>/<모델>/[부위...]/<검사기폴더>/<출하검증>/<파일>
-#   - 모델 = 카테고리 루트(제조/자동화/SUB PBA/연구소 등) 바로 아래 폴더
-#           (드림텍·두성: SM-* 등 / 한국성전: V**-0****** 코드 / 그 외 프로젝트 코드)
-#   - 부위(board) = 모델과 검사기 사이의 SUB/POGO/MMW/FRC/BAROMETER 등 (PBA 구분)
-#   - 검사기 종류(tester_type) = 맨 아래 번호 폴더("2. 012T2602_기능검사기")에서 정규화
+# 모델명 판별 규칙 (2026-07 사용자 확정 — 8개 고객사 전 모델 확장):
+#   경로: <고객사>/<카테고리...>/<모델>/[부위...]/<검사기폴더>/<출하검증>/<파일>
+#   ① 경로에 '모델형' 세그먼트(SM-*, V코드, 프로젝트 코드)가 있으면 그것이 모델.
+#   ② 없으면 검사기 폴더 '바로 위' 폴더가 모델 — 단 SUB/DOME/POGO 같은
+#      부위(board) 폴더면 그 위로 올라간다. (한국성전 BUDS4 PRO 등 이름 폴더는
+#      폴더명 그대로 / GOODIX·EGIS向·CCP조작계 같은 중간 분류 폴더는 무시)
+#   - 부위(board) = 모델과 검사기 사이의 SUB/POGO/MMW/DOME 등 (PBA 구분)
+#   - 검사기 종류(tester_type) = 검사기 폴더명("2. 012T2602_기능검사기")에서 정규화
 SM_RE = re.compile(r"^(SM[-_]|SGH[-_]|GT[-_]|EO[-_]|EP[-_])", re.I)
 VCODE_RE = re.compile(r"^V[A-Z]{2,3}\d{3,4}")                     # VCF0776-0126000, VMA0166 ...
 PROJECT_RE = re.compile(r"^(GW\d|WATCH\d|BUDS\d?|TAB\b|Q\d\b)", re.I)  # SM 없는 삼성 프로젝트 코드
+
+# 부위(board) 폴더로 취급하는 이름 — 모델이 아니라 PBA 부위/구성이다 (정규화 후 비교)
+BOARD_NAMES = {"SUB", "MAIN", "POGO", "MMW", "FRC", "CTC", "BTOB", "B TO B",
+               "BAROMETER", "DOME", "SENSOR", "LOWER", "UPPER", "SPK", "MIC",
+               "RCV", "공용부", "기구부"}
+BOARD_SUFFIXES = ("연배",)                       # "4연배" 등
 
 
 def _looks_like_model(seg):
     return bool(SM_RE.search(seg) or VCODE_RE.search(seg) or PROJECT_RE.search(seg))
 
 
+def _norm_seg(seg):
+    return re.sub(r"\s+", " ", (seg or "").strip()).upper()
+
+
+def _is_board_seg(seg):
+    s = _norm_seg(seg)
+    return s in BOARD_NAMES or s.replace(" ", "") in BOARD_NAMES \
+        or any(s.endswith(sfx) for sfx in BOARD_SUFFIXES)
+
+
+def _clean_model(name):
+    """모델 폴더명 정리 — '7. PPSAW20' 같은 번호 접두를 뗀다(내용이 남을 때만)."""
+    s = re.sub(r"^\s*\d{1,3}\s*[.\-]\s*", "", (name or "").strip())
+    return s.strip() or (name or "").strip()
+
+
 def derive_model_tester(path, customer):
     parts = path_parts(path, customer)          # 고객사 이후 세그먼트 (파일 포함)
     # parts[-1]=파일, parts[-2]=출하검증 폴더, parts[-3]=검사기 폴더
     tester_dir = parts[-3] if len(parts) >= 3 else (parts[-2] if len(parts) >= 2 else "")
-    mids = parts[1:-2]                           # 루트(0)·출하검증(-2)·파일(-1) 제외 → [모델..부위..검사기]
-    cand = mids[:-1] if len(mids) >= 2 else mids  # 검사기 폴더 제거 → [모델, 부위...]
+    cand = parts[:-3] if len(parts) >= 4 else parts[:1]   # 검사기 폴더 위의 세그먼트들
     if not cand:
-        cand = [parts[1]] if len(parts) >= 2 else [""]
-    # 모델 위치: 좌측부터 첫 모델형 세그먼트, 없으면 루트 바로 아래(첫 세그먼트)
-    model_idx = 0
+        cand = [parts[0]] if parts else [""]
+
+    # ① 모델형 세그먼트(SM-*, V코드, 프로젝트 코드) 우선 — 좌측부터 첫 번째
     for i, seg in enumerate(cand):
         if _looks_like_model(seg):
-            model_idx = i
-            break
-    model = cand[model_idx].strip()
-    board = " ".join(cand[model_idx + 1:]).strip() or None   # 부위 (board_type)
-    return model, board, tester_dir
+            board = " ".join(s for s in cand[i + 1:] if s).strip() or None
+            return _clean_model(seg), board, tester_dir
+
+    # ② 검사기 폴더 바로 위부터 위로 — 부위(board) 폴더는 건너뛴다
+    idx = len(cand) - 1
+    boards = []
+    while idx > 0 and _is_board_seg(cand[idx]):
+        boards.insert(0, cand[idx])
+        idx -= 1
+    board = " ".join(boards).strip() or None
+    return _clean_model(cand[idx]), board, tester_dir
 
 
 def find_content_col(ws_rows):
@@ -182,32 +213,22 @@ def load_candidates(customer):
     return out
 
 
-# 고객사별 모델 필터 (전체 정리 모드)
-VCODE_MODEL_RE = re.compile(r"^V[A-Z]{2,3}\d{3,4}-\d")   # 한국성전 V**-0****** 코드
-def _is_sm(m): return m.upper().startswith("SM")
-MODEL_FILTERS = {
-    "드림텍":  _is_sm,
-    "두성테크": _is_sm,
-    "한국성전": lambda m: bool(VCODE_MODEL_RE.match(m)),
-}
-
-
+# 예전에는 고객사별 모델 필터(드림텍·두성=SM*, 성전=V코드)로 일부만 들여왔으나,
+# 2026-07 확정으로 8개 고객사 '전체 모델'을 동기화한다 — 필터 없음.
 def collect_all(customer, files=None):
-    """고객사의 '모든' 출하이슈파일 중 모델 필터를 통과하는 것을 전부 정리.
+    """고객사의 '모든' 출하이슈파일을 전부 정리.
        files 를 주면(서버 동기화) 목록파일 대신 그 경로들을 사용."""
-    keep = MODEL_FILTERS[customer]
     if files is None:
         files = load_candidates(customer)
     picked, models = [], set()
-    n_total = n_pass = n_empty = 0
+    n_total = n_empty = 0
     for p in files:
         if not os.path.isfile(p):
             continue
         n_total += 1
         model, board, tester_dir = derive_model_tester(p, customer)
-        if not keep(model):
-            continue                                  # 필터 탈락(경로만으로 판정 — 엑셀 미read)
-        n_pass += 1
+        if not model:
+            continue
         try:
             entries = read_issue_file(p)
         except Exception:
@@ -221,7 +242,7 @@ def collect_all(customer, files=None):
             "tester_dir": tester_dir, "tester_type": norm_tester(tester_dir),
             "path": p, "entries": entries,
         })
-    print(f"[{customer}] 대상파일 {n_total} · 필터통과 {n_pass} · 내용有 {len(picked)} · "
+    print(f"[{customer}] 대상파일 {n_total} · 내용有 {len(picked)} · "
           f"내용無(빈템플릿) {n_empty} · 고유모델 {len(models)} · 이슈엔트리 "
           f"{sum(len(x['entries']) for x in picked)}건")
     return picked
@@ -533,11 +554,18 @@ def _server_root():
 
 
 SCAN_ROOT = _server_root()
-SKIP_DIRS = ("DATA", "출하사진", "동영상", "Cal_data", "검사 항목별", "SURGE")
+SKIP_DIRS = ("DATA", "출하사진", "동영상", "Cal_data", "검사 항목별", "SURGE",
+             "OldVersions", "#snapshot")
+SKIP_FILE_PREFIX = ("~$", "복사본", "사본", "Copy of", "copy of")
 
 
-def scan_customer(customer, max_depth=6, progress=None, root_dir=None):
-    """고객사 폴더에서 출하이슈사항 파일 경로 목록을 수집(BFS, 깊이 제한)."""
+def scan_customer(customer, max_depth=6, progress=None, root_dir=None,
+                  verify_dirs=None):
+    """고객사 폴더에서 출하이슈사항 파일 경로 목록을 수집(BFS, 깊이 제한).
+
+    verify_dirs 에 리스트를 주면 발견한 '출하검증' 폴더 경로를 (이슈 파일
+    유무와 무관하게) 모두 담아준다 — 출하사진 연동용 경로 인덱스(z_verify_index).
+    """
     base = root_dir or SCAN_ROOT
     root = os.path.join(base, customer)
     if not os.path.isdir(root):
@@ -563,10 +591,14 @@ def scan_customer(customer, max_depth=6, progress=None, root_dir=None):
             if any(s in name for s in SKIP_DIRS):
                 continue
             if "출하검증" in name:
+                if verify_dirs is not None:
+                    verify_dirs.append(e.path)
                 # 출하검증 폴더 안의 이슈 파일만(비재귀) 확인
                 try:
                     for f in os.scandir(e.path):
-                        if f.is_file() and "출하이슈사항" in f.name and f.name.endswith(".xlsx"):
+                        if (f.is_file() and "출하이슈사항" in f.name
+                                and f.name.endswith(".xlsx")
+                                and not f.name.startswith(SKIP_FILE_PREFIX)):
                             files.append(f.path)
                 except OSError:
                     pass
@@ -579,18 +611,50 @@ def scan_customer(customer, max_depth=6, progress=None, root_dir=None):
     return files
 
 
+def save_verify_index(rows):
+    """스캔에서 발견한 '출하검증' 폴더 → 모델 매핑을 DB에 저장(전체 교체).
+
+    zserver(출하사진 연동)가 이 인덱스로 모델 폴더를 즉시 찾는다 —
+    경로 구조가 고객사마다 달라도 스캔 결과 그대로를 쓰므로 인식률 100%."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, root)
+    from app import db
+    conn = db.get_conn()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS z_verify_index ("
+        " verify_dir TEXT PRIMARY KEY, customer TEXT, model TEXT, board TEXT,"
+        " tester_dir TEXT, tester_type TEXT, has_issue INTEGER DEFAULT 0,"
+        " scanned_at TEXT DEFAULT (datetime('now','localtime')))")
+    conn.execute("DELETE FROM z_verify_index")
+    conn.executemany(
+        "INSERT OR REPLACE INTO z_verify_index"
+        " (verify_dir, customer, model, board, tester_dir, tester_type, has_issue)"
+        " VALUES (?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    return len(rows)
+
+
 def sync_from_server(progress=lambda msg: None, root_dir=None):
-    """전체 동기화: 스캔 → 필터 → 파싱 → DB 재반영(멱등). 진행 콜백으로 상태 보고."""
+    """전체 동기화: 스캔 → 파싱 → DB 재반영(멱등) + 출하검증 경로 인덱스 갱신."""
     base = root_dir or _server_root()
     progress(f"서버 경로 확인: {base}")
-    result = []
+    result, index_rows = [], []
     for c in CUSTOMERS:
         progress(f"[1/3] {c} 서버 폴더 스캔 중…")
-        found = scan_customer(c, progress=progress, root_dir=base)
-        progress(f"[2/3] {c} 이슈파일 {len(found)}개 파싱 중… (모델 필터 적용)")
+        vdirs = []
+        found = scan_customer(c, progress=progress, root_dir=base, verify_dirs=vdirs)
+        issue_dirs = {os.path.dirname(p) for p in found}
+        for vd in vdirs:
+            # 폴더 경로로 모델 판별 — 파일 자리에 더미를 붙여 동일 규칙 사용
+            model, board, tdir = derive_model_tester(os.path.join(vd, "_"), c)
+            index_rows.append((vd, c, model, board, tdir, norm_tester(tdir),
+                               1 if vd in issue_dirs else 0))
+        progress(f"[2/3] {c} 이슈파일 {len(found)}개 파싱 중… (전 모델)")
         result.extend(collect_all(c, files=found))
     progress("[3/3] 데이터베이스 반영 중…")
     commit_to_db(result)
+    n_idx = save_verify_index(index_rows)
     total = sum(len(x["entries"]) for x in result)
-    progress(f"완료 — 파일 {len(result)}개, 이슈 {total}건 반영")
-    return {"files": len(result), "issues": total}
+    progress(f"완료 — 파일 {len(result)}개, 이슈 {total}건, 경로 인덱스 {n_idx}개 반영")
+    return {"files": len(result), "issues": total, "index": n_idx}

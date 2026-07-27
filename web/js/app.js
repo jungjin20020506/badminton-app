@@ -1675,7 +1675,7 @@ const App = (() => {
             <input class="input" id="i_rev" placeholder="예) R0.4"></div>
         </div>
         <datalist id="modelList">${modelOpts}</datalist>
-        <datalist id="custList"><option>드림텍</option><option>두성테크</option><option>한국성전</option></datalist>
+        <datalist id="custList"><option>드림텍</option><option>두성테크</option><option>한국성전</option><option>욱광</option><option>엠씨넥스</option><option>파트론</option><option>파인텍</option><option>에스제이아이티</option></datalist>
 
         <div class="field mt12"><label>자주 쓰는 문구 <span class="hint">— 클릭하면 마지막에 입력하던 칸에 삽입</span>
             <button type="button" class="btn btn-ghost btn-mini" onclick="App.addTemplate()">＋ 추가</button></label>
@@ -2582,7 +2582,9 @@ const App = (() => {
   }
 
   // ------------------------------------------------------------ 분석(대시보드)
-  const CUST_COLORS = { '드림텍': '#22d3ee', '두성테크': '#34d399', '한국성전': '#fbbf24' };
+  const CUST_COLORS = { '드림텍': '#22d3ee', '두성테크': '#34d399', '한국성전': '#fbbf24',
+                        '욱광': '#f472b6', '엠씨넥스': '#a78bfa', '파트론': '#fb923c',
+                        '파인텍': '#4ade80', '에스제이아이티': '#60a5fa' };
 
   async function renderAnalytics() {
     view().innerHTML = `

@@ -208,6 +208,21 @@ CREATE TABLE IF NOT EXISTS reference_doc (
     file_path   TEXT
 );
 
+-- Z:서버 '출하검증' 폴더 경로 인덱스 — 서버 동기화 때 갱신 (tools/import_issues.py)
+-- 고객사마다 폴더 깊이·구조가 달라도, 스캔에서 찾은 실제 경로와 모델명을 저장해
+-- 출하사진 연동(zserver)이 즉시·정확하게 모델 폴더를 찾도록 한다.
+CREATE TABLE IF NOT EXISTS z_verify_index (
+    verify_dir  TEXT PRIMARY KEY,              -- '10. 출하검증' 폴더 절대경로
+    customer    TEXT,
+    model       TEXT,
+    board       TEXT,                          -- 부위 (SUB/DOME 등, 없으면 NULL)
+    tester_dir  TEXT,                          -- 검사기 폴더명 원문
+    tester_type TEXT,                          -- 표준 검사기 종류
+    has_issue   INTEGER DEFAULT 0,             -- 출하이슈사항 엑셀 존재 여부
+    scanned_at  TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_zverify_model ON z_verify_index(model);
+
 -- ===================================================================================
 -- RAG 지식베이스 (Vector DB) — app/rag.py
 -- 전문가가 가르친 지식을 "임베딩 벡터"와 함께 저장한다. 질문이 오면 질문도 벡터로

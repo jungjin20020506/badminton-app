@@ -100,7 +100,8 @@ def ollama_status():
         return {"available": False, "models": []}
 
 TESTER_TYPES = ["기능검사기", "방수", "VSWR", "LNA", "PROXIMITY", "지문", "TSP"]
-CUSTOMERS = ["드림텍", "두성테크", "한국성전"]
+CUSTOMERS = ["드림텍", "두성테크", "한국성전", "욱광", "엠씨넥스",
+             "파트론", "파인텍", "에스제이아이티"]
 
 MODEL_RE = re.compile(
     r"(SM[-_][A-Za-z0-9()]+|V[A-Z]{2,3}\d{3,4}-\d{6,7}|WATCH\d+|BUDS\d*|TAB\s?\w+)", re.I)

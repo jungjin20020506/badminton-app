@@ -20,14 +20,15 @@ import re
 import time
 import urllib.parse
 
-CUSTOMERS = ["드림텍", "두성테크", "한국성전"]
+CUSTOMERS = ["드림텍", "두성테크", "한국성전", "욱광", "엠씨넥스",
+             "파트론", "파인텍", "에스제이아이티"]
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 VIDEO_EXT = {".mp4", ".mov", ".avi"}
 EXCEL_EXT = {".xlsx", ".xlsm", ".xls"}
 
 VERIFY_DIR_KEY = "출하검증"
-PHOTO_DIR_KEY = "출하사진"
+PHOTO_DIR_KEY = "사진"          # '출하사진'이 표준이나 욱광 등은 '사진'만 쓴다
 MARKING_KEYS = ("마킹",)
 INK_KEYS = ("인주",)
 
@@ -112,20 +113,45 @@ def _model_match(dir_name, model):
     return d == m or (len(d) >= 4 and m.startswith(d))
 
 
-def find_model_dirs(model):
-    """모델 폴더 후보 목록. 경로: <루트>/<고객사>/<카테고리>/<모델>"""
+def _index_verify_dirs(model):
+    """서버 동기화가 만든 경로 인덱스(z_verify_index)에서 모델의 출하검증 폴더를 찾는다.
+
+    고객사마다 폴더 깊이가 달라도(예: 드림텍\\지문센서\\EGIS向\\GB6\\…,
+    파트론\\2. 지문센서\\GOODIX\\A14 5G\\…) 스캔된 실제 경로를 그대로 쓰므로
+    구조를 추측할 필요가 없다. 인덱스가 없으면 빈 목록(→ 라이브 스캔 폴백)."""
+    try:
+        from app import db
+        rows = db.query("SELECT * FROM z_verify_index")
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        if _model_match(r.get("model") or "", model) \
+                or _model_match(model, r.get("model") or ""):
+            out.append(r)
+    return out
+
+
+def find_model_dirs(model, max_depth=3):
+    """모델 폴더 후보 목록(라이브 스캔 폴백). 고객사 아래를 깊이 3까지 훑는다.
+       경로: <루트>/<고객사>/<카테고리…>/<모델> — 중간 분류(GOODIX 등)가 껴도 찾는다."""
     root = _root()
     out = []
     for cust in CUSTOMERS:
         cdir = os.path.join(root, cust)
         if not os.path.isdir(cdir):
             continue
-        for cat in _listdirs(cdir):
-            catp = os.path.join(cdir, cat)
-            for name in _listdirs(catp):
+        queue = [(cdir, 0)]
+        while queue:
+            d, depth = queue.pop(0)
+            for name in _listdirs(d):
+                sub = os.path.join(d, name)
                 if _model_match(name, model):
-                    out.append({"customer": cust, "category": cat,
-                                "dir": name, "path": os.path.join(catp, name)})
+                    out.append({"customer": cust,
+                                "category": os.path.relpath(d, cdir),
+                                "dir": name, "path": sub})
+                elif depth + 1 < max_depth and VERIFY_DIR_KEY not in name:
+                    queue.append((sub, depth + 1))
     return out
 
 
@@ -245,6 +271,27 @@ def unit_label(units):
 
 
 # ---------------------------------------------------------------- 모델 자료
+def _verify_dir_candidates(model):
+    """모델의 (고객사, 모델폴더명, 출하검증경로) 목록 — 인덱스 우선, 라이브 스캔 폴백."""
+    out, seen = [], set()
+    for r in _index_verify_dirs(model):                 # ① 동기화 인덱스(정확·즉시)
+        vd = r.get("verify_dir") or ""
+        if vd and os.path.isdir(vd) and os.path.normcase(vd) not in seen:
+            seen.add(os.path.normcase(vd))
+            out.append({"customer": r.get("customer"), "dir": r.get("model"),
+                        "verify_dir": vd})
+    if out:
+        return out
+    for md in find_model_dirs(model):                   # ② 폴백: 라이브 스캔
+        for vdir in _find_verify_dirs(md["path"]):
+            if os.path.normcase(vdir) in seen:
+                continue
+            seen.add(os.path.normcase(vdir))
+            out.append({"customer": md["customer"], "dir": md["dir"],
+                        "verify_dir": vdir})
+    return out
+
+
 def model_assets(model, tester_type=None):
     """모델의 Z: 서버 자료 — 출하이슈 엑셀 + 세션별(호기별) 사진."""
     if not available():
@@ -253,41 +300,41 @@ def model_assets(model, tester_type=None):
                 "testers": []}
 
     testers = []
-    for md in find_model_dirs(model):
-        for vdir in _find_verify_dirs(md["path"]):
-            tdir = os.path.basename(os.path.dirname(vdir))
-            ttype = _tester_type(tdir)
-            if tester_type and ttype != tester_type:
+    for cand in _verify_dir_candidates(model):
+        vdir = cand["verify_dir"]
+        tdir = os.path.basename(os.path.dirname(vdir))
+        ttype = _tester_type(tdir)
+        if tester_type and ttype != tester_type:
+            continue
+
+        excels = []
+        for name in _listfiles(vdir):
+            if name.startswith("~$"):
+                continue                      # 엑셀 임시 잠금 파일
+            if os.path.splitext(name)[1].lower() in EXCEL_EXT:
+                full = os.path.join(vdir, name)
+                excels.append({"name": name, "path": full,
+                               "locked": _is_locked(full)})
+
+        sessions = []
+        for sname in _listdirs(vdir):
+            sdir = os.path.join(vdir, sname)
+            sp = _session_photos(sdir)
+            counts = {k: len(v) for k, v in sp["groups"].items()}
+            if not sum(counts.values()):
                 continue
-
-            excels = []
-            for name in _listfiles(vdir):
-                if name.startswith("~$"):
-                    continue                      # 엑셀 임시 잠금 파일
-                if os.path.splitext(name)[1].lower() in EXCEL_EXT:
-                    full = os.path.join(vdir, name)
-                    excels.append({"name": name, "path": full,
-                                   "locked": _is_locked(full)})
-
-            sessions = []
-            for sname in _listdirs(vdir):
-                sdir = os.path.join(vdir, sname)
-                sp = _session_photos(sdir)
-                counts = {k: len(v) for k, v in sp["groups"].items()}
-                if not sum(counts.values()):
-                    continue
-                sessions.append({
-                    "name": sname, "path": sdir,
-                    "units": _session_units(sname), "date": _session_date(sname),
-                    "counts": counts, "groups": sp["groups"],
-                })
-            sessions.sort(key=lambda s: (s["date"] or "", s["name"]), reverse=True)
-
-            testers.append({
-                "customer": md["customer"], "model_dir": md["dir"],
-                "tester_dir": tdir, "tester_type": ttype,
-                "verify_dir": vdir, "excels": excels, "sessions": sessions,
+            sessions.append({
+                "name": sname, "path": sdir,
+                "units": _session_units(sname), "date": _session_date(sname),
+                "counts": counts, "groups": sp["groups"],
             })
+        sessions.sort(key=lambda s: (s["date"] or "", s["name"]), reverse=True)
+
+        testers.append({
+            "customer": cand["customer"], "model_dir": cand["dir"],
+            "tester_dir": tdir, "tester_type": ttype,
+            "verify_dir": vdir, "excels": excels, "sessions": sessions,
+        })
 
     return {"available": True, "model": model, "root": _root(), "testers": testers}
 

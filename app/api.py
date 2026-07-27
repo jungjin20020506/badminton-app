@@ -199,7 +199,8 @@ def issue_trend(months=12):
         "GROUP BY ym, cust ORDER BY ym")
     # 최근 months개 월 축 구성
     yms = sorted({r["ym"] for r in rows})[-months:]
-    custs = ["드림텍", "두성테크", "한국성전"]
+    custs = ["드림텍", "두성테크", "한국성전", "욱광", "엠씨넥스",
+             "파트론", "파인텍", "에스제이아이티"]
     series = {c: {ym: 0 for ym in yms} for c in custs}
     totals = {ym: 0 for ym in yms}
     for r in rows:
@@ -470,7 +471,8 @@ def quick_add_issue(text):
     model = m.group(1)
     unit = (QUICK_UNIT_RE.search(text) or [None]) and (
         QUICK_UNIT_RE.search(text).group(1).replace(" ", "") if QUICK_UNIT_RE.search(text) else "")
-    cust = next((c for c in ("드림텍", "두성테크", "한국성전") if c in text), "")
+    cust = next((c for c in ("드림텍", "두성테크", "한국성전", "욱광", "엠씨넥스",
+                             "파트론", "파인텍", "에스제이아이티") if c in text), "")
     res = save_issue({
         "model_name": model, "customer": cust, "unit_label": unit,
         "issue_date": time.strftime("%Y-%m-%d"), "symptom": text,
