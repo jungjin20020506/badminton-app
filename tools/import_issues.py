@@ -243,9 +243,10 @@ def load_candidates(customer):
 
 # 예전에는 고객사별 모델 필터(드림텍·두성=SM*, 성전=V코드)로 일부만 들여왔으나,
 # 2026-07 확정으로 8개 고객사 '전체 모델'을 동기화한다 — 필터 없음.
-def collect_all(customer, files=None):
+def collect_all(customer, files=None, failed=None):
     """고객사의 '모든' 출하이슈파일을 전부 정리.
-       files 를 주면(서버 동기화) 목록파일 대신 그 경로들을 사용."""
+       files 를 주면(서버 동기화) 목록파일 대신 그 경로들을 사용.
+       failed 리스트를 주면 읽기 실패(엑셀 열림·네트워크 오류) 경로를 담아준다."""
     if files is None:
         files = load_candidates(customer)
     picked, models = [], set()
@@ -260,6 +261,8 @@ def collect_all(customer, files=None):
         try:
             entries = read_issue_file(p)
         except Exception:
+            if failed is not None:
+                failed.append(p)      # 열려 있거나 손상 — 기존 DB 데이터를 보존해야 함
             continue
         if not entries:
             n_empty += 1
@@ -624,7 +627,7 @@ def scan_customer(customer, max_depth=6, progress=None, root_dir=None,
                 # 출하검증 폴더 안의 이슈 파일만(비재귀) 확인
                 try:
                     for f in os.scandir(e.path):
-                        if (f.is_file() and "출하이슈사항" in f.name
+                        if (f.is_file() and "출하이슈사항" in f.name.replace(" ", "")
                                 and f.name.endswith(".xlsx")
                                 and not f.name.startswith(SKIP_FILE_PREFIX)):
                             files.append(f.path)
@@ -637,6 +640,112 @@ def scan_customer(customer, max_depth=6, progress=None, root_dir=None,
         if progress and scanned % 200 == 0:
             progress(f"{customer} 폴더 스캔 중… ({scanned}개 폴더, 파일 {len(files)}개 발견)")
     return files
+
+
+# ---------------------------------------------------------------------------
+# 모델 폴더 '이름 변경' 감지 — 서버에서 SM-TEST → SM-TEST2 로 바꾸고 동기화하면
+# 자동수집 데이터는 재이관으로 자연히 새 이름을 얻지만, 사용자가 프로그램에서
+# 직접 등록한 이슈·검증 세션은 옛 이름에 남아 모델이 둘로 쪼개진다.
+# 그래서 스캔 전/후 인덱스를 비교해 이름 변경을 감지하고 옛 이름의 모든
+# 데이터(수동 등록 포함)를 새 이름으로 이관한다.
+#
+# 감지 근거(오판 방지를 위해 강한 근거만 사용):
+#  ① 관리코드 — 검사기 폴더명 속 고유 코드("006T2607"). 같은 고객사에서 같은
+#     관리코드가 어제는 SM-TEST, 오늘은 SM-TEST2 아래에 있으면 이름 변경이다.
+#  ② 내용 일치 — 옛 모델의 출하이슈 원문 절반 이상이 '새로 나타난' 모델의
+#     원문과 같으면 이름 변경이다. (둘 다 아니면 감지하지 않음 — 안전 우선)
+MGMT_CODE_RE = re.compile(r"\b(\d{2,3}T\d{4})\b")
+
+
+def _norm_raw(s):
+    return re.sub(r"\s+", " ", str(s or "")).strip()
+
+
+def _index_maps(rows):
+    """인덱스 행들 → (고객사별 모델 집합, (고객사,관리코드)→모델 집합)."""
+    models, by_code = {}, {}
+    for r in rows:
+        cust, model = r["customer"], r["model"]
+        if not model:
+            continue
+        models.setdefault(cust, set()).add(model)
+        m = MGMT_CODE_RE.search(r.get("tester_dir") or "")
+        if m:
+            by_code.setdefault((cust, m.group(1)), set()).add(model)
+    return models, by_code
+
+
+def detect_renames(old_rows, new_rows, old_content, new_content):
+    """이전 인덱스(old_rows)와 새 스캔(new_rows)을 비교해 이름 변경 목록을 반환.
+       반환: [(customer, old_model, new_model, 근거)] / 함께 중복 의심 경고도 반환."""
+    old_models, old_code = _index_maps(old_rows)
+    new_models, new_code = _index_maps(new_rows)
+    renames, warns = {}, []
+
+    # ① 관리코드 매칭
+    for (cust, code), olds in old_code.items():
+        if len(olds) != 1:
+            continue
+        old_m = next(iter(olds))
+        if old_m in new_models.get(cust, set()):
+            continue                                   # 옛 이름이 아직 있음 → 변경 아님
+        news = new_code.get((cust, code), set())
+        if len(news) == 1:
+            new_m = next(iter(news))
+            if new_m and new_m != old_m:
+                renames[(cust, old_m)] = (new_m, f"관리코드 {code}")
+
+    # ② 내용(출하이슈 원문) 일치 매칭 — 신규로 나타난 모델과 절반 이상 겹칠 때
+    for (cust, old_m), old_set in old_content.items():
+        if (cust, old_m) in renames or not old_set:
+            continue
+        if old_m in new_models.get(cust, set()):
+            continue
+        best, best_ratio = None, 0.0
+        for (c2, new_m), new_set in new_content.items():
+            if c2 != cust or new_m == old_m or new_m in old_models.get(cust, set()):
+                continue                               # 원래 있던 모델로의 병합은 ①만 신뢰
+            ratio = len(old_set & new_set) / max(1, len(old_set))
+            if ratio > best_ratio:
+                best, best_ratio = new_m, ratio
+        if best and best_ratio >= 0.5:
+            renames[(cust, old_m)] = (best, f"이슈 원문 {int(best_ratio * 100)}% 일치")
+
+    # 같은 (고객사, 관리코드)가 두 모델에 동시에 존재 → 복사 후 방치 의심 경고
+    for (cust, code), news in new_code.items():
+        if len(news) > 1:
+            warns.append(f"{cust}: 관리코드 {code} 가 여러 모델({', '.join(sorted(news))})에 "
+                         f"중복 — 옛 폴더가 복사로 남아있는지 확인 필요")
+    out = [(cust, old_m, new_m, why) for (cust, old_m), (new_m, why) in renames.items()]
+    return out, warns
+
+
+def apply_renames(renames):
+    """감지된 이름 변경을 DB 전체(수동 등록 포함)에 반영하고 감사 로그를 남긴다."""
+    if not renames:
+        return 0
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, root)
+    from app import db
+    n = 0
+    conn = db.get_conn()
+    for cust, old_m, new_m, why in renames:
+        for sql, args in (
+            ("UPDATE issue_history SET model_name=? WHERE model_name=? AND "
+             "(customer=? OR customer IS NULL OR customer='')", (new_m, old_m, cust)),
+            ("UPDATE issue_record SET model_name=? WHERE model_name=?", (new_m, old_m)),
+            ("UPDATE tester SET model_name=? WHERE model_name=? AND "
+             "(customer=? OR customer IS NULL OR customer='')", (new_m, old_m, cust)),
+            ("UPDATE model_test_map SET model_name=? WHERE model_name=?", (new_m, old_m)),
+        ):
+            conn.execute(sql, args)
+        conn.execute("INSERT INTO audit_log(action,target,detail) VALUES (?,?,?)",
+                     ("모델명 변경 이관", f"{old_m} → {new_m}",
+                      f"고객사 {cust} · 근거: {why} · 서버 폴더명 변경 감지"))
+        n += 1
+    conn.commit()
+    conn.close()
+    return n
 
 
 def save_verify_index(rows):
@@ -663,26 +772,147 @@ def save_verify_index(rows):
     return len(rows)
 
 
+def _existing_auto_rows(customer=None):
+    """DB의 자동수집 이슈 행들(고객사 필터 가능) — 보존/복원·이름변경 감지용."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, root)
+    from app import db
+    sql = "SELECT * FROM issue_history WHERE note LIKE ?"
+    args = [f"%{TAG}%"]
+    if customer:
+        sql += " AND customer=?"
+        args.append(customer)
+    try:
+        return db.query(sql, args)
+    except Exception:
+        return []
+
+
+def _rows_to_result(rows):
+    """issue_history 자동수집 행들 → collect_all 결과 형식으로 복원(출처 파일별 묶음).
+       엑셀이 열려 있어 못 읽은 파일·통째로 안 보이는 고객사의 기존 데이터를
+       재이관 과정에서 잃지 않기 위해 사용한다."""
+    by_src = {}
+    for r in rows:
+        note = r.get("note") or ""
+        ms = re.search(r"출처:(.+)$", note)
+        src = (ms.group(1).strip() if ms else "") or "(알수없음)"
+        mt = re.search(r"검사기:([^·]+)", note)
+        tdir = mt.group(1).strip() if mt else (r.get("tester_type") or "")
+        key = (r.get("customer"), r.get("model_name"), src)
+        g = by_src.setdefault(key, {
+            "customer": r.get("customer"), "model": r.get("model_name"),
+            "board": r.get("board_type"), "tester_dir": tdir,
+            "tester_type": r.get("tester_type") or norm_tester(tdir),
+            "path": src, "entries": [],
+        })
+        g["entries"].append({"date": r.get("issue_date"), "unit": r.get("unit_label") or "",
+                             "symptom": r.get("symptom") or "", "action": r.get("action") or "",
+                             "raw": r.get("raw_text") or ""})
+    return list(by_src.values())
+
+
+def _load_old_index():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, root)
+    from app import db
+    try:
+        return db.query("SELECT * FROM z_verify_index")
+    except Exception:
+        return []
+
+
 def sync_from_server(progress=lambda msg: None, root_dir=None):
-    """전체 동기화: 스캔 → 파싱 → DB 재반영(멱등) + 출하검증 경로 인덱스 갱신."""
+    """전체 동기화: 스캔 → 파싱 → 이름변경 감지 → DB 재반영(멱등) + 인덱스 갱신.
+
+    안전장치:
+      · 모델 폴더 이름 변경 감지 → 수동 등록 데이터까지 새 이름으로 이관
+      · 읽기 실패(엑셀 열림 등) 파일 → 기존 DB 데이터를 복원해 유지(증발 방지)
+      · 고객사 폴더가 통째로 안 보이면 → 그 고객사 기존 데이터 유지 + 경고
+    """
     base = root_dir or _server_root()
     progress(f"서버 경로 확인: {base}")
-    result, index_rows = [], []
+    old_index = _load_old_index()                       # 이름변경 감지용(교체 전 스냅샷)
+    result, index_dicts, warns = [], [], []
+    failed_paths, scanned_customers = [], set()
     for c in CUSTOMERS:
         progress(f"[1/3] {c} 서버 폴더 스캔 중…")
         vdirs = []
-        found = scan_customer(c, progress=progress, root_dir=base, verify_dirs=vdirs)
+        try:
+            found = scan_customer(c, progress=progress, root_dir=base, verify_dirs=vdirs)
+            scanned_customers.add(c)
+        except FileNotFoundError:
+            # 고객사 폴더 자체가 안 보임(마운트 안 됨 등) — 기존 데이터 유지
+            kept = _rows_to_result(_existing_auto_rows(c))
+            if kept:
+                result.extend(kept)
+                warns.append(f"{c}: 서버 폴더에 접근 불가 — 기존 데이터 "
+                             f"{sum(len(k['entries']) for k in kept)}건 유지")
+            continue
+        if not found:
+            kept = _rows_to_result(_existing_auto_rows(c))
+            if kept:                                    # 폴더는 있는데 파일이 0개 → 의심
+                result.extend(kept)
+                warns.append(f"{c}: 이슈 파일이 하나도 안 보임 — 기존 데이터 "
+                             f"{sum(len(k['entries']) for k in kept)}건 유지 (서버 확인 필요)")
+                scanned_customers.discard(c)            # 이전 경로 인덱스도 보존(사진 유지)
+                continue
         issue_dirs = {os.path.dirname(p) for p in found}
         for vd in vdirs:
             # 폴더 경로로 모델 판별 — 파일 자리에 더미를 붙여 동일 규칙 사용
             model, board, tdir = derive_model_tester(os.path.join(vd, "_"), c)
-            index_rows.append((vd, c, model, board, tdir, norm_tester(tdir),
-                               1 if vd in issue_dirs else 0))
+            index_dicts.append({"verify_dir": vd, "customer": c, "model": model,
+                                "board": board, "tester_dir": tdir,
+                                "tester_type": norm_tester(tdir),
+                                "has_issue": 1 if vd in issue_dirs else 0})
         progress(f"[2/3] {c} 이슈파일 {len(found)}개 파싱 중… (전 모델)")
-        result.extend(collect_all(c, files=found))
+        result.extend(collect_all(c, files=found, failed=failed_paths))
+
+    # 읽기 실패 파일 → 기존 DB에서 복원(전체 재이관에서 증발 방지)
+    if failed_paths:
+        all_rows = _existing_auto_rows()
+        keep_rows = [r for r in all_rows
+                     if any(p in (r.get("note") or "") for p in failed_paths)]
+        kept = _rows_to_result(keep_rows)
+        result.extend(kept)
+        warns.append(f"열려 있거나 읽기 실패한 파일 {len(failed_paths)}개 — 기존 데이터 "
+                     f"{sum(len(k['entries']) for k in kept)}건 유지")
+
+    # 모델 폴더 이름 변경 감지 (관리코드 + 이슈 원문 일치)
+    old_content = {}
+    for r in _existing_auto_rows():
+        old_content.setdefault((r.get("customer"), r.get("model_name")),
+                               set()).add(_norm_raw(r.get("raw_text")))
+    new_content = {}
+    for m in result:
+        s = new_content.setdefault((m["customer"], m["model"]), set())
+        for e in m["entries"]:
+            s.add(_norm_raw(e["raw"]))
+    renames, dup_warns = detect_renames(old_index, index_dicts, old_content, new_content)
+    warns.extend(dup_warns)
+
     progress("[3/3] 데이터베이스 반영 중…")
     commit_to_db(result)
+    n_renamed = apply_renames(renames)
+    for cust, old_m, new_m, why in renames:
+        progress(f"모델명 변경 감지: {old_m} → {new_m} ({cust}, {why}) — 전체 데이터 이관")
+    index_rows = [(d["verify_dir"], d["customer"], d["model"], d["board"],
+                   d["tester_dir"], d["tester_type"], d["has_issue"]) for d in index_dicts]
+    # 스캔에 실패한 고객사의 이전 인덱스는 보존 — 사진 연동이 끊기지 않게 한다
+    for r in old_index:
+        if r.get("customer") not in scanned_customers:
+            index_rows.append((r["verify_dir"], r["customer"], r["model"], r["board"],
+                               r["tester_dir"], r["tester_type"], r.get("has_issue") or 0))
     n_idx = save_verify_index(index_rows)
     total = sum(len(x["entries"]) for x in result)
-    progress(f"완료 — 파일 {len(result)}개, 이슈 {total}건, 경로 인덱스 {n_idx}개 반영")
-    return {"files": len(result), "issues": total, "index": n_idx}
+    for w in warns:
+        progress(f"⚠ {w}")
+    msg = f"완료 — 파일 {len(result)}개, 이슈 {total}건, 경로 인덱스 {n_idx}개 반영"
+    if n_renamed:
+        msg += f" · 모델명 변경 {n_renamed}건 이관"
+    if warns:
+        msg += f" · 경고 {len(warns)}건"
+    progress(msg)
+    return {"files": len(result), "issues": total, "index": n_idx,
+            "renames": [(f"{o} → {n2}") for _c, o, n2, _w in renames],
+            "warnings": warns}
