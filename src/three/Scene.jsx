@@ -4,7 +4,9 @@
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Sky, Stars, Environment, Lightformer, Cloud, AdaptiveDpr } from '@react-three/drei'
-import { EffectComposer, Bloom, DepthOfField, Vignette, HueSaturation, SMAA } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, DepthOfField, Vignette, HueSaturation, SMAA, SSAO, BrightnessContrast } from '@react-three/postprocessing'
+import { BlendFunction } from 'postprocessing'
+import { timeUniform } from './materials.js'
 import * as THREE from 'three'
 import Village from './Village.jsx'
 import Court from './Court.jsx'
@@ -45,7 +47,10 @@ export const cameraApi = {
 }
 
 function Clock() {
-  useFrame((_, dt) => gameTick(Math.min(dt, 0.05)))
+  useFrame((state, dt) => {
+    gameTick(Math.min(dt, 0.05))
+    timeUniform.value = state.clock.elapsedTime // 잔디·나뭇잎 바람
+  })
   return null
 }
 
@@ -70,6 +75,15 @@ function ForceSize() {
       window.visualViewport?.removeEventListener('resize', apply)
     }
   }, [setSize])
+  return null
+}
+
+/** 개발 중 화면 확인용 — 렌더러 상태를 밖으로 노출한다 (배포 빌드에는 포함되지 않음) */
+function DevExpose() {
+  const state = useThree()
+  useEffect(() => {
+    if (import.meta.env.DEV) globalThis.__svThree = state
+  }, [state])
   return null
 }
 
@@ -208,17 +222,41 @@ function CameraRig() {
 
 function Fx({ quality }) {
   if (quality === 'low') return null
+  const high = quality === 'high'
   return (
-    <EffectComposer multisampling={0} enableNormalPass={false}>
+    <EffectComposer multisampling={0} enableNormalPass={high}>
       <SMAA />
-      <Bloom intensity={0.42} luminanceThreshold={0.78} luminanceSmoothing={0.25} mipmapBlur radius={0.7} />
-      {quality === 'high' ? (
-        <DepthOfField focusDistance={0.014} focalLength={0.045} bokehScale={3.2} height={480} />
+      {/* 접히는 곳이 어두워져 입체감이 확 살아난다 (최고 화질에서만) */}
+      {high ? (
+        <SSAO
+          blendFunction={BlendFunction.MULTIPLY}
+          samples={24}
+          rings={5}
+          distanceThreshold={0.4}
+          distanceFalloff={0.12}
+          rangeThreshold={0.004}
+          rangeFalloff={0.01}
+          luminanceInfluence={0.6}
+          radius={0.09}
+          intensity={22}
+          bias={0.028}
+          worldDistanceThreshold={22}
+          worldDistanceFalloff={4}
+          worldProximityThreshold={4}
+          worldProximityFalloff={1}
+        />
       ) : (
         <></>
       )}
-      <HueSaturation saturation={0.14} hue={0} />
-      <Vignette eskil={false} offset={0.24} darkness={0.62} />
+      <Bloom intensity={0.38} luminanceThreshold={0.8} luminanceSmoothing={0.28} mipmapBlur radius={0.72} />
+      {high ? (
+        <DepthOfField focusDistance={0.016} focalLength={0.05} bokehScale={2.6} height={480} />
+      ) : (
+        <></>
+      )}
+      <HueSaturation saturation={0.12} hue={0} />
+      <BrightnessContrast brightness={0.015} contrast={0.075} />
+      <Vignette eskil={false} offset={0.26} darkness={0.58} />
     </EffectComposer>
   )
 }
@@ -259,6 +297,7 @@ export default function Scene() {
       }}
     >
       <ForceSize />
+      <DevExpose />
       <Suspense fallback={null}>
         <Lights quality={quality} />
         <Clouds night={night} />

@@ -227,6 +227,8 @@ export const useGame = create((set, get) => ({
   online: { status: 'off', roomId: null, roomName: '', isAdmin: false, code: '' },
   scheduled: [], // 콕스타 예정 매치
   roomInfo: null, // 입장한 경기방 정보
+  screen: 'world', // world(전국 지도) | village(3D 마을)
+  setScreen: (screen) => set({ screen, panel: null }),
 
   // ---------------------------------------------------------------------------------
   hydrate: () => {

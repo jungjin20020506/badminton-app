@@ -13,7 +13,7 @@ import { MAX_COURTS } from '../game/layout.js'
 import { clockText } from './Hud.jsx'
 import { villageLevel, VILLAGE_LEVELS, TROPHIES, pickDailyPartner } from '../game/social.js'
 import { cockstar } from '../net/cockstar.js'
-import RoomList from './RoomList.jsx'
+import MatchBoard from './MatchBoard.jsx'
 
 const ago = (ts) => {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -157,221 +157,6 @@ function RosterPanel() {
   )
 }
 
-// -----------------------------------------------------------------------------------
-// 🏸 경기
-// -----------------------------------------------------------------------------------
-function MatchPanel() {
-  const courts = useGame((s) => s.courts)
-  const players = useGame((s) => s.players)
-  const order = useGame((s) => s.order)
-  const courtCount = useGame((s) => s.courtCount)
-  const setCourtCount = useGame((s) => s.setCourtCount)
-  const autoFill = useGame((s) => s.autoFill)
-  const clearCourt = useGame((s) => s.clearCourt)
-  const assign = useGame((s) => s.assign)
-  const autoMatch = useGame((s) => s.autoMatch)
-  const sensitivity = useGame((s) => s.sensitivity)
-  const targetScore = useGame((s) => s.targetScore)
-  const gameSpeed = useGame((s) => s.gameSpeed)
-  const setSetting = useGame((s) => s.setSetting)
-  const history = useGame((s) => s.history)
-  const [pick, setPick] = useState(null)
-
-  const waiting = order.map((id) => players[id]).filter((p) => p && p.status === 'waiting')
-  const sens = SENSITIVITIES.find((s) => s.key === sensitivity)
-  const online = useGame((s) => s.online)
-  const roomInfo = useGame((s) => s.roomInfo)
-
-  // ── 콕스타 경기방 모드 ──────────────────────────────────────────
-  if (online.status === 'room') {
-    const pickWaiting = (n) => waiting.slice(0, n).map((p) => p.id)
-    const act = (fn) => fn().catch((e) => useGame.getState().toast(e.message, 'warn'))
-    return (
-      <>
-        <div className="court-mini live" style={{ padding: 12 }}>
-          <div className="spread">
-            <b>🏸 {online.roomName}</b>
-            <span className="ac-chip">{online.isAdmin ? '👑 관리자' : '🙋 참가자'}</span>
-          </div>
-          <div className="muted" style={{ marginTop: 4 }}>
-            📍 {roomInfo?.location || '-'} · 참가 {order.length}명 / 정원 {roomInfo?.maxPlayers || '-'}명
-          </div>
-        </div>
-
-        {online.isAdmin && (
-          <>
-            <div className="sect">🏟️ 코트 {courtCount}개</div>
-            <div className="row wrap" style={{ marginBottom: 10 }}>
-              {Array.from({ length: MAX_COURTS }, (_, i) => i + 1).map((n) => (
-                <button key={n} className={`ac-btn sm ${courtCount === n ? 'green' : ''}`}
-                  onClick={() => act(() => cockstar.setCourtCountRemote(n))}>{n}</button>
-              ))}
-            </div>
-          </>
-        )}
-
-        <div className="sect">코트 현황</div>
-        <div className="grid2">
-          {courts.map((c) => (
-            <div key={c.id} className={`court-mini ${c.status === 'playing' ? 'live' : ''}`}>
-              <div className="spread">
-                <b>{c.id + 1}번 코트</b>
-                <span className="muted">
-                  {c.status === 'playing' ? '경기 중' : c.status === 'filling' ? '이동 중' : '비어 있음'}
-                </span>
-              </div>
-              <div className="slots">
-                {c.players.map((pid, i) => (
-                  <div key={i} className={`slot ${pid ? 'filled' : 'empty'}`}>{pid ? players[pid]?.name : '-'}</div>
-                ))}
-              </div>
-              {online.isAdmin && (
-                c.players.some(Boolean) ? (
-                  <button className="ac-btn sm wide" style={{ marginTop: 6 }}
-                    onClick={() => confirm('경기를 종료할까요?') && act(() => cockstar.endCourt(c.id))}>
-                    경기 종료
-                  </button>
-                ) : (
-                  <button className="ac-btn sm green wide" style={{ marginTop: 6 }} disabled={waiting.length < 4}
-                    onClick={() => act(() => cockstar.startCourt(c.id, pickWaiting(4)))}>
-                    앞 4명 투입
-                  </button>
-                )
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="sect">⏳ 대기 {waiting.length}명</div>
-        <div className="plist">
-          {waiting.map((p, i) => (
-            <div key={p.id} className={`pcard ${p.isMe ? 'me' : ''}`}>
-              <span className="ac-chip">{i + 1}</span>
-              <span className="lv-tag" style={{ background: LEVEL_COLOR[p.level] }}>{p.level}</span>
-              <div className="nm">{p.name}<div className="sub">오늘 {p.todayGames}경기</div></div>
-              {(p.isMe || online.isAdmin) && (
-                <button className="ac-btn sm" onClick={() => act(() => cockstar.setResting(p.id, true))}>휴식</button>
-              )}
-            </div>
-          ))}
-          {!waiting.length && <div className="muted">대기 중인 선수가 없어.</div>}
-        </div>
-
-        <div className="muted" style={{ marginTop: 14 }}>
-          여기서 바꾸면 콕스타 앱에도 똑같이 반영돼. 반대로 콕스타에서 바꿔도 이 마을이 바로 움직여!
-        </div>
-      </>
-    )
-  }
-
-
-  // '안 친 사람' — 나와 오늘 아직 경기하지 않은 주민
-  const playedWithMe = new Set()
-  history.forEach((g) => {
-    const ids = [...g.teamA, ...g.teamB]
-    if (ids.includes('me')) ids.forEach((i) => playedWithMe.add(i))
-  })
-
-  return (
-    <>
-      <div className="sect">🏟️ 코트 {courtCount}개</div>
-      <div className="row wrap" style={{ marginBottom: 10 }}>
-        {Array.from({ length: MAX_COURTS }, (_, i) => i + 1).map((n) => (
-          <button key={n} className={`ac-btn sm ${courtCount === n ? 'green' : ''}`} onClick={() => setCourtCount(n)}>{n}</button>
-        ))}
-      </div>
-
-      <div className="grid2">
-        {courts.map((c) => (
-          <div key={c.id} className={`court-mini ${c.status === 'playing' ? 'live' : ''}`}>
-            <div className="spread">
-              <b>{c.id + 1}번 코트</b>
-              <span className="muted">
-                {c.status === 'playing' ? `${c.score[0]}:${c.score[1]}` : c.status === 'filling' ? '이동 중' : c.status === 'done' ? '정리 중' : '비어 있음'}
-              </span>
-            </div>
-            <div className="slots">
-              {c.players.map((pid, i) => (
-                <div
-                  key={i}
-                  className={`slot ${pid ? 'filled' : 'empty'}`}
-                  onClick={() => c.status !== 'playing' && setPick(pid ? null : { courtId: c.id, slot: i })}
-                >
-                  {pid ? players[pid]?.name : '＋'}
-                </div>
-              ))}
-            </div>
-            {c.status !== 'playing' && c.players.some(Boolean) && (
-              <button className="ac-btn sm wide" style={{ marginTop: 6 }} onClick={() => clearCourt(c.id)}>비우기</button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {pick && (
-        <>
-          <div className="sect">누구를 {pick.courtId + 1}번 코트에 넣을까?</div>
-          <div className="row wrap">
-            {waiting.map((p) => (
-              <button key={p.id} className="ac-btn sm" onClick={() => { assign(p.id, pick.courtId, pick.slot); setPick(null) }}>
-                {p.name}
-              </button>
-            ))}
-            <button className="ac-btn sm rose" onClick={() => setPick(null)}>취소</button>
-          </div>
-        </>
-      )}
-
-      <div className="sect">🤖 자동 매칭</div>
-      <div className="row wrap" style={{ marginBottom: 8 }}>
-        <button className={`ac-btn ${autoMatch ? 'green' : ''}`} onClick={() => setSetting({ autoMatch: !autoMatch })}>
-          {autoMatch ? '✅ 자동 매칭 켜짐' : '⛔ 자동 매칭 꺼짐'}
-        </button>
-        <button className="ac-btn yellow" onClick={() => autoFill(false)}>⚡ 지금 짜기</button>
-      </div>
-      <div className="row wrap">
-        {SENSITIVITIES.map((s) => (
-          <button key={s.key} className={`ac-btn sm ${sensitivity === s.key ? 'green' : ''}`} onClick={() => setSetting({ sensitivity: s.key })}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-      <div className="muted" style={{ marginTop: 6 }}>{sens.short} — {sens.desc}</div>
-
-      <div className="sect">🎮 경기 설정</div>
-      <div className="row wrap" style={{ marginBottom: 8 }}>
-        <span className="muted">목표 점수</span>
-        {[11, 15, 21].map((n) => (
-          <button key={n} className={`ac-btn sm ${targetScore === n ? 'green' : ''}`} onClick={() => setSetting({ targetScore: n })}>{n}점</button>
-        ))}
-      </div>
-      <div className="row wrap">
-        <span className="muted">진행 속도</span>
-        {[1, 2, 4].map((n) => (
-          <button key={n} className={`ac-btn sm ${gameSpeed === n ? 'green' : ''}`} onClick={() => setSetting({ gameSpeed: n })}>{n}배</button>
-        ))}
-      </div>
-
-      <div className="sect">⏳ 대기석 {waiting.length}명</div>
-      <div className="plist">
-        {waiting.map((p, i) => (
-          <div key={p.id} className={`pcard ${p.isMe ? 'me' : ''}`}>
-            <span className="ac-chip">{i + 1}</span>
-            <span className="lv-tag" style={{ background: LEVEL_COLOR[p.level] }}>{p.level}</span>
-            <div className="nm">
-              {p.name}
-              <div className="sub">
-                ⏳ {ago(p.waitSince)} 대기 · {p.todayGames}경기
-                {!p.isMe && !playedWithMe.has(p.id) && <b style={{ color: '#e0687e' }}> · 아직 안 친 사이!</b>}
-              </div>
-            </div>
-          </div>
-        ))}
-        {!waiting.length && <div className="muted">대기석이 비었어. 👥 주민 메뉴에서 사람을 불러보자!</div>}
-      </div>
-    </>
-  )
-}
 
 // -----------------------------------------------------------------------------------
 // 🛍️ 상점
@@ -711,7 +496,6 @@ function MorePanel() {
   const mailUnread = useGame((s) => s.mail.filter((m) => !m.read || (!m.claimed && m.coins > 0)).length)
   const ready = DAILY_QUESTS.filter((q) => (today[q.track] || 0) >= q.target && !quests[q.id]?.claimed).length
   const ITEMS = [
-    ['rooms', '🏸', '콕스타 경기방'],
     ['quests', '📜', '오늘의 할 일', ready],
     ['mail', '💌', '우편함', mailUnread],
     ['gacha', '🎁', '셔틀콕 뽑기'],
@@ -911,7 +695,6 @@ export default function Panels() {
     shop: '🛍️ 너굴상점',
     me: '⭐ 내 정보',
     more: '☰ 더보기',
-    rooms: '🏸 콕스타 경기방',
     quests: '📜 오늘의 할 일',
     mail: '💌 우편함',
     trophy: '🏆 트로피룸',
@@ -924,11 +707,10 @@ export default function Panels() {
   return (
     <Sheet title={TITLE} onClose={() => setPanel(panel)}>
       {panel === 'roster' && <RosterPanel />}
-      {panel === 'match' && <MatchPanel />}
+      {panel === 'match' && <MatchBoard />}
       {panel === 'shop' && <ShopPanel />}
       {panel === 'me' && <MePanel />}
       {panel === 'more' && <MorePanel />}
-      {panel === 'rooms' && <RoomList onClose={() => setPanel('rooms')} />}
       {panel === 'quests' && <QuestPanel />}
       {panel === 'mail' && <MailPanel />}
       {panel === 'trophy' && <TrophyPanel />}

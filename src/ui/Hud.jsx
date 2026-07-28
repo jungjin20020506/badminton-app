@@ -204,10 +204,11 @@ export default function Hud() {
     ['newpartner', 1, today.newPartners], ['host5', 5, today.matches],
   ].filter(([id, target, prog]) => prog >= target && !quests[id]?.claimed).length
 
+  const setScreen = useGame((s) => s.setScreen)
   const NAV = [
-    ['match', '🏸', '경기'],
-    ['roster', '👥', '주민'],
-    ['shop', '🛍️', '상점'],
+    ['__world', '🗺️', '월드'],
+    ['match', '🏸', '매칭'],
+    ['roster', '👥', '선수'],
     ['me', '⭐', '나'],
     ['more', '☰', '더보기', questReady + mailUnread],
   ]
@@ -264,7 +265,11 @@ export default function Hud() {
 
       <div className="nav-bar">
         {NAV.map(([key, icon, label, badge]) => (
-          <button key={key} className={`nav-btn ${panel === key ? 'on' : ''}`} onClick={() => setPanel(key)}>
+          <button
+            key={key}
+            className={`nav-btn ${panel === key ? 'on' : ''}`}
+            onClick={() => (key === '__world' ? setScreen('world') : setPanel(key))}
+          >
             <i>{icon}</i>{label}
             {badge > 0 && <span className="badge">{badge}</span>}
           </button>

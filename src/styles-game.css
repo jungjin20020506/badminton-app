@@ -1,0 +1,206 @@
+/* ===================================================================================
+   선수 카드 · 매칭 보드 · 코트 월드
+   급수(색) / 이름(크기) / 게임수(점) / 대기(숫자) 를 서로 다른 채널로 분리해
+   한눈에 읽히도록 만든 화면들.
+   =================================================================================== */
+
+/* --------------------------------------------------------------------------------
+   선수 카드
+   -------------------------------------------------------------------------------- */
+.pcard2 {
+  position: relative; display: flex; align-items: center; gap: 9px;
+  width: 100%; min-height: 66px; padding: 8px 10px 8px 0;
+  background: var(--paper-2); border: 3px solid var(--line);
+  border-left: none; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 3px 0 rgba(181, 144, 90, .4); text-align: left;
+  transition: transform .08s, box-shadow .08s;
+}
+.pcard2 .lvbar {
+  width: 26px; align-self: stretch; flex: none;
+  background: var(--lv); color: #fff; font-size: 15px;
+  display: grid; place-items: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
+.pcard2 .face {
+  width: 42px; height: 42px; border-radius: 12px; flex: none;
+  border: 2px solid var(--line); background: #fff;
+}
+.pcard2 .info { flex: 1; min-width: 0; }
+.pcard2 .line1 { display: flex; align-items: center; gap: 5px; }
+.pcard2 .line1 b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard2 em { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 999px; border: 1.5px solid; }
+.pcard2 em.m { color: #3b82f6; border-color: #bcd7fb; }
+.pcard2 em.f { color: #ec4899; border-color: #fbc7e0; }
+.pcard2 em.me { color: #7a5a12; border-color: var(--sun-dark); background: #fff2c9; }
+.pcard2 em.fresh { color: #d1425c; border-color: #f8bcc7; background: #ffeef1; }
+.pcard2 .line2 { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.pcard2 .wait { font-size: 17px; color: var(--ink-2); flex: none; padding-right: 4px; }
+.pcard2 .wait i { font-style: normal; font-size: 10px; }
+.pcard2 .wait.long { color: #d1425c; }
+.pcard2.sel {
+  border-color: var(--leaf-dark);
+  background: linear-gradient(#e6f8e0, #cdf0c4);
+  box-shadow: 0 3px 0 var(--leaf-dark);
+  transform: translateY(-2px);
+}
+.pcard2.dim { opacity: .55; }
+.pcard2 .check {
+  position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--leaf-dark); color: #fff; font-size: 12px;
+  display: grid; place-items: center; border: 2px solid #fff;
+}
+.pcard2:active { transform: translateY(3px); box-shadow: none; }
+
+.pips { display: inline-flex; gap: 3px; }
+.pips i { width: 8px; height: 8px; border-radius: 50%; background: #e0d3b6; border: 1px solid #cdbb96; }
+.pips i.on { background: var(--sun); border-color: var(--sun-dark); }
+.pips-num { font-size: 12px; color: var(--ink-2); background: #efe3c8; border-radius: 999px; padding: 1px 7px; }
+
+/* 코트 슬롯용 작은 카드 */
+.pslot {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  background: #fff; border: 2px solid var(--lv, var(--line)); border-radius: 12px;
+  padding: 5px 7px; min-height: 46px;
+}
+.pslot img { width: 30px; height: 30px; border-radius: 8px; flex: none; }
+.pslot-txt { min-width: 0; text-align: left; }
+.pslot-txt b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pslot-txt span { font-size: 10px; color: #fff; background: var(--lv); border-radius: 999px; padding: 0 6px; }
+.pslot.empty { justify-content: center; color: var(--ink-2); border-style: dashed; border-color: var(--line); }
+
+/* --------------------------------------------------------------------------------
+   매칭 보드
+   -------------------------------------------------------------------------------- */
+.mboard { display: flex; flex-direction: column; height: 100%; }
+.mb-top { display: flex; gap: 6px; margin-bottom: 10px; }
+.mb-stat {
+  flex: 1; background: var(--paper-2); border: 3px solid var(--line); border-radius: 13px;
+  padding: 6px 4px; text-align: center; box-shadow: 0 3px 0 rgba(181, 144, 90, .35);
+}
+.mb-stat b { display: block; font-size: 20px; line-height: 1.1; }
+.mb-stat span { font-size: 11px; color: var(--ink-2); }
+
+.mb-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.mb-tabs button {
+  flex: 1; min-height: 42px; border: 3px solid var(--line); background: var(--paper-2);
+  border-radius: 13px; font-size: 14px; box-shadow: 0 3px 0 rgba(181, 144, 90, .4);
+}
+.mb-tabs button.on {
+  background: linear-gradient(#ffe9b0, var(--sun));
+  border-color: var(--sun-dark); box-shadow: 0 3px 0 var(--sun-dark);
+}
+.mb-body { flex: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 8px; }
+
+.ct-card {
+  background: var(--paper-2); border: 3px solid var(--line); border-radius: 16px;
+  padding: 10px; margin-bottom: 10px; box-shadow: 0 3px 0 rgba(181, 144, 90, .4);
+}
+.ct-card.live {
+  background: linear-gradient(#fff6dc, #ffeab4);
+  border-color: var(--sun-dark); box-shadow: 0 3px 0 var(--sun-dark);
+}
+.ct-card.filling { background: linear-gradient(#e4f4ff, #cfebfb); border-color: var(--sky-dark); }
+.ct-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ct-head b { font-size: 16px; }
+.ct-score { font-size: 20px; }
+.ct-timer { font-size: 15px; color: var(--ink-2); }
+.ct-team { display: flex; gap: 6px; }
+.ct-empty { text-align: center; }
+.ct-slots-ghost { display: flex; gap: 6px; }
+.ct-slots-ghost span {
+  flex: 1; min-height: 44px; border: 2px dashed var(--line); border-radius: 12px;
+  display: grid; place-items: center; color: var(--ink-2); background: var(--paper);
+}
+
+.balance { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
+.balance .net-line {
+  flex: 1; height: 3px; border-radius: 2px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
+}
+.balance .bl { font-size: 12px; white-space: nowrap; }
+.balance.ok .bl { color: var(--leaf-dark); }
+.balance.mid .bl { color: #c98a1e; }
+.balance.bad .bl { color: var(--rose-dark); }
+
+.pgrid { display: flex; flex-direction: column; gap: 7px; }
+.reason {
+  margin-top: 8px; font-size: 13px; color: var(--ink-2); background: #fff;
+  border-radius: 10px; padding: 7px 9px; border: 2px solid var(--line);
+}
+
+.mb-action {
+  position: sticky; bottom: 0; margin: 8px -2px -4px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--paper); border: 3px solid var(--line-dark); border-radius: 16px;
+  padding: 8px 10px; box-shadow: 0 -4px 12px var(--shadow);
+}
+.sel-faces { display: flex; gap: 4px; }
+.sel-faces img { width: 34px; height: 34px; border-radius: 10px; border: 2px solid var(--leaf-dark); }
+.sel-faces .ghost {
+  width: 34px; height: 34px; border-radius: 10px; border: 2px dashed var(--line);
+  display: grid; place-items: center; color: var(--ink-2); font-size: 13px;
+}
+
+/* --------------------------------------------------------------------------------
+   코트 월드 (전국 지도)
+   -------------------------------------------------------------------------------- */
+.world {
+  position: absolute; inset: 0; overflow-y: auto; touch-action: pan-y;
+  background: linear-gradient(#bfe9fb, #e8f7de);
+  padding-bottom: calc(var(--safe-b) + 20px);
+}
+.world-hero {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: calc(var(--safe-t) + 14px) 14px 10px;
+}
+.wh-title { font-size: 22px; }
+.wh-sub { font-size: 12px; color: #4e6b52; }
+.world-search { padding: 0 14px 10px; }
+
+.map-wrap { padding: 0 10px; }
+.korea {
+  width: 100%; height: auto; display: block;
+  border-radius: 20px; border: 4px solid var(--line-dark);
+  box-shadow: 0 6px 0 var(--line-dark);
+}
+.mark { cursor: pointer; }
+.mark:active { transform: scale(.92); }
+
+.floating-rooms {
+  margin: 12px 4px 0; padding: 10px 12px; background: var(--paper);
+  border: 3px solid var(--line); border-radius: 16px;
+}
+
+.room-list { padding: 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.room-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: var(--paper); border: 3px solid var(--line); border-radius: 16px;
+  padding: 12px; box-shadow: 0 3px 0 rgba(181, 144, 90, .4); min-height: 64px;
+}
+.room-row:active { transform: translateY(3px); box-shadow: none; }
+.rr-icon { font-size: 24px; }
+.rr-main { flex: 1; min-width: 0; }
+.rr-main b { display: block; font-size: 16px; }
+.rr-main em { font-style: normal; font-size: 12px; color: var(--ink-2); }
+.rr-go { font-size: 22px; color: var(--ink-2); }
+
+.village-card-pop {
+  position: fixed; left: 12px; right: 12px; bottom: calc(var(--safe-b) + 14px);
+  z-index: 36; padding: 16px;
+}
+.vcp-title { display: flex; align-items: center; gap: 10px; }
+.vcp-title b { font-size: 18px; }
+.vcp-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+.world-back {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--safe-b) + 14px); z-index: 30;
+  background: linear-gradient(#b6ebae, var(--leaf)); border: 3px solid var(--leaf-dark);
+  border-radius: 999px; padding: 12px 20px; font-size: 15px; color: #274a22;
+  box-shadow: 0 5px 0 var(--leaf-dark);
+}
+
+@media (min-width: 900px) {
+  .world { max-width: 520px; left: 50%; transform: translateX(-50%); }
+  .village-card-pop { max-width: 500px; left: 50%; transform: translateX(-50%); }
+}

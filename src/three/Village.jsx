@@ -9,6 +9,7 @@ import * as THREE from 'three'
 import { GATE, WAIT_Z } from '../game/layout.js'
 import { DECORS } from '../game/constants.js'
 import { grassTexture, soilTexture, woodTexture, roofTexture, leafBump, repeat } from './textures.js'
+import { windMaterial, charMaterial } from './materials.js'
 
 const GROUND = 110
 
@@ -71,10 +72,11 @@ function GrassTufts({ count = 1400, keepOut = [] }) {
     return out
   }, [count, keepOut])
 
+  const mat = useMemo(() => windMaterial({ color: '#5faf52', strength: 0.2 }), [])
+
   return (
-    <Instances limit={2000} castShadow={false} receiveShadow={false} frustumCulled={false}>
+    <Instances limit={2000} castShadow={false} receiveShadow={false} frustumCulled={false} material={mat}>
       <coneGeometry args={[0.14, 0.52, 4, 1]} />
-      <meshStandardMaterial roughness={1} vertexColors={false} color="#5faf52" />
       {items.map((it, i) => (
         <Instance key={i} position={[it.p[0], 0.24 * it.s, it.p[2]]} scale={[it.s, it.s * (0.8 + it.c * 0.7), it.s]} rotation={[0, it.ry, (it.c - 0.5) * 0.3]} color={it.c > 0.6 ? '#79c266' : it.c > 0.3 ? '#57a24c' : '#6bb85c'} />
       ))}
@@ -205,9 +207,9 @@ function Tree({ position, kind = 'green', scale = 1, seed = 1 }) {
       })}
       <group ref={g}>
         {blobs.map((b, i) => (
-          <mesh key={i} position={b.p} scale={[b.s, b.s * 0.86, b.s]} castShadow>
+          <mesh key={i} position={b.p} scale={[b.s, b.s * 0.86, b.s]} castShadow
+            material={charMaterial({ color: b.c, roughness: 0.92, rimColor: '#e8ffd8', rimPower: 2.8, rimIntensity: 0.3, wrap: 0.55 })}>
             <sphereGeometry args={[1.0, 18, 14]} />
-            <meshStandardMaterial color={b.c} roughness={0.92} bumpMap={bump} bumpScale={0.09} />
           </mesh>
         ))}
       </group>
