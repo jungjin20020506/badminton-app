@@ -58,27 +58,43 @@ function Terrain({ flatRadius = 30 }) {
 // 잔디 포기 / 꽃 / 돌 — 인스턴싱으로 한 번에 그린다
 // -----------------------------------------------------------------------------------
 function GrassTufts({ count = 1400, keepOut = [] }) {
+  // 균일하게 뿌리면 "들판에 박힌 뿔"처럼 보인다.
+  // 무리(clump) 중심을 먼저 잡고 그 주변에 옹기종기 심어야 자연스럽다.
   const items = useMemo(() => {
     const r = rng(21)
     const out = []
     let guard = 0
-    while (out.length < count && guard++ < count * 6) {
-      const x = (r() - 0.5) * 92
-      const z = (r() - 0.5) * 92
-      if (keepOut.some(([cx, cz, w, d]) => Math.abs(x - cx) < w && Math.abs(z - cz) < d)) continue
-      if (Math.abs(x) < 3 && z > 8) continue // 입구 길
-      out.push({ p: [x, 0, z], s: 0.55 + r() * 0.85, ry: r() * Math.PI, c: r() })
+    while (out.length < count && guard++ < count * 8) {
+      const cx0 = (r() - 0.5) * 92
+      const cz0 = (r() - 0.5) * 92
+      const clump = 3 + Math.floor(r() * 7)
+      for (let i = 0; i < clump && out.length < count; i++) {
+        const a = r() * Math.PI * 2
+        const rad = r() * 1.5
+        const x = cx0 + Math.cos(a) * rad
+        const z = cz0 + Math.sin(a) * rad
+        if (keepOut.some(([cx, cz, w, d]) => Math.abs(x - cx) < w && Math.abs(z - cz) < d)) continue
+        if (Math.abs(x) < 3 && z > 8) continue // 입구 길
+        out.push({ p: [x, 0, z], s: 0.7 + r() * 0.6, ry: r() * Math.PI, c: r() })
+      }
     }
     return out
   }, [count, keepOut])
 
-  const mat = useMemo(() => windMaterial({ color: '#5faf52', strength: 0.2 }), [])
+  const mat = useMemo(() => windMaterial({ color: '#5faf52', strength: 0.13 }), [])
 
   return (
-    <Instances limit={2000} castShadow={false} receiveShadow={false} frustumCulled={false} material={mat}>
-      <coneGeometry args={[0.14, 0.52, 4, 1]} />
+    <Instances limit={2200} castShadow={false} receiveShadow={false} frustumCulled={false} material={mat}>
+      {/* 캐릭터 발목보다 훨씬 낮게 — 잔디 '결' 정도로만 보이게 */}
+      <coneGeometry args={[0.055, 0.19, 4, 1]} />
       {items.map((it, i) => (
-        <Instance key={i} position={[it.p[0], 0.24 * it.s, it.p[2]]} scale={[it.s, it.s * (0.8 + it.c * 0.7), it.s]} rotation={[0, it.ry, (it.c - 0.5) * 0.3]} color={it.c > 0.6 ? '#79c266' : it.c > 0.3 ? '#57a24c' : '#6bb85c'} />
+        <Instance
+          key={i}
+          position={[it.p[0], 0.09 * it.s, it.p[2]]}
+          scale={[it.s, it.s * (0.75 + it.c * 0.6), it.s]}
+          rotation={[0, it.ry, (it.c - 0.5) * 0.25]}
+          color={it.c > 0.6 ? '#79c266' : it.c > 0.3 ? '#57a24c' : '#6bb85c'}
+        />
       ))}
     </Instances>
   )

@@ -88,14 +88,23 @@ export default function MatchBoard() {
 
   const [tab, setTab] = useState('plan') // plan | live
   const [sel, setSel] = useState([])
-  const [scheduled, setScheduled] = useState({}) // { "0": [id|null x4] } — 경기 예정
-  const [autoQ, setAutoQ] = useState([])         // 자동 매칭 큐
   const [pickCourt, setPickCourt] = useState(null) // 코트 선택 모달
   const [, force] = useState(0)
 
+  // 경기 예정 / 자동 매칭은 저장소에 둔다.
+  // 경기방에 있으면 방 문서(rooms.scheduledMatches)에 그대로 저장돼
+  // 새로고침해도 남고, 콕스타 앱에서도 똑같이 보인다.
+  const scheduled = useGame((s) => s.scheduledMatches)
+  const autoQ = useGame((s) => s.autoMatches)
+  const numScheduledStore = useGame((s) => s.numScheduled)
+  const setMatchQueues = useGame((s) => s.setMatchQueues)
+  const setScheduled = (v) =>
+    setMatchQueues({ scheduledMatches: typeof v === 'function' ? v(useGame.getState().scheduledMatches) : v })
+  const setAutoQ = (v) =>
+    setMatchQueues({ autoMatches: typeof v === 'function' ? v(useGame.getState().autoMatches) : v })
+
   const inRoom = online.status === 'room'
   const isAdmin = inRoom ? online.isAdmin : true
-  const numScheduled = 4
 
   // 1초마다 타이머 갱신
   useMemo(() => {
@@ -353,7 +362,7 @@ export default function MatchBoard() {
                   <button className="ac-btn sm" onClick={() => setScheduled({})}>전체삭제</button>
                 )}
               </div>
-              {Array.from({ length: numScheduled }).map((_, mi) => (
+              {Array.from({ length: numScheduledStore || 4 }).map((_, mi) => (
                 <MatchRow key={mi} kind="plan" mi={mi} arr={scheduled[mi] || Array(PER).fill(null)}
                   onDelete={() => setScheduled((s) => { const n = { ...s }; delete n[mi]; return n })} />
               ))}

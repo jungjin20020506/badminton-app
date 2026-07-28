@@ -158,6 +158,8 @@ function saveState(s) {
       mail: s.mail.slice(0, 40),
       bestLift: s.bestLift,
       onlineCode: s.online?.code || '',
+      scheduledMatches: s.scheduledMatches,
+      autoMatches: s.autoMatches,
     }
     localStorage.setItem(SAVE_KEY, JSON.stringify(data))
   } catch (e) {
@@ -225,8 +227,23 @@ export const useGame = create((set, get) => ({
   // 콕스타 연동 상태
   auth: null, // { uid, email, profile, needsProfile, superAdmin }
   online: { status: 'off', roomId: null, roomName: '', isAdmin: false, code: '' },
-  scheduled: [], // 콕스타 예정 매치
+  // 경기 예정 — 콕스타 rooms.scheduledMatches 와 같은 형식 { "0": [id|null x4] }
+  scheduledMatches: {},
+  // 자동 매칭 대기 큐 — [[id x4], ...]
+  autoMatches: [],
+  numScheduled: 4,
   roomInfo: null, // 입장한 경기방 정보
+
+  /** 경기 예정/자동매칭 저장. 경기방에 있으면 방 문서에도 반영해 모두가 같이 본다 */
+  setMatchQueues: ({ scheduledMatches, autoMatches }) => {
+    const patch = {}
+    if (scheduledMatches !== undefined) patch.scheduledMatches = scheduledMatches
+    if (autoMatches !== undefined) patch.autoMatches = autoMatches
+    set(patch)
+    const s = get()
+    if (s.online?.status === 'room') globalThis.__svSaveQueues?.(patch)
+    else saveState(s)
+  },
   screen: 'world', // world(전국 지도) | village(3D 마을)
   setScreen: (screen) => set({ screen, panel: null }),
 
@@ -277,6 +294,8 @@ export const useGame = create((set, get) => ({
       isAdmin: data.isAdmin !== false,
       mail: data.mail || [],
       bestLift: data.bestLift || 0,
+      scheduledMatches: data.scheduledMatches || {},
+      autoMatches: data.autoMatches || [],
       online: { status: 'off', code: data.onlineCode || '' },
     }
     // 출석 체크 — 하루 한 번 보상, 연속 출석이면 더 많이

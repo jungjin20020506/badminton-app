@@ -414,19 +414,16 @@ function applyRoom() {
     }
   })
 
-  // 예정 매치 (콕스타 scheduledMatches)
-  const scheduled = []
-  const sm = room.scheduledMatches || {}
-  Object.keys(sm)
-    .sort((a, b) => Number(a) - Number(b))
-    .forEach((k) => scheduled.push({ index: Number(k), players: sm[k] || [] }))
-
   useGame.setState({
     players: nextPlayers,
     order,
     courts,
     courtCount,
-    scheduled,
+    // 경기 예정은 콕스타와 같은 필드를 쓰므로 양쪽 앱에서 똑같이 보인다.
+    // 자동 매칭 큐는 콕스타에 없는 개념이라 svAutoMatches 로 따로 둔다(콕스타는 무시).
+    scheduledMatches: room.scheduledMatches || {},
+    autoMatches: Array.isArray(room.svAutoMatches) ? room.svAutoMatches : [],
+    numScheduled: room.numScheduledMatches || 4,
     roomInfo: {
       name: room.name,
       location: room.location,
@@ -541,6 +538,29 @@ export async function setCourtCountRemote(n) {
   await f.updateDoc(roomRef, { numInProgressCourts: n, inProgressCourts: cur.slice(0, n) })
 }
 
+/**
+ * 경기 예정 / 자동 매칭 큐를 방 문서에 저장.
+ * scheduledMatches 는 콕스타와 공유하는 필드라 콕스타 화면에도 그대로 뜬다.
+ */
+export async function saveQueues({ scheduledMatches, autoMatches }) {
+  const { f } = await ensure()
+  const s = useGame.getState()
+  if (s.online?.status !== 'room' || !s.online.isAdmin) return
+  const patch = {}
+  if (scheduledMatches !== undefined) {
+    // undefined/빈 배열은 걸러서 콕스타가 읽을 때 깨지지 않게 한다
+    const clean = {}
+    Object.keys(scheduledMatches).forEach((k) => {
+      const arr = scheduledMatches[k]
+      if (Array.isArray(arr) && arr.some(Boolean)) clean[k] = arr.map((x) => x || null)
+    })
+    patch.scheduledMatches = clean
+  }
+  if (autoMatches !== undefined) patch.svAutoMatches = autoMatches
+  if (!Object.keys(patch).length) return
+  await f.updateDoc(f.doc(db, 'rooms', s.online.roomId), patch)
+}
+
 /** 모든 코트 비우기 (관리자만) */
 export async function resetCourts() {
   const { f } = await ensure()
@@ -552,8 +572,15 @@ export async function resetCourts() {
 export const cockstar = {
   initAuth, signInKakao, sendPhoneCode, verifyPhoneCode, signInAdmin, logout,
   saveProfile, saveLook, subscribeRooms, createRoom, enterRoom, leaveRoom,
-  setResting, startCourt, endCourt, setCourtCountRemote, resetCourts,
+  setResting, startCourt, endCourt, setCourtCountRemote, resetCourts, saveQueues,
   convertToEmail, isSuperAdmin, isRoomAdmin,
+}
+
+// 스토어가 순환 참조 없이 방에 저장할 수 있도록 다리를 놓아 둔다
+let queueTimer = null
+globalThis.__svSaveQueues = (patch) => {
+  clearTimeout(queueTimer)
+  queueTimer = setTimeout(() => saveQueues(patch).catch(() => {}), 250)
 }
 
 // 외모 변경을 콕스타 계정에도 저장 (store 가 순환 참조 없이 호출할 수 있도록 전역 다리)
