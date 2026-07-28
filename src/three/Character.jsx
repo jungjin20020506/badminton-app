@@ -176,13 +176,13 @@ function torsoGeometry(female) {
   // 아래(엉덩이)가 가장 넓고 위(어깨)로 갈수록 좁아지는 배 모양
   const pts = [
     [0.0, 0.0],
-    [0.235 * w, 0.0],
-    [0.243 * w, 0.06],
-    [0.238 * w, 0.15],
-    [0.225 * w, 0.24],
-    [0.196 * w * shoulder, 0.32],
-    [0.168 * w * shoulder, 0.39],
-    [0.124 * w * shoulder, 0.44],
+    [0.196 * w, 0.0],
+    [0.204 * w, 0.06],
+    [0.200 * w, 0.15],
+    [0.188 * w, 0.24],
+    [0.166 * w * shoulder, 0.32],
+    [0.142 * w * shoulder, 0.39],
+    [0.106 * w * shoulder, 0.44],
     [0.08, 0.47],
     [0.0, 0.48],
   ].map(([x, y]) => new THREE.Vector2(x, y))
@@ -841,8 +841,8 @@ export default function Character({
       if (calfR.current) calfR.current.rotation.x = 0
       const fidget = Math.sin(t * 0.45 + phase) > 0.95 ? Math.sin(t * 13) * 0.22 : 0
       // 팔을 몸통에서 살짝 띄워 실루엣이 붙어 보이지 않게 한다
-      if (armL.current) { armL.current.rotation.x = Math.sin(w) * 0.07 + fidget; armL.current.rotation.z = 0.17 }
-      if (armR.current) { armR.current.rotation.x = -Math.sin(w) * 0.07 - 0.1; armR.current.rotation.z = -0.17 }
+      if (armL.current) { armL.current.rotation.x = Math.sin(w) * 0.07 + fidget; armL.current.rotation.z = 0 }
+      if (armR.current) { armR.current.rotation.x = -Math.sin(w) * 0.07 - 0.1; armR.current.rotation.z = 0 }
       if (foreL.current) foreL.current.rotation.x = -0.16
       if (foreR.current) foreR.current.rotation.x = -0.2
 
@@ -937,28 +937,28 @@ export default function Character({
     // 동물의 숲 팔 — 관절 없이 짧고 뭉툭한 토막에 벙어리 손
     const sleeveless = look.outfit === 'sleeveless'
     return (
-      <group key={`arm${s}`} position={[s * (female ? 0.168 : 0.182), 0.665, -0.005]} rotation={[0, 0, -s * 0.24]}>
+      <group key={`arm${s}`} position={[s * (female ? 0.158 : 0.172), 0.7, -0.005]} rotation={[0, 0, s * 0.5]}>
       <group ref={armRef}>
         {/* 소매 */}
         <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.9, 1, 0.9]}>
-          <sphereGeometry args={[0.068, 14, 12]} />
+          <sphereGeometry args={[0.076, 14, 12]} />
         </mesh>
         <mesh position={[0, -0.055, 0]} material={sleeveless ? skinMat : topMat} castShadow>
-          <capsuleGeometry args={[0.066, 0.03, 6, 12]} />
+          <capsuleGeometry args={[0.07, 0.055, 6, 12]} />
         </mesh>
-        <group ref={foreRef} position={[0, -0.105, 0]}>
+        <group ref={foreRef} position={[0, -0.135, 0]}>
           {look.acc === 'wristband' && !simple && (
             <mesh position={[0, -0.012, 0]} material={topMat}>
               <cylinderGeometry args={[0.076, 0.076, 0.04, 12]} />
             </mesh>
           )}
           {/* 손 — 벙어리장갑처럼 동그랗게 */}
-          <mesh position={[0, -0.062, 0]} scale={[1, 1.02, 0.9]} material={skinMat} castShadow>
-            <sphereGeometry args={[0.083, 14, 12]} />
+          <mesh position={[0, -0.068, 0]} scale={[1, 1.02, 0.9]} material={skinMat} castShadow>
+            <sphereGeometry args={[0.085, 14, 12]} />
           </mesh>
           {/* 오른손에 라켓 — 손에서 위로 자연스럽게, 몸보다 살짝 바깥으로 */}
           {s > 0 && (
-            <group position={[0.045, -0.075, 0.055]} rotation={[-0.3, 0.3, -0.35]} scale={1.12}>
+            <group position={[0.05, -0.075, 0.05]} rotation={[-0.35, 0.25, -0.5]} scale={1.15}>
               <Racket racket={look.racket} simple={simple} />
             </group>
           )}
