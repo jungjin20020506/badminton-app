@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- ===== 검색 노출(SEO) ===== -->
+    <title>셔틀빌리지 — 동물의 숲 감성 3D 배드민턴 마을 게임</title>
+    <meta
+      name="description"
+      content="셔틀빌리지는 배드민턴 클럽을 3D 마을로 옮긴 게임입니다. 내 캐릭터를 꾸미고, 마을 코트에서 자동 매칭으로 경기를 돌리고, 코인을 모아 마당을 꾸미세요. 설치 없이 휴대폰 브라우저에서 바로 실행됩니다."
+    />
+    <meta name="keywords" content="셔틀빌리지, 배드민턴 게임, 배드민턴 매칭, 동물의 숲 배드민턴, 배드민턴 클럽 앱, 콕스타, 배드민턴 코트 배정, 3D 배드민턴" />
+    <meta name="author" content="셔틀빌리지" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://shuttle-village.vercel.app/" />
+
+    <!-- 카카오톡·페이스북 공유 미리보기 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="셔틀빌리지" />
+    <meta property="og:title" content="셔틀빌리지 — 동물의 숲 감성 3D 배드민턴 마을" />
+    <meta property="og:description" content="내 캐릭터를 만들고 마을 코트에서 배드민턴을 즐기세요. 자동 매칭·랭킹·상점까지, 설치 없이 휴대폰에서 바로." />
+    <meta property="og:image" content="https://shuttle-village.vercel.app/og-image.png" />
+    <meta property="og:url" content="https://shuttle-village.vercel.app/" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="셔틀빌리지 — 3D 배드민턴 마을" />
+    <meta name="twitter:description" content="동물의 숲 감성으로 즐기는 배드민턴 클럽 게임" />
+    <meta name="twitter:image" content="https://shuttle-village.vercel.app/og-image.png" />
+
+    <!-- 구글이 게임으로 인식하도록 구조화 데이터 -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "셔틀빌리지",
+        "alternateName": ["Shuttle Village", "셔틀 빌리지"],
+        "url": "https://shuttle-village.vercel.app/",
+        "image": "https://shuttle-village.vercel.app/og-image.png",
+        "description": "동물의 숲 감성의 3D 배드민턴 클럽 마을 게임. 캐릭터 커스터마이징, 자동 매칭, 코트 운영, 상점과 마당 꾸미기를 즐길 수 있습니다.",
+        "inLanguage": "ko",
+        "genre": ["스포츠", "시뮬레이션", "캐주얼"],
+        "gamePlatform": ["Web browser", "Android", "iOS"],
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "KRW" }
+      }
+    </script>
+
+    <!-- ===== 홈 화면에 추가(PWA) ===== -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#7cc576" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="셔틀빌리지" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" href="/icon-192.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

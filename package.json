@@ -1,0 +1,27 @@
+{
+  "name": "shuttle-village",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "셔틀빌리지 — 동물의 숲 스타일 3D 배드민턴 클럽 육성 게임",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.0.6",
+    "@react-three/fiber": "^9.1.2",
+    "@react-three/postprocessing": "^3.0.4",
+    "firebase": "^12.16.0",
+    "postprocessing": "^6.39.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.176.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "vite": "^6.3.5"
+  }
+}
