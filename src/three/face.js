@@ -35,13 +35,14 @@ const mix = (a, b, t) => {
 // -----------------------------------------------------------------------------------
 // 배치 (512 기준) — 눈을 크고 가깝게, 눈썹은 얇고 눈 가까이
 // -----------------------------------------------------------------------------------
-const EYE_Y = 290
-const EYE_DX = 97    // 중심에서 좌우 거리
-const EYE_W = 122    // 눈 전체 너비
-const EYE_H = 138    // 눈 전체 높이
-const BROW_Y = 152   // 눈썹은 속눈썹과 붙지 않게 충분히 위로
-const MOUTH_Y = 412
-const BLUSH_Y = 362
+// 동물의 숲 기준 — 눈은 작고 서로 멀리, 눈썹은 거의 없다시피 얇게
+const EYE_Y = 268
+const EYE_DX = 116   // 중심에서 좌우 거리 (넓게)
+const EYE_W = 64     // 눈 전체 너비 (작게)
+const EYE_H = 82     // 눈 전체 높이
+const BROW_Y = 176
+const MOUTH_Y = 372
+const BLUSH_Y = 322
 
 /** 눈매별 형태 */
 const EYE = {
@@ -65,112 +66,51 @@ function drawEye(g, cx, cy, side, cfg, closed, iris) {
 
   // ── 감은 눈 / 웃는 눈 ──
   if (closed || cfg.arc) {
-    g.strokeStyle = '#2a2028'
-    g.lineWidth = 16
+    g.strokeStyle = '#33272f'
+    g.lineWidth = 10
     g.lineCap = 'round'
     g.beginPath()
-    g.arc(0, h * 0.12, w * 0.46, Math.PI * 1.08, Math.PI * 1.92)
-    g.stroke()
-    // 바깥쪽 속눈썹
-    g.lineWidth = 9
-    g.beginPath()
-    g.moveTo(side * w * 0.42, h * 0.02)
-    g.lineTo(side * w * 0.6, -h * 0.14)
+    g.arc(0, h * 0.16, w * 0.52, Math.PI * 1.1, Math.PI * 1.9)
     g.stroke()
     g.restore()
     return
   }
 
-  // ── 눈 흰자 ──
-  g.fillStyle = '#fefdff'
+  // ── 동물의 숲 스타일: 흰자에 큰 검은 눈동자 + 작은 하이라이트 ──
+  // 흰자
+  g.fillStyle = '#ffffff'
   g.beginPath()
   g.ellipse(0, 0, w * 0.5, h * 0.5, 0, 0, Math.PI * 2)
   g.fill()
-
+  // 눈동자 — 흰자를 거의 채운다
   g.save()
   g.beginPath()
   g.ellipse(0, 0, w * 0.5, h * 0.5, 0, 0, Math.PI * 2)
   g.clip()
-
-  // ── 홍채 (눈 높이의 80% 정도로 크게) ──
-  const R = h * 0.4
-  const cyI = h * 0.02
-  const grad = g.createRadialGradient(0, cyI - R * 0.3, R * 0.15, 0, cyI, R)
-  grad.addColorStop(0, mix(iris, '#ffffff', 0.5))
-  grad.addColorStop(0.5, iris)
-  grad.addColorStop(1, mix(iris, '#000000', 0.55))
-  g.fillStyle = grad
+  const pr = Math.min(w, h) * 0.44
+  const pg = g.createRadialGradient(0, -pr * 0.2, pr * 0.15, 0, 0, pr)
+  pg.addColorStop(0, mix(iris, '#ffffff', 0.25))
+  pg.addColorStop(0.6, iris)
+  pg.addColorStop(1, mix(iris, '#000000', 0.55))
+  g.fillStyle = pg
   g.beginPath()
-  g.arc(0, cyI, R, 0, Math.PI * 2)
-  g.fill()
-
-  // 홍채 방사선
-  g.strokeStyle = mix(iris, '#000000', 0.4)
-  g.lineWidth = 3
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2
-    g.beginPath()
-    g.moveTo(Math.cos(a) * R * 0.45, cyI + Math.sin(a) * R * 0.45)
-    g.lineTo(Math.cos(a) * R * 0.95, cyI + Math.sin(a) * R * 0.95)
-    g.stroke()
-  }
-  // 아래쪽 반사광
-  g.fillStyle = mix(iris, '#ffffff', 0.62)
-  g.beginPath()
-  g.arc(0, cyI + R * 0.45, R * 0.42, 0, Math.PI * 2)
-  g.fill()
-  // 동공
-  g.fillStyle = '#191320'
-  g.beginPath()
-  g.arc(0, cyI, R * 0.4, 0, Math.PI * 2)
-  g.fill()
-  // 홍채 테두리
-  g.strokeStyle = mix(iris, '#000000', 0.65)
-  g.lineWidth = 6
-  g.beginPath()
-  g.arc(0, cyI, R, 0, Math.PI * 2)
-  g.stroke()
-
-  // ── 윗눈꺼풀 그림자 ──
-  g.fillStyle = 'rgba(40,28,40,0.28)'
-  g.beginPath()
-  g.ellipse(0, -h * 0.42, w * 0.5, h * 0.26, 0, 0, Math.PI * 2)
+  g.ellipse(0, h * 0.04, pr * 1.02, pr * 1.24, 0, 0, Math.PI * 2)
   g.fill()
   g.restore()
-
-  // ── 하이라이트 ──
+  // 하이라이트 하나 (작게)
   g.fillStyle = '#ffffff'
   g.beginPath()
-  g.arc(side * -w * 0.13, -h * 0.15, R * 0.3, 0, Math.PI * 2)
+  g.arc(side * -w * 0.14, -h * 0.2, pr * 0.3, 0, Math.PI * 2)
   g.fill()
-  g.globalAlpha = 0.85
+  // 눈 테두리 — 아주 얇게
+  g.strokeStyle = 'rgba(45,34,42,0.55)'
+  g.lineWidth = 3.5
   g.beginPath()
-  g.arc(side * w * 0.15, h * 0.2, R * 0.14, 0, Math.PI * 2)
-  g.fill()
-  g.globalAlpha = 1
-
-  // ── 윗 아이라인 + 속눈썹 (눈매를 결정하는 선) ──
-  g.strokeStyle = '#241a26'
-  g.lineCap = 'round'
-  g.lineWidth = 17 * cfg.lash
-  g.beginPath()
-  g.ellipse(0, 0, w * 0.5, h * 0.5, 0, Math.PI * 1.03, Math.PI * 1.97)
+  g.ellipse(0, 0, w * 0.5, h * 0.5, 0, 0, Math.PI * 2)
   g.stroke()
-  // 바깥쪽 속눈썹 꼬리 — 눈썹을 침범하지 않게 짧고 완만하게
-  g.lineWidth = 11 * cfg.lash
-  g.beginPath()
-  g.moveTo(side * w * 0.4, -h * 0.26)
-  g.lineTo(side * w * (0.5 + 0.06 * cfg.tail), -h * (0.34 + 0.03 * cfg.tail))
-  g.stroke()
-
-  // ── 아랫 라인 ──
-  g.strokeStyle = 'rgba(70,50,70,0.4)'
-  g.lineWidth = 5
-  g.beginPath()
-  g.ellipse(0, 0, w * 0.45, h * 0.45, 0, Math.PI * 0.2, Math.PI * 0.8)
-  g.stroke()
-
   g.restore()
+  return
+
 }
 
 /**
@@ -208,47 +148,42 @@ export function faceTexture(look, closed = false) {
     g.fill()
   })
 
-  // ── 눈썹 (얇게, 눈 가까이) ──
-  g.strokeStyle = mix(brow, '#000000', 0.1)
-  g.lineWidth = 11
-  g.lineCap = 'round'
-  ;[-1, 1].forEach((s) => {
-    const bx = S / 2 + s * EYE_DX
-    g.beginPath()
-    if (style === 'sharp') {
-      g.moveTo(bx - s * 62, BROW_Y + 16)
-      g.quadraticCurveTo(bx - s * 6, BROW_Y - 14, bx + s * 58, BROW_Y + 4)
-    } else if (style === 'sleepy') {
-      g.moveTo(bx - s * 58, BROW_Y - 4)
-      g.quadraticCurveTo(bx, BROW_Y + 10, bx + s * 58, BROW_Y + 20)
-    } else {
-      g.moveTo(bx - s * 58, BROW_Y + 14)
-      g.quadraticCurveTo(bx - s * 4, BROW_Y - 12, bx + s * 58, BROW_Y + 8)
-    }
-    g.stroke()
-  })
+  // ── 눈썹 ──
+  // 동물의 숲 주민은 눈썹이 거의 없다. 아주 얇고 짧게, 눈매를 강조할 때만.
+  if (style === 'sharp' || style === 'sleepy') {
+    g.strokeStyle = mix(brow, '#000000', 0.1)
+    g.lineWidth = 6
+    g.lineCap = 'round'
+    ;[-1, 1].forEach((s) => {
+      const bx = S / 2 + s * EYE_DX
+      g.beginPath()
+      if (style === 'sharp') {
+        g.moveTo(bx - s * 30, BROW_Y + 10)
+        g.lineTo(bx + s * 28, BROW_Y - 2)
+      } else {
+        g.moveTo(bx - s * 28, BROW_Y - 2)
+        g.lineTo(bx + s * 28, BROW_Y + 10)
+      }
+      g.stroke()
+    })
+  }
 
   // ── 눈 ──
   drawEye(g, S / 2 - EYE_DX, EYE_Y, -1, cfg, closed, iris)
   drawEye(g, S / 2 + EYE_DX, EYE_Y, 1, cfg, closed, iris)
 
-  // ── 코 ──
-  g.fillStyle = 'rgba(150,100,90,0.2)'
+  // ── 코 (아주 작은 점) ──
+  g.fillStyle = 'rgba(150,100,90,0.22)'
   g.beginPath()
-  g.ellipse(S / 2, 350, 9, 6, 0, 0, Math.PI * 2)
+  g.ellipse(S / 2, 322, 6, 4.5, 0, 0, Math.PI * 2)
   g.fill()
 
-  // ── 입 ──
-  g.strokeStyle = '#a04f52'
-  g.lineWidth = 10
+  // ── 입 — 작고 짧은 미소 ──
+  g.strokeStyle = '#8f4348'
+  g.lineWidth = 7
   g.lineCap = 'round'
   g.beginPath()
-  g.arc(S / 2, MOUTH_Y - 16, 42, Math.PI * 0.18, Math.PI * 0.82)
-  g.stroke()
-  g.strokeStyle = 'rgba(255,178,178,0.5)'
-  g.lineWidth = 5
-  g.beginPath()
-  g.arc(S / 2, MOUTH_Y - 22, 34, Math.PI * 0.26, Math.PI * 0.74)
+  g.arc(S / 2, MOUTH_Y - 14, 22, Math.PI * 0.16, Math.PI * 0.84)
   g.stroke()
 
   // ── 가장자리 페이드 ──

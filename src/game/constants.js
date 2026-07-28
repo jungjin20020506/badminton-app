@@ -55,13 +55,37 @@ export const HAIR_STYLES = [
   { id: 'short', label: '숏컷', price: 0 },
   { id: 'bob', label: '단발', price: 0 },
   { id: 'buzz', label: '스포츠컷', price: 0 },
+  { id: 'sidepart', label: '가르마', price: 0 },
   { id: 'ponytail', label: '포니테일', price: 480 },
   { id: 'twintail', label: '트윈테일', price: 620 },
   { id: 'bun', label: '똥머리', price: 520 },
+  { id: 'pixie', label: '픽시컷', price: 540 },
+  { id: 'twoblock', label: '투블럭', price: 680 },
   { id: 'spiky', label: '스파이키', price: 700 },
+  { id: 'slick', label: '올백', price: 720 },
   { id: 'long', label: '롱헤어', price: 760 },
+  { id: 'hime', label: '히메컷', price: 880 },
+  { id: 'braid', label: '땋은머리', price: 950 },
   { id: 'wave', label: '웨이브', price: 900 },
+  { id: 'curly', label: '곱슬', price: 1000 },
+  { id: 'afro', label: '아프로', price: 1200 },
   { id: 'mohawk', label: '모히칸', price: 1100 },
+]
+
+/** 하의 — 종목 특성상 반바지/스커트/긴바지를 나눈다 */
+export const BOTTOM_STYLES = [
+  { id: 'shorts', label: '반바지', price: 0 },
+  { id: 'skirt', label: '스커트', price: 0 },
+  { id: 'long', label: '긴바지', price: 0 },
+  { id: 'leggings', label: '레깅스', price: 420 },
+  { id: 'skirtLayer', label: '레이어드 스커트', price: 760 },
+]
+
+export const SHOE_STYLES = [
+  { id: 'basic', label: '기본화', price: 0 },
+  { id: 'stripe', label: '스트라이프', price: 300 },
+  { id: 'high', label: '하이탑', price: 620 },
+  { id: 'pro', label: '프로 코트화', price: 950 },
 ]
 
 export const HAIR_COLORS = [
@@ -86,17 +110,34 @@ export const CLOTH_COLORS = [
 
 export const OUTFIT_STYLES = [
   { id: 'tee', label: '기본 티셔츠', price: 0 },
+  { id: 'vneck', label: '브이넥', price: 0 },
   { id: 'raglan', label: '라글란 유니폼', price: 400 },
   { id: 'stripe', label: '스트라이프', price: 550 },
-  { id: 'zipup', label: '집업 트레이닝', price: 700 },
+  { id: 'polo', label: '폴로셔츠', price: 600 },
   { id: 'sleeveless', label: '나시', price: 650 },
+  { id: 'zipup', label: '집업 트레이닝', price: 700 },
+  { id: 'number', label: '등번호 유니폼', price: 820 },
+  { id: 'sash', label: '사선 배색', price: 880 },
+  { id: 'hoodie', label: '후드 집업', price: 1100 },
+  { id: 'club', label: '클럽 저지', price: 1400 },
 ]
 
 export const RACKET_MODELS = [
   { id: 'classic', label: '클래식', price: 0, desc: '무난한 밸런스형', bonus: {} },
   { id: 'power', label: '헤비스매시', price: 900, desc: '스매시 +3', bonus: { power: 3 } },
   { id: 'speed', label: '라이트스피드', price: 900, desc: '스피드 +3', bonus: { speed: 3 } },
+  { id: 'iso', label: '아이소메트릭', price: 1200, desc: '기술 +3', bonus: { technique: 3 } },
+  { id: 'nano', label: '나노 슬림', price: 1500, desc: '스피드 +2 기술 +2', bonus: { speed: 2, technique: 2 } },
+  { id: 'retro', label: '레트로 우드', price: 1800, desc: '체력 +4 (묵직하다)', bonus: { stamina: 4 } },
   { id: 'pro', label: '프로 카본', price: 2400, desc: '전 스탯 +2', bonus: { power: 2, technique: 2, speed: 2, stamina: 2, sense: 2 } },
+  { id: 'neon', label: '네온 글로우', price: 3200, desc: '전 스탯 +3 · 밤에 빛난다', bonus: { power: 3, technique: 3, speed: 3, stamina: 3, sense: 3 } },
+]
+
+/** 그립 감는 방식 — 라켓 손잡이 무늬 */
+export const GRIP_WRAPS = [
+  { id: 'plain', label: '민무늬', price: 0 },
+  { id: 'spiral', label: '나선', price: 250 },
+  { id: 'twotone', label: '투톤', price: 400 },
 ]
 
 export const RACKET_COLORS = [
@@ -106,10 +147,15 @@ export const RACKET_COLORS = [
 
 export const ACCESSORIES = [
   { id: 'none', label: '없음', price: 0 },
-  { id: 'headband', label: '헤어밴드', price: 250 },
-  { id: 'cap', label: '캡모자', price: 500 },
-  { id: 'glasses', label: '스포츠 고글', price: 800 },
   { id: 'wristband', label: '손목밴드', price: 200 },
+  { id: 'headband', label: '헤어밴드', price: 250 },
+  { id: 'hairpin', label: '머리핀', price: 350 },
+  { id: 'cap', label: '캡모자', price: 500 },
+  { id: 'visor', label: '썬바이저', price: 600 },
+  { id: 'towel', label: '목수건', price: 700 },
+  { id: 'glasses', label: '스포츠 고글', price: 800 },
+  { id: 'mask', label: '마스크', price: 500 },
+  { id: 'crown', label: '챔피언 왕관', price: 3000 },
 ]
 
 export const STAT_KEYS = [

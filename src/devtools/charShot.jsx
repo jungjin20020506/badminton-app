@@ -52,8 +52,8 @@ export async function shoot({
   width = 420,
   height = 560,
   frames = 40,
-  camera = [0, 1.25, 2.5],
-  target = [0, 0.95, 0],
+  camera = [0, 1.0, 3.3],
+  target = [0, 0.72, 0],
 } = {}) {
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -85,8 +85,20 @@ export async function shoot({
   for (let i = 0; i < frames; i++) advance(t0 + i * 16.7, true)
 
   const url = canvas.toDataURL('image/png')
-  root.unmount()
+  disposeRoot(root)
   return url
+}
+
+/** WebGL 컨텍스트는 브라우저당 개수 제한이 있어서 반드시 놓아줘야 한다 */
+function disposeRoot(root) {
+  try {
+    const st = root.getState?.()
+    root.unmount()
+    st?.gl?.dispose?.()
+    st?.gl?.forceContextLoss?.()
+  } catch {
+    /* 이미 정리됨 */
+  }
 }
 
 const save = (name, dataUrl) =>
@@ -183,7 +195,7 @@ export async function shootVillage(name = 'village.png', { width = 1000, height 
     if (i % 20 === 0) await new Promise((r) => setTimeout(r, 16))
   }
   const url = canvas.toDataURL('image/png')
-  root.unmount()
+  disposeRoot(root)
   return save(name, url)
 }
 

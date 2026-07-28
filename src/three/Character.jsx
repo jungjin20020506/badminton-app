@@ -16,6 +16,9 @@ import { SKIN_TONES, LEVEL_COLOR } from '../game/constants.js'
 import { skinMaterial, clothMaterial, hairMaterial, glossMaterial, eyeMaterial, charMaterial } from './materials.js'
 import { faceTexture, FACE_PATCH } from './face.js'
 
+/** 머리 반지름 — 헤어·얼굴·액세서리가 모두 이 값을 기준으로 맞춘다 */
+const HEAD_R = 0.37
+
 const skinOf = (id) => SKIN_TONES.find((s) => s.id === id)?.color || '#fdd0ae'
 const clamp = THREE.MathUtils.clamp
 
@@ -95,14 +98,35 @@ function getStringTexture() {
   return stringTex
 }
 
-export function Racket({ racket = {}, simple = false }) {
-  const { frame = '#ef4444', string = '#ffffff', grip = '#1f2937', model = 'classic' } = racket
-  const tex = useMemo(() => (simple ? null : getStringTexture()), [simple])
-  const headY = model === 'power' ? 0.51 : 0.48
-  const headR = model === 'power' ? 0.145 : model === 'speed' ? 0.12 : 0.132
+/** 라켓 모델별 형태 */
+const RACKET_SPEC = {
+  classic: { headY: 0.48, headR: 0.132, ratio: 1.2, tube: 0.015, seg: 34 },
+  power:   { headY: 0.51, headR: 0.145, ratio: 1.16, tube: 0.019, seg: 34 },
+  speed:   { headY: 0.47, headR: 0.12, ratio: 1.28, tube: 0.012, seg: 34 },
+  iso:     { headY: 0.49, headR: 0.138, ratio: 1.06, tube: 0.016, seg: 10 }, // 각진 헤드
+  nano:    { headY: 0.5, headR: 0.126, ratio: 1.3, tube: 0.0095, seg: 40 },
+  retro:   { headY: 0.46, headR: 0.128, ratio: 1.1, tube: 0.024, seg: 24 },
+  pro:     { headY: 0.5, headR: 0.14, ratio: 1.22, tube: 0.014, seg: 40 },
+  neon:    { headY: 0.5, headR: 0.14, ratio: 1.22, tube: 0.016, seg: 40 },
+}
 
-  const frameMat = useMemo(() => glossMaterial(frame), [frame])
+export function Racket({ racket = {}, simple = false }) {
+  const { frame = '#ef4444', string = '#ffffff', grip = '#1f2937', model = 'classic', wrap = 'plain' } = racket
+  const tex = useMemo(() => (simple ? null : getStringTexture()), [simple])
+  const spec = RACKET_SPEC[model] || RACKET_SPEC.classic
+  const { headY, headR, ratio, tube, seg } = spec
+
+  const frameMat = useMemo(
+    () =>
+      model === 'neon'
+        ? charMaterial({ color: frame, roughness: 0.25, metalness: 0.3, emissive: frame, emissiveIntensity: 0.8, rimIntensity: 0.7 })
+        : model === 'retro'
+        ? charMaterial({ color: frame, roughness: 0.85, metalness: 0 })
+        : glossMaterial(frame),
+    [frame, model]
+  )
   const gripMat = useMemo(() => charMaterial({ color: grip, roughness: 0.95, rimIntensity: 0.2 }), [grip])
+  const wrapMat = useMemo(() => charMaterial({ color: '#f4f4f5', roughness: 0.9 }), [])
   const stringMat = useMemo(
     () => new THREE.MeshBasicMaterial({ map: tex, color: string, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
     [tex, string]
@@ -149,17 +173,18 @@ function torsoGeometry(female) {
   if (torsoGeoCache[key]) return torsoGeoCache[key]
   const w = female ? 0.93 : 1
   const shoulder = female ? 0.94 : 1
+  // 아래(엉덩이)가 가장 넓고 위(어깨)로 갈수록 좁아지는 배 모양
   const pts = [
     [0.0, 0.0],
-    [0.165 * w, 0.0],
-    [0.192 * w, 0.05],
-    [0.208 * w, 0.14],
-    [0.216 * w, 0.25],
-    [0.222 * w * shoulder, 0.36],
-    [0.212 * w * shoulder, 0.44],
-    [0.178 * w * shoulder, 0.5],
-    [0.1, 0.535],
-    [0.0, 0.545],
+    [0.235 * w, 0.0],
+    [0.243 * w, 0.06],
+    [0.238 * w, 0.15],
+    [0.225 * w, 0.24],
+    [0.205 * w * shoulder, 0.32],
+    [0.180 * w * shoulder, 0.39],
+    [0.142 * w * shoulder, 0.44],
+    [0.08, 0.47],
+    [0.0, 0.48],
   ].map(([x, y]) => new THREE.Vector2(x, y))
   const g = new THREE.LatheGeometry(pts, 28)
   g.computeVertexNormals()
@@ -250,7 +275,7 @@ function Eye({ side, style, blinkRef, simple = false }) {
 // -----------------------------------------------------------------------------------
 // 머리카락
 // -----------------------------------------------------------------------------------
-function Hair({ style, color, R = 0.34, simple }) {
+function Hair({ style, color, R = 0.37, simple }) {
   const mat = useMemo(() => hairMaterial(color), [color])
   // 두상을 덮는 캡. cut 이 클수록 아래로 많이 내려온다.
   // 얼굴(theta 0.25π~0.71π)을 가리지 않도록 앞쪽은 bangs 로만 처리한다.
@@ -420,6 +445,119 @@ function Hair({ style, color, R = 0.34, simple }) {
           )}
         </group>
       )
+    case 'sidepart':
+      // 가르마 — 한쪽으로 넘긴 앞머리 덩어리
+      return (
+        <group>
+          {cap()}{back(0.5)}
+          <mesh material={mat} castShadow position={[R * 0.2, R * 0.1, R * 0.2]} rotation={[0, 0, -0.35]} scale={[1.15, 0.7, 1]}>
+            <sphereGeometry args={[R * 0.72, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
+          </mesh>
+          <mesh material={mat} castShadow position={[-R * 0.55, R * 0.42, R * 0.5]} rotation={[0.2, 0, 0.5]} scale={[0.7, 0.4, 0.6]}>
+            <sphereGeometry args={[R * 0.6, 14, 12]} />
+          </mesh>
+        </group>
+      )
+    case 'twoblock':
+      // 투블럭 — 옆은 바짝, 위는 볼륨
+      return (
+        <group>
+          {cap(R * 1.0, 0.5)}
+          <mesh material={mat} castShadow position={[0, R * 0.26, R * 0.06]} scale={[1.08, 0.86, 1.12]}>
+            <sphereGeometry args={[R * 0.92, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+          </mesh>
+          {bangs}
+        </group>
+      )
+    case 'pixie':
+      return (
+        <group>
+          {cap()}{back(0.46)}
+          {bangs}
+          {[-1, 1].map((s) => (
+            <mesh key={s} material={mat} castShadow
+              position={[s * R * 0.82, R * 0.02, R * 0.42]} rotation={[0, 0, s * 0.6]} scale={[0.34, 0.5, 0.4]}>
+              <sphereGeometry args={[R, 14, 12]} />
+            </mesh>
+          ))}
+        </group>
+      )
+    case 'slick':
+      // 올백 — 뒤로 넘겨 이마가 다 드러난다
+      return (
+        <group>
+          {cap(R * 1.03, 0.24)}{back(0.56)}
+          <mesh material={mat} castShadow position={[0, R * 0.34, -R * 0.32]} scale={[1.02, 0.8, 1.25]}>
+            <sphereGeometry args={[R * 0.86, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
+          </mesh>
+        </group>
+      )
+    case 'hime':
+      // 히메컷 — 일자 앞머리 + 귀 옆 일자 + 긴 뒷머리
+      return (
+        <group>
+          {cap()}{back(0.74)}
+          <mesh material={mat} castShadow position={[0, R * 0.1, R * 0.3]} scale={[1.05, 0.5, 0.7]}>
+            <sphereGeometry args={[R * 0.9, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+          </mesh>
+          {[-1, 1].map((s) => (
+            <mesh key={s} material={mat} castShadow position={[s * R * 0.84, -R * 0.5, R * 0.18]} scale={[0.3, 1.15, 0.42]}>
+              <sphereGeometry args={[R, 14, 14]} />
+            </mesh>
+          ))}
+          <mesh material={mat} castShadow position={[0, -R * 0.85, -R * 0.5]} scale={[1.0, 1.5, 0.75]}>
+            <sphereGeometry args={[R * 0.86, 18, 16]} />
+          </mesh>
+        </group>
+      )
+    case 'braid':
+      // 땋은머리 — 뒤로 마디마디 이어진 줄기
+      return (
+        <group>
+          {cap()}{back(0.52)}
+          {bangs}
+          {[0, 1, 2, 3, 4].map((i) => (
+            <mesh key={i} material={mat} castShadow
+              position={[0, R * 0.1 - i * R * 0.36, -R * (1.0 + i * 0.06)]}
+              scale={[0.9 - i * 0.09, 0.8 - i * 0.07, 0.9 - i * 0.09]}>
+              <sphereGeometry args={[R * 0.36, 14, 12]} />
+            </mesh>
+          ))}
+        </group>
+      )
+    case 'curly':
+      return (
+        <group>
+          {cap(R * 1.02, 0.3)}
+          {[...Array(16)].map((_, i) => {
+            const a = (i / 16) * Math.PI * 2
+            const ring = i % 2 ? 0.62 : 0.9
+            return (
+              <mesh key={i} material={mat} castShadow
+                position={[Math.cos(a) * R * ring, R * (0.5 - (i % 3) * 0.24), Math.sin(a) * R * ring]}>
+                <sphereGeometry args={[R * 0.36, 12, 10]} />
+              </mesh>
+            )
+          })}
+        </group>
+      )
+    case 'afro':
+      return (
+        <group>
+          {[...Array(14)].map((_, i) => {
+            const a = (i / 14) * Math.PI * 2
+            const y = R * (0.45 + Math.sin(i * 1.7) * 0.25)
+            return (
+              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * R * 0.85, y, Math.sin(a) * R * 0.85]}>
+                <sphereGeometry args={[R * 0.5, 14, 12]} />
+              </mesh>
+            )
+          })}
+          <mesh material={mat} castShadow position={[0, R * 0.55, 0]}>
+            <sphereGeometry args={[R * 1.02, 20, 16]} />
+          </mesh>
+        </group>
+      )
     case 'mohawk':
       return (
         <group>
@@ -439,7 +577,7 @@ function Hair({ style, color, R = 0.34, simple }) {
 // -----------------------------------------------------------------------------------
 // 액세서리
 // -----------------------------------------------------------------------------------
-function Accessory({ id, color = '#ef4444' }) {
+function Accessory({ id, color = '#ef4444', R = 0.37 }) {
   const mat = useMemo(() => charMaterial({ color, roughness: 0.7 }), [color])
   const glass = useMemo(
     () => charMaterial({ color, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.5, rimIntensity: 0.7, envMapIntensity: 2 }),
@@ -448,15 +586,15 @@ function Accessory({ id, color = '#ef4444' }) {
   if (!id || id === 'none') return null
   if (id === 'headband')
     return (
-      <mesh position={[0, 0.15, 0.02]} rotation={[Math.PI / 2, 0, 0]} material={mat} castShadow>
-        <torusGeometry args={[0.335, 0.03, 10, 26]} />
+      <mesh position={[0, R * 0.42, 0.02]} rotation={[Math.PI / 2, 0, 0]} material={mat} castShadow>
+        <torusGeometry args={[R * 0.98, 0.03, 10, 26]} />
       </mesh>
     )
   if (id === 'cap')
     return (
-      <group position={[0, 0.11, 0]}>
+      <group position={[0, R * 0.3, 0]}>
         <mesh material={mat} castShadow>
-          <sphereGeometry args={[0.355, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+          <sphereGeometry args={[R * 1.04, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
         </mesh>
         <mesh position={[0, 0.0, 0.27]} rotation={[-0.12, 0, 0]} scale={[1.15, 0.14, 1]} material={mat} castShadow>
           <sphereGeometry args={[0.24, 16, 10, 0, Math.PI, 0, Math.PI]} />
@@ -468,10 +606,58 @@ function Accessory({ id, color = '#ef4444' }) {
     )
   if (id === 'glasses')
     return (
-      <group position={[0, 0.045, 0.255]}>
+      <group position={[0, R * 0.12, R * 0.66]}>
         <mesh scale={[1, 0.44, 0.34]} material={glass}>
-          <sphereGeometry args={[0.205, 18, 14, 0, Math.PI * 2, 0, Math.PI]} />
+          <sphereGeometry args={[R * 0.56, 18, 14, 0, Math.PI * 2, 0, Math.PI]} />
         </mesh>
+      </group>
+    )
+  if (id === 'visor')
+    // 썬바이저 — 챙만 있고 정수리는 뚫려 있다
+    return (
+      <group position={[0, R * 0.36, 0]}>
+        <mesh material={mat} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <torusGeometry args={[R * 0.98, 0.035, 10, 26]} />
+        </mesh>
+        <mesh position={[0, -0.01, R * 0.74]} rotation={[-0.16, 0, 0]} scale={[1.15, 0.12, 1]} material={mat} castShadow>
+          <sphereGeometry args={[R * 0.66, 16, 10, 0, Math.PI, 0, Math.PI]} />
+        </mesh>
+      </group>
+    )
+  if (id === 'hairpin')
+    return (
+      <group position={[R * 0.62, R * 0.54, R * 0.48]} rotation={[0, -0.5, 0.5]}>
+        <mesh material={mat} castShadow>
+          <boxGeometry args={[0.13, 0.028, 0.028]} />
+        </mesh>
+        <mesh position={[0.06, 0, 0]} material={mat}>
+          <sphereGeometry args={[0.032, 10, 8]} />
+        </mesh>
+      </group>
+    )
+  if (id === 'mask')
+    return (
+      <mesh position={[0, -R * 0.28, R * 0.5]} scale={[1, 0.62, 0.62]} castShadow>
+        <sphereGeometry args={[R * 0.82, 20, 16, Math.PI * 0.28, Math.PI * 0.44, Math.PI * 0.32, Math.PI * 0.5]} />
+        <meshStandardMaterial color="#f7fafc" roughness={0.9} side={THREE.DoubleSide} />
+      </mesh>
+    )
+  if (id === 'crown')
+    return (
+      <group position={[0, R * 0.92, 0]}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.2, 0.22, 0.08, 14]} />
+          <meshStandardMaterial color="#ffd166" metalness={0.85} roughness={0.2} />
+        </mesh>
+        {[...Array(6)].map((_, i) => {
+          const a = (i / 6) * Math.PI * 2
+          return (
+            <mesh key={i} position={[Math.cos(a) * 0.2, 0.08, Math.sin(a) * 0.2]} castShadow>
+              <coneGeometry args={[0.045, 0.12, 5]} />
+              <meshStandardMaterial color="#ffd166" metalness={0.85} roughness={0.2} />
+            </mesh>
+          )
+        })}
       </group>
     )
   return null
@@ -527,6 +713,30 @@ export default function Character({
     []
   )
   const torsoGeo = useMemo(() => torsoGeometry(female), [female])
+
+  // 하의 스타일 — 예전 데이터는 성별로만 갈렸으므로 없으면 그때 규칙을 따른다
+  const bottomStyle = look.bottomStyle || (female ? 'skirt' : 'shorts')
+  const shoeStyle = look.shoeStyle || 'basic'
+
+  // 등번호 (없으면 이름 길이로 정해 준다)
+  const numberMat = useMemo(() => {
+    const n = look.number ?? ((name.length * 7) % 98) + 1
+    const c = document.createElement('canvas')
+    c.width = c.height = 128
+    const g = c.getContext('2d')
+    g.clearRect(0, 0, 128, 128)
+    g.fillStyle = '#ffffff'
+    g.font = 'bold 88px "Malgun Gothic", sans-serif'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.lineWidth = 8
+    g.strokeStyle = 'rgba(0,0,0,0.35)'
+    g.strokeText(String(n), 64, 68)
+    g.fillText(String(n), 64, 68)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.9 })
+  }, [look.number, name])
 
   useFrame((state, rawDt) => {
     const t = state.clock.elapsedTime + phase
@@ -651,29 +861,58 @@ export default function Character({
   })
 
   const legPart = (s, legRef, calfRef) => (
-    <group key={s} ref={legRef} position={[s * 0.115, 0.48, 0]}>
-      {/* 허벅지 */}
-      <mesh position={[0, -0.1, 0]} material={bottomMat} castShadow>
-        <capsuleGeometry args={[0.086, 0.11, 6, 14]} />
+    <group key={s} ref={legRef} position={[s * 0.125, 0.32, 0]}>
+      {/* 허벅지 — 스커트면 맨다리가 보인다 */}
+      <mesh
+        position={[0, -0.1, 0]}
+        material={bottomStyle === 'skirt' || bottomStyle === 'skirtLayer' ? skinMat : bottomMat}
+        castShadow
+      >
+        <capsuleGeometry args={[0.088, 0.03, 6, 14]} />
       </mesh>
       {/* 무릎 */}
       <mesh position={[0, -0.2, 0]} material={bottomMat}>
         <sphereGeometry args={[0.084, 14, 12]} />
       </mesh>
-      <group ref={calfRef} position={[0, -0.2, 0]}>
-        {/* 종아리 */}
-        <mesh position={[0, -0.1, 0]} material={female ? skinMat : bottomMat} castShadow>
-          <capsuleGeometry args={[0.075, 0.1, 6, 14]} />
+      <group ref={calfRef} position={[0, -0.14, 0]}>
+        {/* 종아리 — 긴바지·레깅스는 발목까지 옷감 */}
+        <mesh
+          position={[0, -0.1, 0]}
+          material={bottomStyle === 'long' || bottomStyle === 'leggings' ? bottomMat : skinMat}
+          castShadow
+        >
+          <capsuleGeometry args={[bottomStyle === 'long' ? 0.084 : 0.078, 0.02, 6, 14]} />
         </mesh>
         {/* 신발 */}
-        <group position={[0, -0.2, 0]}>
+        <group position={[0, -0.13, 0]}>
           <mesh position={[0, -0.025, 0.035]} material={soleMat} castShadow>
             <boxGeometry args={[0.155, 0.045, 0.26]} />
           </mesh>
           <mesh position={[0, 0.025, 0.02]} scale={[1, 0.95, 1.25]} material={shoeMat} castShadow>
             <sphereGeometry args={[0.078, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
           </mesh>
-          {!simple && (
+          {/* 하이탑 — 발목까지 올라온다 */}
+          {shoeStyle === 'high' && (
+            <mesh position={[0, 0.075, -0.005]} material={shoeMat} castShadow>
+              <cylinderGeometry args={[0.072, 0.078, 0.1, 14]} />
+            </mesh>
+          )}
+          {!simple && shoeStyle === 'stripe' && (
+            <mesh position={[0, 0.03, 0.0]} rotation={[0, 0, 0]} material={whiteMat}>
+              <boxGeometry args={[0.17, 0.022, 0.13]} />
+            </mesh>
+          )}
+          {!simple && shoeStyle === 'pro' && (
+            <>
+              <mesh position={[0, 0.005, 0.035]} material={whiteMat}>
+                <boxGeometry args={[0.162, 0.022, 0.265]} />
+              </mesh>
+              <mesh position={[0, 0.052, 0.06]} rotation={[0.3, 0, 0]} material={whiteMat}>
+                <boxGeometry args={[0.1, 0.018, 0.07]} />
+              </mesh>
+            </>
+          )}
+          {!simple && shoeStyle === 'basic' && (
             <mesh position={[0, 0.035, 0.075]} material={whiteMat}>
               <boxGeometry args={[0.09, 0.02, 0.05]} />
             </mesh>
@@ -684,37 +923,30 @@ export default function Character({
   )
 
   const armPart = (s, armRef, foreRef) => {
+    // 동물의 숲 팔 — 관절 없이 짧고 뭉툭한 토막에 벙어리 손
     const sleeveless = look.outfit === 'sleeveless'
     return (
-      <group key={s} ref={armRef} position={[s * (female ? 0.175 : 0.19), 0.885, 0]}>
-        {/* 어깨 — 몸통 실루엣 안쪽에 두어 공이 붙은 것처럼 보이지 않게 */}
+      <group key={`arm${s}`} ref={armRef} position={[s * (female ? 0.17 : 0.185), 0.62, 0]}>
+        {/* 소매 */}
         <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.95, 1, 0.95]}>
-          <sphereGeometry args={[0.076, 14, 12]} />
+          <sphereGeometry args={[0.082, 14, 12]} />
         </mesh>
-        {/* 위팔 */}
-        <mesh position={[0, -0.085, 0]} material={sleeveless ? skinMat : topMat} castShadow>
-          <capsuleGeometry args={[0.064, 0.09, 6, 12]} />
+        <mesh position={[0, -0.055, 0]} material={sleeveless ? skinMat : topMat} castShadow>
+          <capsuleGeometry args={[0.072, 0.03, 6, 12]} />
         </mesh>
-        {/* 팔꿈치 */}
-        <mesh position={[0, -0.175, 0]} material={skinMat}>
-          <sphereGeometry args={[0.064, 12, 10]} />
-        </mesh>
-        <group ref={foreRef} position={[0, -0.175, 0]}>
-          <mesh position={[0, -0.08, 0]} material={skinMat} castShadow>
-            <capsuleGeometry args={[0.058, 0.09, 6, 12]} />
-          </mesh>
+        <group ref={foreRef} position={[0, -0.09, 0]}>
           {look.acc === 'wristband' && !simple && (
-            <mesh position={[0, -0.145, 0]} material={topMat}>
-              <cylinderGeometry args={[0.068, 0.068, 0.045, 12]} />
+            <mesh position={[0, -0.012, 0]} material={topMat}>
+              <cylinderGeometry args={[0.076, 0.076, 0.04, 12]} />
             </mesh>
           )}
-          {/* 손 */}
-          <mesh position={[0, -0.185, 0]} scale={[1, 1.12, 0.78]} material={skinMat} castShadow>
-            <sphereGeometry args={[0.072, 14, 12]} />
+          {/* 손 — 벙어리장갑처럼 동그랗게 */}
+          <mesh position={[0, -0.062, 0]} scale={[1, 1.02, 0.9]} material={skinMat} castShadow>
+            <sphereGeometry args={[0.083, 14, 12]} />
           </mesh>
           {/* 오른손에 라켓 */}
           {s > 0 && (
-            <group position={[0.03, -0.21, 0.07]} rotation={[-0.75, 0, -0.3]}>
+            <group position={[0.035, -0.085, 0.075]} rotation={[-0.75, 0, -0.3]}>
               <Racket racket={look.racket} simple={simple} />
             </group>
           )}
@@ -741,15 +973,35 @@ export default function Character({
         {legPart(-1, legL, calfL)}
         {legPart(1, legR, calfR)}
 
-        {/* 치마 */}
-        {female && (
-          <mesh position={[0, 0.47, 0]} material={bottomMat} castShadow>
-            <cylinderGeometry args={[0.175, 0.3, 0.19, 20, 1, true]} />
+        {/* 하의 스타일 */}
+        {bottomStyle === 'skirt' && (
+          <mesh position={[0, 0.3, 0]} material={bottomMat} castShadow>
+            <cylinderGeometry args={[0.2, 0.33, 0.18, 22, 1, true]} />
           </mesh>
         )}
+        {bottomStyle === 'skirtLayer' && (
+          <>
+            <mesh position={[0, 0.31, 0]} material={bottomMat} castShadow>
+              <cylinderGeometry args={[0.2, 0.3, 0.16, 22, 1, true]} />
+            </mesh>
+            <mesh position={[0, 0.25, 0]} material={whiteMat} castShadow>
+              <cylinderGeometry args={[0.26, 0.35, 0.12, 22, 1, true]} />
+            </mesh>
+          </>
+        )}
+        {/* 반바지 — 허벅지를 덮는 짧은 통 */}
+        {bottomStyle === 'shorts' && (
+          <mesh position={[0, 0.27, 0]} material={bottomMat} castShadow>
+            <cylinderGeometry args={[0.215, 0.245, 0.17, 20, 1, true]} />
+          </mesh>
+        )}
+        {/* 허리 밴드 */}
+        <mesh position={[0, 0.33, 0]} scale={[1, 1, 0.86]} material={whiteMat}>
+          <cylinderGeometry args={[0.222, 0.222, 0.032, 20, 1, true]} />
+        </mesh>
 
         {/* 몸통 */}
-        <mesh geometry={torsoGeo} position={[0, 0.46, 0]} scale={[1, 1, 0.82]} material={topMat} castShadow receiveShadow />
+        <mesh geometry={torsoGeo} position={[0, 0.3, 0]} scale={[1, 1, 0.84]} material={topMat} castShadow receiveShadow />
 
         {/* 의상 디테일 */}
         {!simple && look.outfit === 'stripe' &&
@@ -763,41 +1015,87 @@ export default function Character({
             <cylinderGeometry args={[0.155, 0.175, 0.05, 20, 1, true]} />
           </mesh>
         )}
-        {!simple && look.outfit === 'zipup' && (
+        {!simple && (look.outfit === 'zipup' || look.outfit === 'hoodie') && (
           <mesh position={[0, 0.7, 0.175]} material={charMaterial({ color: '#e5e7eb', roughness: 0.4, metalness: 0.5 })}>
             <boxGeometry args={[0.026, 0.4, 0.014]} />
           </mesh>
+        )}
+        {/* 후드 — 목 뒤에 얹힌 두건 */}
+        {!simple && look.outfit === 'hoodie' && (
+          <>
+            <mesh position={[0, 0.95, -0.13]} rotation={[0.45, 0, 0]} scale={[1, 0.85, 0.7]} material={topMat} castShadow>
+              <sphereGeometry args={[0.23, 18, 14]} />
+            </mesh>
+            {[-1, 1].map((s) => (
+              <mesh key={s} position={[s * 0.05, 0.78, 0.17]} material={whiteMat}>
+                <cylinderGeometry args={[0.012, 0.012, 0.16, 6]} />
+              </mesh>
+            ))}
+          </>
+        )}
+        {/* 폴로 칼라 */}
+        {!simple && look.outfit === 'polo' && (
+          <mesh position={[0, 0.955, 0.02]} rotation={[0.25, 0, 0]} material={whiteMat} castShadow>
+            <cylinderGeometry args={[0.125, 0.16, 0.07, 18, 1, true]} />
+          </mesh>
+        )}
+        {/* 브이넥 */}
+        {!simple && look.outfit === 'vneck' && (
+          <mesh position={[0, 0.9, 0.152]} rotation={[0, 0, Math.PI / 4]} material={skinMat}>
+            <boxGeometry args={[0.09, 0.09, 0.012]} />
+          </mesh>
+        )}
+        {/* 사선 배색 */}
+        {!simple && look.outfit === 'sash' && (
+          <mesh position={[0, 0.7, 0]} rotation={[0, 0, 0.5]} scale={[1, 1, 0.83]} material={whiteMat}>
+            <cylinderGeometry args={[0.222, 0.222, 0.09, 24, 1, true]} />
+          </mesh>
+        )}
+        {/* 등번호 · 클럽 저지 */}
+        {!simple && (look.outfit === 'number' || look.outfit === 'club') && (
+          <mesh position={[0, 0.72, -0.178]} rotation={[0, Math.PI, 0]} material={numberMat}>
+            <planeGeometry args={[0.24, 0.24]} />
+          </mesh>
+        )}
+        {!simple && look.outfit === 'club' && (
+          <>
+            {[-1, 1].map((s) => (
+              <mesh key={s} position={[s * 0.16, 0.72, 0.14]} rotation={[0, s * 0.6, 0]} material={whiteMat}>
+                <boxGeometry args={[0.05, 0.3, 0.01]} />
+              </mesh>
+            ))}
+          </>
         )}
 
         {armPart(-1, armL, foreL)}
         {armPart(1, armR, foreR)}
 
         {/* 목 */}
-        <mesh position={[0, 1.0, 0]} material={skinMat}>
-          <cylinderGeometry args={[0.082, 0.095, 0.09, 14]} />
+        <mesh position={[0, 0.76, 0]} material={skinMat}>
+          <cylinderGeometry args={[0.088, 0.1, 0.07, 14]} />
         </mesh>
 
         {/* 머리 */}
-        <group ref={head} position={[0, 1.24, 0]}>
+        <group ref={head} position={[0, 1.02, 0]}>
           {/* 두개골 */}
-          <mesh scale={[1, 1.02, 0.97]} material={skinMat} castShadow>
-            <sphereGeometry args={[0.34, 30, 24]} />
+          <mesh scale={[1, 0.97, 0.95]} material={skinMat} castShadow>
+            <sphereGeometry args={[HEAD_R, 32, 26]} />
           </mesh>
           {/* 턱 — 살짝 갸름하게 */}
           {!simple && (
-            <mesh position={[0, -0.15, 0.035]} scale={[0.88, 0.68, 0.92]} material={skinMat}>
-              <sphereGeometry args={[0.24, 20, 16]} />
+            <mesh position={[0, -HEAD_R * 0.42, HEAD_R * 0.08]} scale={[0.92, 0.62, 0.94]} material={skinMat}>
+              <sphereGeometry args={[HEAD_R * 0.73, 20, 16]} />
             </mesh>
           )}
           {/* 귀 */}
           {!simple && [-1, 1].map((s) => (
-            <mesh key={s} position={[s * 0.325, -0.01, -0.01]} scale={[0.45, 1, 0.7]} material={skinMat}>
-              <sphereGeometry args={[0.075, 12, 10]} />
+            <mesh key={`ear${s}`} position={[s * HEAD_R * 0.96, -HEAD_R * 0.05, -0.01]} scale={[0.42, 0.95, 0.65]} material={skinMat}>
+              <sphereGeometry args={[HEAD_R * 0.2, 12, 10]} />
             </mesh>
           ))}
 
           <group ref={hairRef}>
-            <Hair style={look.hair} color={look.hairColor} simple={simple} />
+            <Hair style={look.hair} color={look.hairColor} R={HEAD_R} simple={simple} />
           </group>
 
           {/* 얼굴 — 눈·눈썹·입·볼터치가 전부 이 그림 한 장에 들어있다 */}
@@ -807,10 +1105,10 @@ export default function Character({
               <Eye side={1} style={look.eyes} blinkRef={eyeR} simple />
             </>
           ) : (
-            <Face look={look} R={0.34} blinkRef={faceRef} />
+            <Face look={look} R={HEAD_R} blinkRef={faceRef} />
           )}
 
-          {!simple && <Accessory id={look.acc} color={look.top} />}
+          {!simple && <Accessory id={look.acc} color={look.top} R={HEAD_R} />}
         </group>
       </group>
 
