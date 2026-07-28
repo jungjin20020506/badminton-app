@@ -1,0 +1,139 @@
+/* ===================================================================================
+   매칭 화면 — 콕스타 매칭앱의 레이아웃을 셔틀빌리지 톤(종이·나무·라운드)으로
+   =================================================================================== */
+
+.mboard { display: flex; flex-direction: column; height: 100%; }
+
+.mb-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.mb-tabs button {
+  flex: 1; min-height: 44px; border: 3px solid var(--line); background: var(--paper-2);
+  border-radius: 13px; font-size: 15px; box-shadow: 0 3px 0 rgba(181, 144, 90, .4);
+}
+.mb-tabs button.on {
+  background: linear-gradient(#ffe9b0, var(--sun));
+  border-color: var(--sun-dark); box-shadow: 0 3px 0 var(--sun-dark);
+}
+.mb-body { flex: 1; overflow-y: auto; touch-action: pan-y; padding-bottom: 10px; }
+
+/* 섹션 */
+.msec {
+  background: var(--paper-2); border: 3px solid var(--line); border-radius: 16px;
+  padding: 10px; margin-bottom: 10px; box-shadow: 0 3px 0 rgba(181, 144, 90, .38);
+}
+.msec-h { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; }
+.msec-h b { font-size: 15px; }
+.msec-cnt {
+  font-size: 12px; color: var(--ink-2); background: var(--paper);
+  border: 2px solid var(--line); border-radius: 999px; padding: 1px 9px;
+}
+.msec-h .ac-btn { margin-left: auto; }
+.msec-badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 999px; cursor: pointer;
+  border: 2px solid var(--line-dark); background: var(--paper); color: var(--ink-2);
+}
+.msec-badge.on {
+  background: linear-gradient(#b6ebae, var(--leaf)); border-color: var(--leaf-dark);
+  color: #274a22; animation: blinkOn 1.6s infinite;
+}
+@keyframes blinkOn { 50% { opacity: .6 } }
+
+.mdiv { height: 3px; margin: 9px 0; border-radius: 2px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 12px); }
+
+/* 대기 명단 그리드 — 좁은 화면은 3열, 넓으면 4~5열 */
+.mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+@media (min-width: 420px) { .mgrid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 720px) { .mgrid { grid-template-columns: repeat(5, 1fr); } }
+
+/* 선수 카드 */
+.mp {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 6px 4px 5px; min-height: 76px;
+  background: #fff; border: 2px solid var(--line);
+  border-left: 5px solid var(--lv, var(--line));
+  border-radius: 12px; box-shadow: 0 2px 0 rgba(181, 144, 90, .35);
+  cursor: pointer; overflow: hidden; text-align: center;
+  transition: transform .07s, box-shadow .07s;
+}
+.mp:active { transform: translateY(2px); box-shadow: none; }
+.mp img { width: 34px; height: 34px; border-radius: 9px; }
+.mp-txt { min-width: 0; width: 100%; }
+.mp-txt b { display: block; font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-sub { display: flex; justify-content: center; gap: 4px; margin-top: 1px; }
+.mp-sub i { font-style: normal; font-size: 10px; }
+.mp-lv { font-weight: bold; }
+.mp-g { color: var(--ink-2); background: #f0e6cf; border-radius: 999px; padding: 0 5px; }
+.mp-w { color: var(--ink-2); }
+.mp-w.long { color: #d1425c; font-weight: bold; }
+.mp-gender { position: absolute; top: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 14px 14px 0; }
+.mp-gender.m { border-color: transparent #3b82f6 transparent transparent; }
+.mp-gender.f { border-color: transparent #ec4899 transparent transparent; }
+.mp.sel {
+  border-color: var(--leaf-dark); border-left-color: var(--leaf-dark);
+  background: linear-gradient(#e9f9e3, #d2f2c9); transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 3px 0 var(--leaf-dark);
+}
+.mp.me { background: linear-gradient(#fff6dc, #ffeec2); }
+.mp.dim { filter: grayscale(1); opacity: .6; }
+.mp-no {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--leaf-dark); color: #fff; font-size: 11px; display: grid; place-items: center;
+}
+.mp-x {
+  position: absolute; top: 1px; right: 1px; width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(224, 104, 126, .92); color: #fff; font-size: 10px; line-height: 1;
+  display: grid; place-items: center; z-index: 2;
+}
+.mp.empty {
+  justify-content: center; color: var(--ink-2); font-size: 20px;
+  border: 2px dashed var(--line); border-left: 2px dashed var(--line);
+  background: var(--paper); box-shadow: none;
+}
+.mp.left { justify-content: center; font-size: 11px; color: var(--ink-2); background: #f3ece0; border-left-color: var(--line); }
+
+/* 매치 한 줄 (자동 매칭 / 경기 예정) */
+.mrow {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 7px;
+  background: var(--paper); border: 2px solid var(--line); border-radius: 13px; padding: 6px;
+}
+.mrow-no {
+  width: 26px; height: 26px; flex: none; border-radius: 8px;
+  background: var(--paper-2); border: 2px solid var(--line); font-size: 12px; color: var(--ink-2);
+}
+.mrow-slots { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; min-width: 0; }
+.mrow-start {
+  flex: none; width: 54px; min-height: 46px; border-radius: 11px; font-size: 12px;
+  border: 2px solid var(--line); background: var(--paper-2); color: var(--ink-2);
+}
+.mrow-start.on {
+  background: linear-gradient(#ffe9b0, var(--sun)); border-color: var(--sun-dark);
+  color: #573f14; box-shadow: 0 3px 0 var(--sun-dark);
+}
+.mrow-start:disabled { opacity: .5; }
+
+/* 진행 중 코트 */
+.ct2 {
+  background: var(--paper-2); border: 3px solid var(--line); border-radius: 16px;
+  padding: 10px; margin-bottom: 10px; box-shadow: 0 3px 0 rgba(181, 144, 90, .38);
+}
+.ct2.live {
+  background: linear-gradient(#fff6dc, #ffeab4);
+  border-color: var(--sun-dark); box-shadow: 0 3px 0 var(--sun-dark);
+}
+.ct2-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ct2-h b { font-size: 16px; }
+.ct2-time { font-size: 19px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ct2-finish {
+  width: 100%; margin-top: 8px; min-height: 42px; border-radius: 12px; font-size: 14px;
+  background: linear-gradient(#ffc7d1, var(--rose)); border: 3px solid var(--rose-dark);
+  color: #5e2230; box-shadow: 0 3px 0 var(--rose-dark);
+}
+.ct2-finish:active { transform: translateY(3px); box-shadow: none; }
+
+.court-pick {
+  position: fixed; left: 16px; right: 16px; top: 50%; transform: translateY(-50%);
+  z-index: 40; padding: 18px; text-align: center;
+}
+@media (min-width: 900px) {
+  .court-pick { max-width: 420px; left: 50%; transform: translate(-50%, -50%); }
+}

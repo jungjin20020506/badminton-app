@@ -14,6 +14,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SKIN_TONES, LEVEL_COLOR } from '../game/constants.js'
 import { skinMaterial, clothMaterial, hairMaterial, glossMaterial, eyeMaterial, charMaterial } from './materials.js'
+import { faceTexture } from './face.js'
 
 const skinOf = (id) => SKIN_TONES.find((s) => s.id === id)?.color || '#fdd0ae'
 const clamp = THREE.MathUtils.clamp
@@ -167,7 +168,42 @@ function torsoGeometry(female) {
 }
 
 // -----------------------------------------------------------------------------------
-// 눈 — 흰자 + 홍채 + 하이라이트. 깜빡임은 그룹 Y 스케일로.
+// 얼굴 — 머리 앞면에 살짝 띄운 곡면에 얼굴 그림을 입힌다.
+// 눈알을 3D로 붙이지 않고 그림으로 그리면 속눈썹·홍채 같은 디테일이 살아난다.
+// -----------------------------------------------------------------------------------
+const FACE = {
+  phiStart: Math.PI / 2 - Math.PI * 0.42,
+  phiLength: Math.PI * 0.84,
+  thetaStart: Math.PI * 0.25,
+  thetaLength: Math.PI * 0.46,
+}
+
+function Face({ look, R, blinkRef }) {
+  const open = useMemo(() => faceTexture(look, false), [look.eyes, look.hairColor])
+  const closed = useMemo(() => faceTexture(look, true), [look.eyes, look.hairColor])
+  const mat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        map: open,
+        transparent: true,
+        roughness: 0.75,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      }),
+    [open]
+  )
+  // 깜빡임 = 텍스처 교체
+  blinkRef.current = { mat, open, closed }
+  return (
+    <mesh material={mat} renderOrder={2}>
+      <sphereGeometry args={[R * 1.008, 40, 32, FACE.phiStart, FACE.phiLength, FACE.thetaStart, FACE.thetaLength]} />
+    </mesh>
+  )
+}
+
+// -----------------------------------------------------------------------------------
+// (구) 3D 눈 — 간략 모드에서만 사용
 // -----------------------------------------------------------------------------------
 function Eye({ side, style, blinkRef, simple = false }) {
   const x = side * 0.132
@@ -220,27 +256,40 @@ function Eye({ side, style, blinkRef, simple = false }) {
 // -----------------------------------------------------------------------------------
 function Hair({ style, color, R = 0.34, simple }) {
   const mat = useMemo(() => hairMaterial(color), [color])
-  const cap = (r = R * 1.045, cut = 0.58) => (
+  // 두상을 덮는 캡. cut 이 클수록 아래로 많이 내려온다.
+  // 얼굴(theta 0.25π~0.71π)을 가리지 않도록 앞쪽은 bangs 로만 처리한다.
+  const cap = (r = R * 1.035, cut = 0.34) => (
     <mesh material={mat} castShadow>
-      <sphereGeometry args={[r, 26, 20, 0, Math.PI * 2, 0, Math.PI * cut]} />
+      <sphereGeometry args={[r, 28, 22, 0, Math.PI * 2, 0, Math.PI * cut]} />
     </mesh>
   )
-  // 앞머리 — 얼굴 윤곽을 잡아줘서 인상이 확 살아난다
+  // 뒤통수·옆머리 — 뒤쪽 180°만 아래로 길게 내린다
+  const back = (cut = 0.62, r = R * 1.03) => (
+    <mesh material={mat} castShadow>
+      <sphereGeometry args={[r, 28, 22, Math.PI / 2 + Math.PI * 0.42, Math.PI * 1.16, 0, Math.PI * cut]} />
+    </mesh>
+  )
+  // 앞머리 — 이마 앞쪽 '호(arc)'에만 얹는다.
+  // (예전엔 360° 반구를 앞으로 당겨서 얼굴 전체를 덮어버렸다)
   const bangs = (
-    <mesh position={[0, 0.055, 0.075]} rotation={[0.16, 0, 0]} scale={[1, 0.62, 1]} material={mat} castShadow>
-      <sphereGeometry args={[R * 1.02, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+    <mesh material={mat} castShadow>
+      <sphereGeometry
+        args={[R * 1.035, 28, 20,
+          Math.PI / 2 - Math.PI * 0.5, Math.PI * 1.0,  // 앞쪽 180°만
+          0, Math.PI * 0.34]}                          // 정수리~이마까지만
+      />
     </mesh>
   )
 
-  if (simple) return <group>{cap(R * 1.03, 0.55)}</group>
+  if (simple) return <group>{cap(R * 1.02, 0.4)}{back(0.46)}</group>
 
   switch (style) {
     case 'buzz':
-      return <group>{cap(R * 1.015, 0.52)}</group>
+      return <group>{cap(R * 1.02, 0.36)}{back(0.42)}</group>
     case 'short':
       return (
         <group>
-          {cap(R * 1.05, 0.6)}
+          {cap()}{back(0.5)}
           {bangs}
           <mesh position={[0, -0.02, -R * 0.55]} scale={[1, 0.8, 0.7]} material={mat}>
             <sphereGeometry args={[R * 0.72, 16, 12]} />
@@ -250,7 +299,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'bob':
       return (
         <group>
-          {cap(R * 1.06, 0.64)}
+          {cap()}{back(0.68)}
           {bangs}
           {[-1, 1].map((s) => (
             <mesh key={s} position={[s * R * 0.9, -0.15, 0.02]} scale={[0.55, 1.3, 0.92]} material={mat} castShadow>
@@ -265,7 +314,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'long':
       return (
         <group>
-          {cap(R * 1.06, 0.64)}
+          {cap()}{back(0.68)}
           {bangs}
           <mesh position={[0, -0.34, -R * 0.46]} scale={[1.05, 1.6, 0.8]} material={mat} castShadow>
             <sphereGeometry args={[R * 0.88, 20, 16]} />
@@ -280,7 +329,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'ponytail':
       return (
         <group>
-          {cap(R * 1.05, 0.6)}
+          {cap()}{back(0.5)}
           {bangs}
           <mesh position={[0, 0.04, -R * 0.95]} material={mat} castShadow>
             <sphereGeometry args={[0.1, 14, 12]} />
@@ -296,7 +345,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'twintail':
       return (
         <group>
-          {cap(R * 1.05, 0.62)}
+          {cap()}{back(0.5)}
           {bangs}
           {[-1, 1].map((s) => (
             <group key={s} position={[s * R * 0.95, 0.07, -0.06]}>
@@ -313,7 +362,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'bun':
       return (
         <group>
-          {cap(R * 1.05, 0.62)}
+          {cap()}{back(0.5)}
           {bangs}
           <mesh position={[0, R * 0.74, -R * 0.5]} material={mat} castShadow>
             <sphereGeometry args={[0.152, 18, 16]} />
@@ -326,7 +375,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'spiky':
       return (
         <group>
-          {cap(R * 1.02, 0.55)}
+          {cap(R * 1.02, 0.38)}{back(0.44)}
           {[...Array(8)].map((_, i) => {
             const a = (i / 8) * Math.PI * 2
             return (
@@ -346,7 +395,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'wave':
       return (
         <group>
-          {cap(R * 1.07, 0.64)}
+          {cap()}{back(0.72)}
           {bangs}
           {[-1, 1].map((s) =>
             [0, 1, 2].map((i) => (
@@ -365,7 +414,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'mohawk':
       return (
         <group>
-          {cap(R * 1.0, 0.48)}
+          {cap(R * 1.0, 0.34)}{back(0.4)}
           {[...Array(6)].map((_, i) => (
             <mesh key={i} position={[0, R * 0.8, -0.2 + i * 0.085]} material={mat} castShadow>
               <coneGeometry args={[0.055, 0.3 - Math.abs(i - 2.5) * 0.05, 6]} />
@@ -374,7 +423,7 @@ function Hair({ style, color, R = 0.34, simple }) {
         </group>
       )
     default:
-      return <group>{cap()}{bangs}</group>
+      return <group>{cap()}{back(0.5)}{bangs}</group>
   }
 }
 
@@ -448,7 +497,8 @@ export default function Character({
   const hairRef = useRef()
   const eyeL = useRef()
   const eyeR = useRef()
-  const blink = useRef({ next: 2 + Math.random() * 4, t: 0 })
+  const faceRef = useRef(null)
+  const blink = useRef({ next: 2 + Math.random() * 4, t: 0, shut: false })
 
   const skin = skinOf(look.skin)
   const female = gender === '여'
@@ -480,15 +530,18 @@ export default function Character({
       b.t = 0.14
       b.next = 2.2 + Math.random() * 4.5
     }
-    if (b.t > 0) {
-      b.t -= dt
-      const k = clamp(1 - Math.sin((1 - b.t / 0.14) * Math.PI) * 0.94, 0.06, 1)
-      if (eyeL.current) eyeL.current.scale.y = k
-      if (eyeR.current) eyeR.current.scale.y = k
-    } else {
-      if (eyeL.current) eyeL.current.scale.y = 1
-      if (eyeR.current) eyeR.current.scale.y = 1
+    const shut = b.t > 0
+    if (shut) b.t -= dt
+    // 얼굴 그림 방식 — 감은 눈 텍스처로 교체
+    const f = faceRef.current
+    if (f && b.shut !== shut) {
+      b.shut = shut
+      f.mat.map = shut ? f.closed : f.open
+      f.mat.needsUpdate = true
     }
+    // 간략 모드(3D 눈) — 세로로 눌러서 감는다
+    if (eyeL.current) eyeL.current.scale.y = shut ? 0.08 : 1
+    if (eyeR.current) eyeR.current.scale.y = shut ? 0.08 : 1
 
     if (anim === 'walk') {
       const w = t * 8.6
@@ -735,34 +788,17 @@ export default function Character({
             <Hair style={look.hair} color={look.hairColor} simple={simple} />
           </group>
 
-          <Eye side={-1} style={look.eyes} blinkRef={eyeL} simple={simple} />
-          <Eye side={1} style={look.eyes} blinkRef={eyeR} simple={simple} />
-
-          {/* 눈썹 */}
-          {!simple && [-1, 1].map((s) => (
-            <mesh
-              key={s}
-              position={[s * 0.135, 0.145, 0.275]}
-              rotation={[0, s * -0.13, Math.PI / 2 + s * (look.eyes === 'sharp' ? -0.3 : -0.14)]}
-              material={browMat}
-            >
-              <capsuleGeometry args={[0.016, 0.075, 4, 8]} />
-            </mesh>
-          ))}
+          {/* 얼굴 — 눈·눈썹·입·볼터치가 전부 이 그림 한 장에 들어있다 */}
+          {simple ? (
+            <>
+              <Eye side={-1} style={look.eyes} blinkRef={eyeL} simple />
+              <Eye side={1} style={look.eyes} blinkRef={eyeR} simple />
+            </>
+          ) : (
+            <Face look={look} R={0.34} blinkRef={faceRef} />
+          )}
 
           {!simple && <Accessory id={look.acc} color={look.top} />}
-
-          {/* 볼터치 */}
-          {!simple && [-1, 1].map((s) => (
-            <mesh key={s} position={[s * 0.215, -0.045, 0.235]} scale={[1, 0.72, 0.36]} material={blushMat}>
-              <sphereGeometry args={[0.058, 12, 10]} />
-            </mesh>
-          ))}
-
-          {/* 입 — 살짝 웃는 곡선 */}
-          <mesh position={[0, -0.11, 0.288]} rotation={[0.1, 0, Math.PI]} material={mouthMat}>
-            <torusGeometry args={[0.042, 0.0135, 8, 14, Math.PI * 0.92]} />
-          </mesh>
         </group>
       </group>
 
