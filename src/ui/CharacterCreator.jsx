@@ -17,7 +17,7 @@ function Turntable({ look, gender, spin }) {
     if (g.current && spin) g.current.rotation.y += dt * 0.55
   })
   return (
-    <group ref={g} position={[0, -0.75, 0]}>
+    <group ref={g} position={[0, -0.68, 0]}>
       <Character look={look} gender={gender} anim="idle" seed={7} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
         <circleGeometry args={[1.1, 28]} />
@@ -31,17 +31,18 @@ function Preview({ look, gender }) {
   const [spin, setSpin] = useState(true)
   return (
     <div className="preview" onPointerDown={() => setSpin(false)}>
-      <Canvas camera={{ position: [0, 0.6, 3.1], fov: 40 }} dpr={[1, 1.6]}>
-        <hemisphereLight args={['#ffffff', '#7aa86a', 1.5]} />
-        <directionalLight position={[3, 6, 4]} intensity={1.8} />
+      <Canvas camera={{ position: [0, 0.25, 2.35], fov: 36 }} dpr={[1, 1.6]} shadows>
+        <hemisphereLight args={['#fff6e8', '#7aa86a', 1.1]} />
+        <directionalLight position={[2.5, 5, 3.5]} intensity={2.1} color="#fff2d9" castShadow shadow-mapSize={[1024, 1024]} />
+        <directionalLight position={[-3, 2.5, -3]} intensity={0.7} color="#cfe6ff" />
         <Turntable look={look} gender={gender} spin={spin} />
         <OrbitControls
           enablePan={false}
-          minDistance={1.8}
+          minDistance={1.4}
           maxDistance={5}
           maxPolarAngle={Math.PI * 0.56}
           minPolarAngle={0.5}
-          target={[0, 0.35, 0]}
+          target={[0, 0.08, 0]}
         />
       </Canvas>
       <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: '#5b6b4a' }}>

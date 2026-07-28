@@ -89,6 +89,70 @@ export async function shoot({
   return url
 }
 
+/**
+ * 옷장(CharacterCreator) 미리보기와 완전히 동일한 카메라·조명·배치로 찍는다.
+ * 여기서 보이는 그대로가 사용자 화면이다 — 캐릭터 수정은 반드시 이걸로 확인한다.
+ */
+export async function shootCreatorView({ look = defaultLook('남'), gender = '남', yaw = 0, width = 360, height = 460 } = {}) {
+  function CreatorStage() {
+    return (
+      <>
+        <color attach="background" args={['#d8f0e2']} />
+        <hemisphereLight args={['#fff6e8', '#7aa86a', 1.1]} />
+        <directionalLight position={[2.5, 5, 3.5]} intensity={2.1} color="#fff2d9" castShadow shadow-mapSize={[1024, 1024]} />
+        <directionalLight position={[-3, 2.5, -3]} intensity={0.7} color="#cfe6ff" />
+        <group position={[0, -0.68, 0]} rotation={[0, yaw, 0]}>
+          <Character look={look} gender={gender} anim="idle" seed={7} />
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
+            <circleGeometry args={[1.1, 28]} />
+            <meshStandardMaterial color="#8fd67f" roughness={1} />
+          </mesh>
+        </group>
+      </>
+    )
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const root = createRoot(canvas)
+  root.configure({
+    size: { width, height, top: 0, left: 0 },
+    frameloop: 'never', dpr: 2, shadows: true,
+    gl: { antialias: true, preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 },
+    camera: { position: [0, 0.25, 2.35], fov: 36, near: 0.1, far: 100 },
+    onCreated: (st) => { st.camera.lookAt(0, 0.08, 0); st.camera.updateProjectionMatrix() },
+  })
+  root.render(<CreatorStage />)
+  await new Promise((r) => setTimeout(r, 120))
+  const t0 = performance.now()
+  for (let i = 0; i < 30; i++) advance(t0 + i * 16.7, true)
+  const url = canvas.toDataURL('image/png')
+  disposeRoot(root)
+  return url
+}
+
+/** 옷장 구도로 여러 캐릭터 × 여러 각도 시트 저장 */
+export async function shootCreatorSheet(looks, name = 'creator.png', yaws = [0, Math.PI * 0.35, Math.PI]) {
+  const W = 300
+  const H = 384
+  const c = document.createElement('canvas')
+  c.width = W * looks.length
+  c.height = H * yaws.length
+  const g = c.getContext('2d')
+  for (let i = 0; i < looks.length; i++) {
+    for (let j = 0; j < yaws.length; j++) {
+      const url = await shootCreatorView({ ...looks[i], yaw: yaws[j], width: W, height: H })
+      const img = new Image()
+      await new Promise((r) => { img.onload = r; img.src = url })
+      g.drawImage(img, i * W, j * H, W, H)
+    }
+    g.fillStyle = '#20301f'
+    g.font = 'bold 16px "Malgun Gothic", sans-serif'
+    g.fillText(looks[i].label || '', i * W + 10, 22)
+  }
+  return save(name, c.toDataURL('image/png'))
+}
+
 /** WebGL 컨텍스트는 브라우저당 개수 제한이 있어서 반드시 놓아줘야 한다 */
 function disposeRoot(root) {
   try {

@@ -180,9 +180,9 @@ function torsoGeometry(female) {
     [0.243 * w, 0.06],
     [0.238 * w, 0.15],
     [0.225 * w, 0.24],
-    [0.205 * w * shoulder, 0.32],
-    [0.180 * w * shoulder, 0.39],
-    [0.142 * w * shoulder, 0.44],
+    [0.196 * w * shoulder, 0.32],
+    [0.168 * w * shoulder, 0.39],
+    [0.124 * w * shoulder, 0.44],
     [0.08, 0.47],
     [0.0, 0.48],
   ].map(([x, y]) => new THREE.Vector2(x, y))
@@ -287,7 +287,7 @@ function Hair({ style, color, R = 0.37, simple }) {
   // 뒤통수·옆머리 — 뒤쪽 180°만 아래로 길게 내린다
   const back = (cut = 0.62, r = R * 1.03) => (
     <mesh material={mat} castShadow>
-      <sphereGeometry args={[r, 28, 22, Math.PI / 2 + Math.PI * 0.42, Math.PI * 1.16, 0, Math.PI * cut]} />
+      <sphereGeometry args={[r, 28, 22, Math.PI / 2 + Math.PI * 0.38, Math.PI * 1.24, 0, Math.PI * cut]} />
     </mesh>
   )
   // 앞머리 — 이마 앞쪽 호에만 얹되, 가장자리가 칼로 자른 듯 직선이 되지 않도록
@@ -296,20 +296,19 @@ function Hair({ style, color, R = 0.37, simple }) {
     <group>
       {/* 가운데 앞머리 — 이마가 보이도록 눈썹보다 충분히 위에서 끝난다 */}
       <mesh material={mat} castShadow position={[0, 0.008, 0.008]}>
-        <sphereGeometry args={[R * 1.045, 30, 22, Math.PI / 2 - Math.PI * 0.34, Math.PI * 0.68, 0, Math.PI * 0.315]} />
+        <sphereGeometry args={[R * 1.045, 30, 22, Math.PI / 2 - Math.PI * 0.42, Math.PI * 0.84, 0, Math.PI * 0.34]} />
       </mesh>
-      {/* 좌우 옆머리 — 구 조각을 쓰면 잘린 모서리가 계단처럼 보여서
-          둥근 덩어리로 관자놀이를 감싼다 */}
+      {/* 좌우 구레나룻 — 머리에 딱 붙는 얇은 조각 (떨어져 있으면 귀마개처럼 보인다) */}
       {[-1, 1].map((s) => (
         <mesh
           key={s}
           material={mat}
           castShadow
-          position={[s * R * 0.78, R * 0.1, R * 0.24]}
-          rotation={[0, s * -0.35, s * 0.12]}
-          scale={[0.34, 0.72, 0.5]}
+          position={[s * R * 0.88, R * 0.18, R * 0.1]}
+          rotation={[0, s * -0.25, s * 0.06]}
+          scale={[0.16, 0.42, 0.3]}
         >
-          <sphereGeometry args={[R, 18, 16]} />
+          <sphereGeometry args={[R, 16, 14]} />
         </mesh>
       ))}
     </group>
@@ -319,11 +318,11 @@ function Hair({ style, color, R = 0.37, simple }) {
 
   switch (style) {
     case 'buzz':
-      return <group>{cap(R * 1.02, 0.31)}{back(0.42)}</group>
+      return <group>{cap(R * 1.02, 0.34)}{back(0.46)}</group>
     case 'short':
       return (
         <group>
-          {cap()}{back(0.5)}
+          {cap()}{back(0.56)}
           {bangs}
           <mesh position={[0, -0.02, -R * 0.55]} scale={[1, 0.8, 0.7]} material={mat}>
             <sphereGeometry args={[R * 0.72, 16, 12]} />
@@ -365,14 +364,23 @@ function Hair({ style, color, R = 0.37, simple }) {
         <group>
           {cap()}{back(0.5)}
           {bangs}
-          <mesh position={[0, 0.04, -R * 0.95]} material={mat} castShadow>
-            <sphereGeometry args={[0.1, 14, 12]} />
+          <mesh position={[0, 0.05, -R * 0.9]} material={mat} castShadow>
+            <sphereGeometry args={[0.095, 14, 12]} />
           </mesh>
-          <mesh position={[0, -0.2, -R * 1.1]} rotation={[0.4, 0, 0]} material={mat} castShadow>
-            <capsuleGeometry args={[0.085, 0.36, 6, 14]} />
+          {/* 머리끈 — 매듭에 딱 붙인다 */}
+          <mesh position={[0, -0.015, -R * 0.94]} rotation={[Math.PI / 2 - 0.35, 0, 0]}>
+            <torusGeometry args={[0.062, 0.02, 8, 16]} />
+            <meshStandardMaterial color="#e05a7a" roughness={0.7} />
           </mesh>
-          <mesh position={[0, -0.4, -R * 1.22]} rotation={[0.55, 0, 0]} material={mat} castShadow>
-            <coneGeometry args={[0.07, 0.16, 10]} />
+          {/* 꼬리 — 위는 굵고 아래로 갈수록 가늘어지는 물방울 3덩이 */}
+          <mesh position={[0, -0.1, -R * 1.0]} rotation={[0.28, 0, 0]} scale={[1, 1.35, 1]} material={mat} castShadow>
+            <sphereGeometry args={[0.075, 14, 12]} />
+          </mesh>
+          <mesh position={[0, -0.26, -R * 1.05]} rotation={[0.32, 0, 0]} scale={[1, 1.4, 1]} material={mat} castShadow>
+            <sphereGeometry args={[0.06, 14, 12]} />
+          </mesh>
+          <mesh position={[0, -0.4, -R * 1.09]} rotation={[0.36, 0, 0]} scale={[1, 1.5, 1]} material={mat} castShadow>
+            <sphereGeometry args={[0.042, 12, 10]} />
           </mesh>
         </group>
       )
@@ -382,12 +390,19 @@ function Hair({ style, color, R = 0.37, simple }) {
           {cap()}{back(0.5)}
           {bangs}
           {[-1, 1].map((s) => (
-            <group key={s} position={[s * R * 0.95, 0.07, -0.06]}>
+            <group key={s} position={[s * R * 0.6, R * 0.05, -R * 0.8]}>
               <mesh material={mat} castShadow>
-                <sphereGeometry args={[0.085, 12, 10]} />
+                <sphereGeometry args={[0.08, 12, 10]} />
               </mesh>
-              <mesh position={[s * 0.075, -0.25, -0.02]} rotation={[0.12, 0, s * 0.42]} material={mat} castShadow>
-                <capsuleGeometry args={[0.072, 0.32, 6, 12]} />
+              <mesh position={[s * 0.02, -0.045, 0]} rotation={[0.3, 0, s * 0.5]}>
+                <torusGeometry args={[0.05, 0.016, 8, 14]} />
+                <meshStandardMaterial color="#e05a7a" roughness={0.7} />
+              </mesh>
+              <mesh position={[s * 0.06, -0.16, -0.02]} rotation={[0.1, 0, s * 0.3]} scale={[1, 1.4, 1]} material={mat} castShadow>
+                <sphereGeometry args={[0.062, 12, 10]} />
+              </mesh>
+              <mesh position={[s * 0.1, -0.3, -0.04]} rotation={[0.1, 0, s * 0.35]} scale={[1, 1.5, 1]} material={mat} castShadow>
+                <sphereGeometry args={[0.046, 12, 10]} />
               </mesh>
             </group>
           ))}
@@ -409,7 +424,7 @@ function Hair({ style, color, R = 0.37, simple }) {
     case 'spiky':
       return (
         <group>
-          {cap(R * 1.02, 0.32)}{back(0.44)}
+          {cap(R * 1.02, 0.34)}{back(0.48)}
           {[...Array(8)].map((_, i) => {
             const a = (i / 8) * Math.PI * 2
             return (
@@ -427,34 +442,64 @@ function Hair({ style, color, R = 0.37, simple }) {
         </group>
       )
     case 'wave':
+      // 웨이브 — 뒤로 흐르는 굵은 웨이브 두 갈래
       return (
         <group>
           {cap()}{back(0.72)}
           {bangs}
-          {[-1, 1].map((s) =>
-            [0, 1, 2].map((i) => (
-              <mesh
-                key={`${s}${i}`}
-                position={[s * R * (0.86 - i * 0.05), -0.12 - i * 0.16, -0.04 + (i % 2) * 0.07]}
-                material={mat}
-                castShadow
-              >
-                <sphereGeometry args={[R * 0.37, 14, 12]} />
+          {[-1, 1].map((s) => (
+            <group key={s}>
+              <mesh material={mat} castShadow position={[s * R * 0.78, -R * 0.42, -R * 0.28]} rotation={[0, 0, s * 0.16]} scale={[0.34, 0.72, 0.42]}>
+                <sphereGeometry args={[R * 0.6, 16, 14]} />
               </mesh>
-            ))
-          )}
+              <mesh material={mat} castShadow position={[s * R * 0.72, -R * 0.86, -R * 0.3]} rotation={[0, 0, -s * 0.18]} scale={[0.3, 0.6, 0.36]}>
+                <sphereGeometry args={[R * 0.54, 14, 12]} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      )
+    case 'curly':
+      // 곱슬 — 두피에 붙은 방울 곱슬
+      return (
+        <group>
+          {cap(R * 1.02, 0.34)}{back(0.48)}
+          {[...Array(18)].map((_, i) => {
+            const a = (i / 9) * Math.PI + (i % 2) * 0.35
+            const ring = i % 2 ? 0.62 : 0.86
+            const y = i % 2 ? R * 0.62 : R * 0.3
+            return (
+              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * R * ring, y, Math.sin(a) * R * ring * 0.9]}>
+                <sphereGeometry args={[R * 0.21, 10, 8]} />
+              </mesh>
+            )
+          })}
+        </group>
+      )
+    case 'afro':
+      return (
+        <group>
+          {[...Array(14)].map((_, i) => {
+            const a = (i / 14) * Math.PI * 2
+            const y = R * (0.45 + Math.sin(i * 1.7) * 0.25)
+            return (
+              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * R * 0.85, y, Math.sin(a) * R * 0.85]}>
+                <sphereGeometry args={[R * 0.5, 14, 12]} />
+              </mesh>
+            )
+          })}
+          <mesh material={mat} castShadow position={[0, R * 0.55, 0]}>
+            <sphereGeometry args={[R * 1.02, 20, 16]} />
+          </mesh>
         </group>
       )
     case 'sidepart':
-      // 가르마 — 한쪽으로 넘긴 앞머리 덩어리
+      // 가르마 — 이마 위에서 한쪽으로 쓸어넘긴 앞머리
       return (
         <group>
           {cap()}{back(0.5)}
-          <mesh material={mat} castShadow position={[R * 0.2, R * 0.1, R * 0.2]} rotation={[0, 0, -0.35]} scale={[1.15, 0.7, 1]}>
-            <sphereGeometry args={[R * 0.72, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
-          </mesh>
-          <mesh material={mat} castShadow position={[-R * 0.55, R * 0.42, R * 0.5]} rotation={[0.2, 0, 0.5]} scale={[0.7, 0.4, 0.6]}>
-            <sphereGeometry args={[R * 0.6, 14, 12]} />
+          <mesh material={mat} castShadow position={[R * 0.12, R * 0.34, R * 0.16]} rotation={[0.08, 0, -0.22]} scale={[1.04, 0.62, 1.0]}>
+            <sphereGeometry args={[R * 0.9, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
           </mesh>
         </group>
       )
@@ -463,8 +508,8 @@ function Hair({ style, color, R = 0.37, simple }) {
       return (
         <group>
           {cap(R * 1.0, 0.5)}
-          <mesh material={mat} castShadow position={[0, R * 0.26, R * 0.06]} scale={[1.08, 0.86, 1.12]}>
-            <sphereGeometry args={[R * 0.92, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+          <mesh material={mat} castShadow position={[0, R * 0.3, R * 0.02]} scale={[1.06, 0.8, 1.04]}>
+            <sphereGeometry args={[R * 0.94, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.46]} />
           </mesh>
           {bangs}
         </group>
@@ -493,20 +538,18 @@ function Hair({ style, color, R = 0.37, simple }) {
         </group>
       )
     case 'hime':
-      // 히메컷 — 일자 앞머리 + 귀 옆 일자 + 긴 뒷머리
+      // 히메컷 — 일자 앞머리 + 귀 옆 일자 단 + 긴 뒷머리
       return (
         <group>
           {cap()}{back(0.74)}
-          <mesh material={mat} castShadow position={[0, R * 0.1, R * 0.3]} scale={[1.05, 0.5, 0.7]}>
-            <sphereGeometry args={[R * 0.9, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-          </mesh>
+          {bangs}
           {[-1, 1].map((s) => (
-            <mesh key={s} material={mat} castShadow position={[s * R * 0.84, -R * 0.5, R * 0.18]} scale={[0.3, 1.15, 0.42]}>
+            <mesh key={s} material={mat} castShadow position={[s * R * 0.92, -R * 0.42, -R * 0.05]} scale={[0.2, 0.9, 0.36]}>
               <sphereGeometry args={[R, 14, 14]} />
             </mesh>
           ))}
-          <mesh material={mat} castShadow position={[0, -R * 0.85, -R * 0.5]} scale={[1.0, 1.5, 0.75]}>
-            <sphereGeometry args={[R * 0.86, 18, 16]} />
+          <mesh material={mat} castShadow position={[0, -R * 0.72, -R * 0.62]} scale={[0.82, 1.15, 0.6]}>
+            <sphereGeometry args={[R * 0.8, 18, 16]} />
           </mesh>
         </group>
       )
@@ -518,53 +561,20 @@ function Hair({ style, color, R = 0.37, simple }) {
           {bangs}
           {[0, 1, 2, 3, 4].map((i) => (
             <mesh key={i} material={mat} castShadow
-              position={[0, R * 0.1 - i * R * 0.36, -R * (1.0 + i * 0.06)]}
-              scale={[0.9 - i * 0.09, 0.8 - i * 0.07, 0.9 - i * 0.09]}>
-              <sphereGeometry args={[R * 0.36, 14, 12]} />
+              position={[0, -R * 0.12 - i * R * 0.3, -R * (0.78 + i * 0.04)]}
+              scale={[0.8 - i * 0.1, 0.7 - i * 0.07, 0.8 - i * 0.1]}>
+              <sphereGeometry args={[R * 0.3, 14, 12]} />
             </mesh>
           ))}
-        </group>
-      )
-    case 'curly':
-      return (
-        <group>
-          {cap(R * 1.02, 0.3)}
-          {[...Array(16)].map((_, i) => {
-            const a = (i / 16) * Math.PI * 2
-            const ring = i % 2 ? 0.62 : 0.9
-            return (
-              <mesh key={i} material={mat} castShadow
-                position={[Math.cos(a) * R * ring, R * (0.5 - (i % 3) * 0.24), Math.sin(a) * R * ring]}>
-                <sphereGeometry args={[R * 0.36, 12, 10]} />
-              </mesh>
-            )
-          })}
-        </group>
-      )
-    case 'afro':
-      return (
-        <group>
-          {[...Array(14)].map((_, i) => {
-            const a = (i / 14) * Math.PI * 2
-            const y = R * (0.45 + Math.sin(i * 1.7) * 0.25)
-            return (
-              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * R * 0.85, y, Math.sin(a) * R * 0.85]}>
-                <sphereGeometry args={[R * 0.5, 14, 12]} />
-              </mesh>
-            )
-          })}
-          <mesh material={mat} castShadow position={[0, R * 0.55, 0]}>
-            <sphereGeometry args={[R * 1.02, 20, 16]} />
-          </mesh>
         </group>
       )
     case 'mohawk':
       return (
         <group>
-          {cap(R * 1.0, 0.30)}{back(0.4)}
+          {cap(R * 1.0, 0.33)}{back(0.44)}
           {[...Array(6)].map((_, i) => (
             <mesh key={i} position={[0, R * 0.8, -0.2 + i * 0.085]} material={mat} castShadow>
-              <coneGeometry args={[0.055, 0.3 - Math.abs(i - 2.5) * 0.05, 6]} />
+              <coneGeometry args={[0.075, 0.4 - Math.abs(i - 2.5) * 0.06, 6]} />
             </mesh>
           ))}
         </group>
@@ -885,11 +895,12 @@ export default function Character({
         </mesh>
         {/* 신발 */}
         <group position={[0, -0.13, 0]}>
-          <mesh position={[0, -0.025, 0.035]} material={soleMat} castShadow>
-            <boxGeometry args={[0.155, 0.045, 0.26]} />
+          {/* 밑창 — 흰 벽돌처럼 보이지 않게 얇고 둥글게 */}
+          <mesh position={[0, -0.022, 0.028]} scale={[1, 0.32, 1.45]} material={soleMat} castShadow>
+            <sphereGeometry args={[0.082, 16, 10]} />
           </mesh>
-          <mesh position={[0, 0.025, 0.02]} scale={[1, 0.95, 1.25]} material={shoeMat} castShadow>
-            <sphereGeometry args={[0.078, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
+          <mesh position={[0, 0.018, 0.024]} scale={[1, 0.9, 1.35]} material={shoeMat} castShadow>
+            <sphereGeometry args={[0.08, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.66]} />
           </mesh>
           {/* 하이탑 — 발목까지 올라온다 */}
           {shoeStyle === 'high' && (
@@ -926,15 +937,16 @@ export default function Character({
     // 동물의 숲 팔 — 관절 없이 짧고 뭉툭한 토막에 벙어리 손
     const sleeveless = look.outfit === 'sleeveless'
     return (
-      <group key={`arm${s}`} ref={armRef} position={[s * (female ? 0.17 : 0.185), 0.62, 0]}>
+      <group key={`arm${s}`} position={[s * (female ? 0.168 : 0.182), 0.665, -0.005]} rotation={[0, 0, -s * 0.24]}>
+      <group ref={armRef}>
         {/* 소매 */}
-        <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.95, 1, 0.95]}>
-          <sphereGeometry args={[0.082, 14, 12]} />
+        <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.9, 1, 0.9]}>
+          <sphereGeometry args={[0.068, 14, 12]} />
         </mesh>
         <mesh position={[0, -0.055, 0]} material={sleeveless ? skinMat : topMat} castShadow>
-          <capsuleGeometry args={[0.072, 0.03, 6, 12]} />
+          <capsuleGeometry args={[0.066, 0.03, 6, 12]} />
         </mesh>
-        <group ref={foreRef} position={[0, -0.09, 0]}>
+        <group ref={foreRef} position={[0, -0.105, 0]}>
           {look.acc === 'wristband' && !simple && (
             <mesh position={[0, -0.012, 0]} material={topMat}>
               <cylinderGeometry args={[0.076, 0.076, 0.04, 12]} />
@@ -944,13 +956,14 @@ export default function Character({
           <mesh position={[0, -0.062, 0]} scale={[1, 1.02, 0.9]} material={skinMat} castShadow>
             <sphereGeometry args={[0.083, 14, 12]} />
           </mesh>
-          {/* 오른손에 라켓 */}
+          {/* 오른손에 라켓 — 손에서 위로 자연스럽게, 몸보다 살짝 바깥으로 */}
           {s > 0 && (
-            <group position={[0.035, -0.085, 0.075]} rotation={[-0.75, 0, -0.3]}>
+            <group position={[0.045, -0.075, 0.055]} rotation={[-0.3, 0.3, -0.35]} scale={1.12}>
               <Racket racket={look.racket} simple={simple} />
             </group>
           )}
         </group>
+      </group>
       </group>
     )
   }
