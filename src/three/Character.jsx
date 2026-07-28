@@ -14,7 +14,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SKIN_TONES, LEVEL_COLOR } from '../game/constants.js'
 import { skinMaterial, clothMaterial, hairMaterial, glossMaterial, eyeMaterial, charMaterial } from './materials.js'
-import { faceTexture } from './face.js'
+import { faceTexture, FACE_PATCH } from './face.js'
 
 const skinOf = (id) => SKIN_TONES.find((s) => s.id === id)?.color || '#fdd0ae'
 const clamp = THREE.MathUtils.clamp
@@ -171,12 +171,8 @@ function torsoGeometry(female) {
 // 얼굴 — 머리 앞면에 살짝 띄운 곡면에 얼굴 그림을 입힌다.
 // 눈알을 3D로 붙이지 않고 그림으로 그리면 속눈썹·홍채 같은 디테일이 살아난다.
 // -----------------------------------------------------------------------------------
-const FACE = {
-  phiStart: Math.PI / 2 - Math.PI * 0.42,
-  phiLength: Math.PI * 0.84,
-  thetaStart: Math.PI * 0.25,
-  thetaLength: Math.PI * 0.46,
-}
+// 범위는 face.js 가 그림을 그릴 때 쓰는 값과 반드시 같아야 한다 (거기서 가져온다)
+const FACE = FACE_PATCH
 
 function Face({ look, R, blinkRef }) {
   const open = useMemo(() => faceTexture(look, false), [look.eyes, look.hairColor])
@@ -258,7 +254,7 @@ function Hair({ style, color, R = 0.34, simple }) {
   const mat = useMemo(() => hairMaterial(color), [color])
   // 두상을 덮는 캡. cut 이 클수록 아래로 많이 내려온다.
   // 얼굴(theta 0.25π~0.71π)을 가리지 않도록 앞쪽은 bangs 로만 처리한다.
-  const cap = (r = R * 1.035, cut = 0.34) => (
+  const cap = (r = R * 1.035, cut = 0.285) => (
     <mesh material={mat} castShadow>
       <sphereGeometry args={[r, 28, 22, 0, Math.PI * 2, 0, Math.PI * cut]} />
     </mesh>
@@ -269,23 +265,36 @@ function Hair({ style, color, R = 0.34, simple }) {
       <sphereGeometry args={[r, 28, 22, Math.PI / 2 + Math.PI * 0.42, Math.PI * 1.16, 0, Math.PI * cut]} />
     </mesh>
   )
-  // 앞머리 — 이마 앞쪽 '호(arc)'에만 얹는다.
-  // (예전엔 360° 반구를 앞으로 당겨서 얼굴 전체를 덮어버렸다)
+  // 앞머리 — 이마 앞쪽 호에만 얹되, 가장자리가 칼로 자른 듯 직선이 되지 않도록
+  // 가운데 한 덩어리 + 좌우 옆머리로 나눠 굴곡 있는 헤어라인을 만든다.
   const bangs = (
-    <mesh material={mat} castShadow>
-      <sphereGeometry
-        args={[R * 1.035, 28, 20,
-          Math.PI / 2 - Math.PI * 0.5, Math.PI * 1.0,  // 앞쪽 180°만
-          0, Math.PI * 0.34]}                          // 정수리~이마까지만
-      />
-    </mesh>
+    <group>
+      {/* 가운데 앞머리 — 이마가 보이도록 눈썹보다 충분히 위에서 끝난다 */}
+      <mesh material={mat} castShadow position={[0, 0.008, 0.008]}>
+        <sphereGeometry args={[R * 1.045, 30, 22, Math.PI / 2 - Math.PI * 0.34, Math.PI * 0.68, 0, Math.PI * 0.315]} />
+      </mesh>
+      {/* 좌우 옆머리 — 구 조각을 쓰면 잘린 모서리가 계단처럼 보여서
+          둥근 덩어리로 관자놀이를 감싼다 */}
+      {[-1, 1].map((s) => (
+        <mesh
+          key={s}
+          material={mat}
+          castShadow
+          position={[s * R * 0.78, R * 0.1, R * 0.24]}
+          rotation={[0, s * -0.35, s * 0.12]}
+          scale={[0.34, 0.72, 0.5]}
+        >
+          <sphereGeometry args={[R, 18, 16]} />
+        </mesh>
+      ))}
+    </group>
   )
 
-  if (simple) return <group>{cap(R * 1.02, 0.4)}{back(0.46)}</group>
+  if (simple) return <group>{cap(R * 1.02, 0.31)}{back(0.46)}</group>
 
   switch (style) {
     case 'buzz':
-      return <group>{cap(R * 1.02, 0.36)}{back(0.42)}</group>
+      return <group>{cap(R * 1.02, 0.31)}{back(0.42)}</group>
     case 'short':
       return (
         <group>
@@ -375,7 +384,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'spiky':
       return (
         <group>
-          {cap(R * 1.02, 0.38)}{back(0.44)}
+          {cap(R * 1.02, 0.32)}{back(0.44)}
           {[...Array(8)].map((_, i) => {
             const a = (i / 8) * Math.PI * 2
             return (
@@ -414,7 +423,7 @@ function Hair({ style, color, R = 0.34, simple }) {
     case 'mohawk':
       return (
         <group>
-          {cap(R * 1.0, 0.34)}{back(0.4)}
+          {cap(R * 1.0, 0.30)}{back(0.4)}
           {[...Array(6)].map((_, i) => (
             <mesh key={i} position={[0, R * 0.8, -0.2 + i * 0.085]} material={mat} castShadow>
               <coneGeometry args={[0.055, 0.3 - Math.abs(i - 2.5) * 0.05, 6]} />
@@ -519,9 +528,11 @@ export default function Character({
   )
   const torsoGeo = useMemo(() => torsoGeometry(female), [female])
 
-  useFrame((state, dt) => {
+  useFrame((state, rawDt) => {
     const t = state.clock.elapsedTime + phase
     if (!body.current) return
+    // 탭을 다시 켜거나 첫 프레임에는 간격이 비정상적으로 커진다 → 상한을 둔다
+    const dt = Math.min(rawDt, 0.05)
 
     // ── 눈 깜빡임 ────────────────────────────────────────────────
     const b = blink.current
@@ -609,10 +620,11 @@ export default function Character({
       if (calfL.current) calfL.current.rotation.x = 0
       if (calfR.current) calfR.current.rotation.x = 0
       const fidget = Math.sin(t * 0.45 + phase) > 0.95 ? Math.sin(t * 13) * 0.22 : 0
-      if (armL.current) { armL.current.rotation.x = Math.sin(w) * 0.07 + fidget; armL.current.rotation.z = 0.07 }
-      if (armR.current) { armR.current.rotation.x = -Math.sin(w) * 0.07 - 0.1; armR.current.rotation.z = -0.07 }
-      if (foreL.current) foreL.current.rotation.x = -0.22
-      if (foreR.current) foreR.current.rotation.x = -0.3
+      // 팔을 몸통에서 살짝 띄워 실루엣이 붙어 보이지 않게 한다
+      if (armL.current) { armL.current.rotation.x = Math.sin(w) * 0.07 + fidget; armL.current.rotation.z = 0.17 }
+      if (armR.current) { armR.current.rotation.x = -Math.sin(w) * 0.07 - 0.1; armR.current.rotation.z = -0.17 }
+      if (foreL.current) foreL.current.rotation.x = -0.16
+      if (foreR.current) foreR.current.rotation.x = -0.2
 
       // 카메라(=플레이어) 쪽으로 고개를 돌린다
       if (head.current && root.current) {
@@ -674,14 +686,14 @@ export default function Character({
   const armPart = (s, armRef, foreRef) => {
     const sleeveless = look.outfit === 'sleeveless'
     return (
-      <group key={s} ref={armRef} position={[s * (female ? 0.205 : 0.222), 0.9, 0]}>
-        {/* 어깨 */}
-        <mesh material={sleeveless ? skinMat : topMat} castShadow>
-          <sphereGeometry args={[0.082, 14, 12]} />
+      <group key={s} ref={armRef} position={[s * (female ? 0.175 : 0.19), 0.885, 0]}>
+        {/* 어깨 — 몸통 실루엣 안쪽에 두어 공이 붙은 것처럼 보이지 않게 */}
+        <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.95, 1, 0.95]}>
+          <sphereGeometry args={[0.076, 14, 12]} />
         </mesh>
         {/* 위팔 */}
-        <mesh position={[0, -0.09, 0]} material={sleeveless ? skinMat : topMat} castShadow>
-          <capsuleGeometry args={[0.069, 0.09, 6, 12]} />
+        <mesh position={[0, -0.085, 0]} material={sleeveless ? skinMat : topMat} castShadow>
+          <capsuleGeometry args={[0.064, 0.09, 6, 12]} />
         </mesh>
         {/* 팔꿈치 */}
         <mesh position={[0, -0.175, 0]} material={skinMat}>
@@ -702,7 +714,7 @@ export default function Character({
           </mesh>
           {/* 오른손에 라켓 */}
           {s > 0 && (
-            <group position={[0, -0.205, 0.015]} rotation={[-0.42, 0, -0.2]}>
+            <group position={[0.03, -0.21, 0.07]} rotation={[-0.75, 0, -0.3]}>
               <Racket racket={look.racket} simple={simple} />
             </group>
           )}

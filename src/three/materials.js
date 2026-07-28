@@ -107,7 +107,7 @@ export const clothMaterial = (color, map) =>
 
 /** 머리카락 — 하이라이트가 도는 느낌 */
 export const hairMaterial = (color) =>
-  charMaterial({ color, roughness: 0.55, metalness: 0.05, rimColor: '#ffffff', rimPower: 2.0, rimIntensity: 0.5, wrap: 0.35, envMapIntensity: 1.1 })
+  charMaterial({ color, roughness: 0.62, metalness: 0.03, rimColor: '#fff3e0', rimPower: 2.6, rimIntensity: 0.3, wrap: 0.4, envMapIntensity: 0.8 })
 
 /** 광택 재질 (라켓 프레임·신발 등) */
 export const glossMaterial = (color) =>
