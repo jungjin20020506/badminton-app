@@ -42,5 +42,6 @@ function devSnapshot() {
 
 export default defineConfig({
   plugins: [react(), devSnapshot()],
-  server: { port: 5180, open: true },
+  // 포트가 이미 쓰이고 있으면(다른 세션의 개발 서버 등) PORT 로 넘겨받아 띄운다
+  server: { port: Number(process.env.PORT) || 5180, open: true },
 })

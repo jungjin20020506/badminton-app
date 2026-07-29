@@ -913,8 +913,11 @@ export default function Character({
       >
         <capsuleGeometry args={[0.088, 0.03, 6, 14]} />
       </mesh>
-      {/* 무릎 */}
-      <mesh position={[0, -0.2, 0]} material={bottomMat}>
+      {/* 무릎 — 맨다리가 드러나는 하의면 살색이어야 한다 */}
+      <mesh
+        position={[0, -0.2, 0]}
+        material={bottomStyle === 'long' || bottomStyle === 'leggings' ? bottomMat : skinMat}
+      >
         <sphereGeometry args={[0.084, 14, 12]} />
       </mesh>
       <group ref={calfRef} position={[0, -0.14, 0]}>
@@ -970,7 +973,7 @@ export default function Character({
     // 동물의 숲 팔 — 관절 없이 짧고 뭉툭한 토막에 벙어리 손
     const sleeveless = look.outfit === 'sleeveless'
     return (
-      <group key={`arm${s}`} position={[s * (female ? 0.158 : 0.172), 0.7, -0.005]} rotation={[0, 0, s * 0.5]}>
+      <group key={`arm${s}`} position={[s * (female ? 0.174 : 0.188), 0.7, 0.022]} rotation={[0, 0, s * 0.5]}>
       <group ref={armRef}>
         {/* 소매 */}
         <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.9, 1, 0.9]}>
@@ -989,9 +992,9 @@ export default function Character({
           <mesh position={[0, -0.068, 0]} scale={[1, 1.02, 0.9]} material={skinMat} castShadow>
             <sphereGeometry args={[0.085, 14, 12]} />
           </mesh>
-          {/* 오른손에 라켓 — 손에서 위로 자연스럽게, 몸보다 살짝 바깥으로 */}
+          {/* 오른손에 라켓 — 바깥으로 눕혀서 든다. 세우면 라켓 헤드가 얼굴을 가린다 */}
           {s > 0 && (
-            <group position={[0.06, -0.1, 0.04]} rotation={[-0.12, 0.18, -0.72]} scale={1.05}>
+            <group position={[-0.01, -0.085, 0.06]} rotation={[-0.14, 0.2, -1.0]} scale={1.0}>
               <Racket racket={look.racket} simple={simple} />
             </group>
           )}
@@ -1041,13 +1044,21 @@ export default function Character({
             <cylinderGeometry args={[0.19, 0.215, 0.15, 20, 1, true]} />
           </mesh>
         )}
+        {/* 긴바지·레깅스 — 골반을 덮어 준다. 없으면 다리 두 개가 따로 노는 막대처럼 보인다 */}
+        {(bottomStyle === 'long' || bottomStyle === 'leggings') && (
+          <mesh position={[0, 0.265, 0]} material={bottomMat} castShadow>
+            <cylinderGeometry
+              args={[0.19, bottomStyle === 'long' ? 0.212 : 0.2, 0.17, 20, 1, true]}
+            />
+          </mesh>
+        )}
         {/* 허리 밴드 */}
-        <mesh position={[0, 0.33, 0]} scale={[1, 1, 0.86]} material={whiteMat}>
+        <mesh position={[0, 0.33, 0]} scale={[1, 1, 0.94]} material={whiteMat}>
           <cylinderGeometry args={[0.196, 0.196, 0.03, 20, 1, true]} />
         </mesh>
 
-        {/* 몸통 */}
-        <mesh geometry={torsoGeo} position={[0, 0.3, 0]} scale={[1, 1, 0.84]} material={topMat} castShadow receiveShadow />
+        {/* 몸통 — 옆에서 봐도 통통해야 동물의 숲 느낌이 난다 */}
+        <mesh geometry={torsoGeo} position={[0, 0.3, 0]} scale={[1, 1, 0.92]} material={topMat} castShadow receiveShadow />
 
         {/* 의상 디테일 */}
         {!simple && look.outfit === 'stripe' &&

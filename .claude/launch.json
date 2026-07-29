@@ -4,8 +4,8 @@
     {
       "name": "shuttle-village",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5180"],
-      "port": 5180
+      "runtimeArgs": ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5181"],
+      "port": 5181
     }
   ]
 }
