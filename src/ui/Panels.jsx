@@ -7,7 +7,7 @@ import { useGame } from '../game/store.js'
 import {
   LEVELS, LEVEL_COLOR, SENSITIVITIES, STAT_KEYS, DAILY_QUESTS, TITLES,
   HAIR_STYLES, EYE_STYLES, OUTFIT_STYLES, ACCESSORIES, RACKET_MODELS,
-  DECORS, COURT_SKINS, expToNext, BADGES, chapterOf,
+  DECORS, COURT_SKINS, expToNext, BADGES, chapterOf, CAPES, MOUNTS, ULTRA_PRICE,
 } from '../game/constants.js'
 import { MAX_COURTS } from '../game/layout.js'
 import { clockText } from './Hud.jsx'
@@ -170,7 +170,12 @@ function ShopPanel() {
   const setLook = useGame((s) => s.setLook)
   const setSetting = useGame((s) => s.setSetting)
   const courtSkin = useGame((s) => s.courtSkin)
+  const auth = useGame((s) => s.auth)
+  const meLook = useGame((s) => s.players.me?.look)
   const [tab, setTab] = useState('hair')
+
+  // 초레어템은 지금은 관리자 계정으로 접속했을 때만 진열대에 오른다
+  const canSeeUltra = !!auth?.superAdmin
 
   const CATS = [
     ['hair', '💇 머리', HAIR_STYLES],
@@ -178,19 +183,33 @@ function ShopPanel() {
     ['outfit', '👕 유니폼', OUTFIT_STYLES],
     ['acc', '🧢 액세서리', ACCESSORIES],
     ['racket', '🏸 라켓', RACKET_MODELS],
+    ['cape', '🦸 망토', CAPES],
+    ['mount', '🛹 탈것', MOUNTS],
     ['decor', '🌳 마당 꾸미기', DECORS],
     ['court', '🎨 코트 바닥', COURT_SKINS],
-  ]
-  const items = CATS.find((c) => c[0] === tab)[2].filter((i) => (i.price ?? 0) > 0 || tab === 'court')
+  ].filter(([k]) => (k === 'cape' || k === 'mount' ? canSeeUltra : true))
+
+  const items = (CATS.find((c) => c[0] === tab) || CATS[0])[2]
+    .filter((i) => (i.price ?? 0) > 0 || tab === 'court')
+    .filter((i) => !i.ultra || canSeeUltra)
 
   const equip = (it) => {
     if (tab === 'hair') setLook('me', { hair: it.id })
     else if (tab === 'eyes') setLook('me', { eyes: it.id })
     else if (tab === 'outfit') setLook('me', { outfit: it.id })
     else if (tab === 'acc') setLook('me', { acc: it.id })
+    else if (tab === 'cape') setLook('me', { cape: it.id })
+    else if (tab === 'mount') setLook('me', { mount: it.id })
     else if (tab === 'racket') setLook('me', { racket: { ...useGame.getState().players.me.look.racket, model: it.id } })
     else if (tab === 'court') setSetting({ courtSkin: it.id })
   }
+
+  /** 지금 이 부위에 착용 중인 아이템 id */
+  const wornId = {
+    hair: meLook?.hair, eyes: meLook?.eyes, outfit: meLook?.outfit, acc: meLook?.acc,
+    cape: meLook?.cape, mount: meLook?.mount, racket: meLook?.racket?.model,
+    court: courtSkin,
+  }[tab]
 
   return (
     <>
@@ -203,24 +222,33 @@ function ShopPanel() {
           <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
+      {canSeeUltra && (
+        <div className="ultra-note">
+          👑 관리자 전용 — <b>초레어템</b>이 진열대에 올라와 있어. 분야마다 딱 하나, {ULTRA_PRICE.toLocaleString()}코인.
+        </div>
+      )}
       <div className="opt-grid">
         {items.map((it) => {
           const have = owned[it.id]
-          const isOn = tab === 'court' && courtSkin === it.id
+          const isOn = wornId === it.id
           return (
             <button
               key={it.id}
-              className={`opt ${isOn ? 'on' : ''} ${!have ? 'locked' : ''}`}
+              className={`opt ${isOn ? 'on' : ''} ${!have ? 'locked' : ''} ${it.ultra ? 'ultra' : ''}`}
               onClick={() => (have ? equip(it) : buy(it))}
             >
+              {it.ultra && <i className="ultra-tag">초레어</i>}
               {it.label}
-              <span className="price">{have ? (tab === 'decor' ? '✅ 설치됨' : isOn ? '사용 중' : '착용하기') : `🪙 ${it.price}`}</span>
+              {it.desc && <span className="price">{it.desc}</span>}
+              <span className="price">
+                {have ? (tab === 'decor' ? '✅ 설치됨' : isOn ? '✅ 착용 중' : '착용하기') : `🪙 ${it.price.toLocaleString()}`}
+              </span>
             </button>
           )
         })}
       </div>
       <div className="muted" style={{ marginTop: 12 }}>
-        🌳 마당 꾸미기 아이템은 사면 바로 마을에 놓여! 카메라를 돌려서 구경해봐.
+        🌳 마당 꾸미기 아이템은 사면 바로 마을에 놓여! 밖에 나가서 구경해봐.
       </div>
     </>
   )

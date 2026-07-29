@@ -32,26 +32,29 @@ const fmtDur = (start) => {
 // -----------------------------------------------------------------------------------
 // 선수 카드 (원본의 PlayerCard)
 // -----------------------------------------------------------------------------------
+/**
+ * 선수 카드 — 콕스타 구성 그대로, 대신 아주 납작하게.
+ * 꼭 필요한 것만 크게: 이름.
+ * 부가 정보(급수·오늘 경기수·대기시간)는 한 줄에 아주 작게.
+ * 급수는 왼쪽 색 띠로도 한 번 더 알려 준다.
+ */
 function PCard({ p, selected, order, onClick, onRemove, showX, dim }) {
   if (!p) return null
   const color = LEVEL_COLOR[p.level] || '#a1a1aa'
   const mins = waitMin(p)
   return (
     <div
-      className={`mp ${selected ? 'sel' : ''} ${dim ? 'dim' : ''} ${p.isMe ? 'me' : ''}`}
+      className={`mp ${selected ? 'sel' : ''} ${dim ? 'dim' : ''} ${p.isMe ? 'me' : ''} ${p.gender === '여' ? 'g-f' : 'g-m'}`}
       style={{ '--lv': color }}
       onClick={onClick}
+      title={`${p.name} · ${p.level} · 오늘 ${p.todayGames || 0}경기`}
     >
-      <span className={`mp-gender ${p.gender === '여' ? 'f' : 'm'}`} />
-      <img src={avatarUrl(p.look, p.gender, 72)} alt="" />
-      <div className="mp-txt">
-        <b>{p.name}</b>
-        <span className="mp-sub">
-          <i className="mp-lv" style={{ color }}>{p.level}</i>
-          <i className="mp-g">{p.todayGames || 0}G</i>
-          {mins > 0 && <i className={mins >= 15 ? 'mp-w long' : 'mp-w'}>{mins}분</i>}
-        </span>
-      </div>
+      <b className="mp-name">{p.isMe ? `⭐${p.name}` : p.name}</b>
+      <span className="mp-sub">
+        <i className="mp-lv" style={{ color }}>{p.level.replace('조', '')}</i>
+        <i className="mp-g">{p.todayGames || 0}G</i>
+        {mins > 0 && <i className={mins >= 15 ? 'mp-w long' : 'mp-w'}>{mins}′</i>}
+      </span>
       {selected && <span className="mp-no">{order + 1}</span>}
       {showX && (
         <button className="mp-x" onClick={(e) => { e.stopPropagation(); onRemove?.() }}>✕</button>

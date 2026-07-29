@@ -575,6 +575,149 @@ function drawRacket(g, look, dir, swing, behind) {
     P(g, cx + i, cy - 9, 1, 19, strLo)
     P(g, cx - 6, cy + i, 13, 1, strLo)
   }
+
+  // ── 엑스칼리버 — 금빛 프레임 + 빛나는 스트링 + 휘두른 궤적 ──
+  if (r.model === 'excalibur') {
+    for (let yy = -11; yy <= 11; yy++) {
+      const w = Math.round(Math.sqrt(Math.max(0, 1 - (yy * yy) / 121)) * 8)
+      if (w <= 0) continue
+      P(g, cx - w, cy + yy, 2, 1, '#ffd21f')
+      P(g, cx + w - 2, cy + yy, 2, 1, '#c89412')
+      if (w > 2) P(g, cx - w + 2, cy + yy, (w - 2) * 2, 1, 'rgba(255,250,210,.95)')
+    }
+    for (let i = -6; i <= 6; i += 3) {
+      P(g, cx + i, cy - 9, 1, 19, 'rgba(255,214,90,.9)')
+      P(g, cx - 6, cy + i, 13, 1, 'rgba(255,214,90,.9)')
+    }
+    P(g, cx - 7, cy - 12, 15, 2, '#fff6c0')
+    // 궤적
+    const dirn = right ? -1 : 1
+    for (let i = 0; i < 5; i++) {
+      P(g, cx + dirn * (10 + i * 4), cy - 8 + i * 3 - swing * 2, 3, 8 - i, `rgba(255,226,130,${0.5 - i * 0.09})`)
+    }
+    // 손잡이 보석
+    P(g, gx - 1, y + 6, 6, 5, '#7ad0ff')
+    P(g, gx, y + 7, 4, 3, '#d8f4ff')
+  }
+}
+
+// -----------------------------------------------------------------------------------
+// 초레어템 — 히어로 장비
+// 걸음 프레임(step)에 따라 펄럭이고 반짝여서, 걷는 동안 계속 살아 움직인다.
+// -----------------------------------------------------------------------------------
+const GOLD = ramp('#ffd21f')
+const CRIMSON = ramp('#c0243c')
+
+/** 여명의 망토 — 어깨에서 발까지 흐르고 바람에 펄럭인다 */
+function drawCape(g, look, dir, step) {
+  if (look.cape !== 'heroCape') return
+  const sway = step * 4          // 걸을 때 좌우로 나부낀다
+  const top = TY - 2
+  const bottom = 88
+
+  for (let y = top; y < bottom; y++) {
+    const t = (y - top) / (bottom - top)
+    const half = 15 + t * 9                       // 아래로 갈수록 넓게 퍼진다
+    const wave = Math.sin(t * 3.1 + step * 1.2) * (3 + t * 5) + sway * t
+    const cx = 32 + wave
+    const tone = t < 0.18 ? CRIMSON.hi : t < 0.55 ? CRIMSON.base : t < 0.85 ? CRIMSON.lo : CRIMSON.lo2
+    P(g, cx - half, y, half * 2, 1, tone)
+    // 안쪽 접힌 그늘
+    P(g, cx - half + 4, y, 3, 1, CRIMSON.deep)
+    P(g, cx + half - 7, y, 3, 1, CRIMSON.deep)
+    // 왼쪽에서 들어오는 빛
+    if (t > 0.1) P(g, cx - half, y, 3, 1, CRIMSON.hi2)
+  }
+  // 금빛 테두리
+  for (let y = top; y < bottom; y += 1) {
+    const t = (y - top) / (bottom - top)
+    const half = 15 + t * 9
+    const wave = Math.sin(t * 3.1 + step * 1.2) * (3 + t * 5) + sway * t
+    const cx = 32 + wave
+    if (y > bottom - 4) P(g, cx - half, y, half * 2, 1, GOLD.base)
+    else { P(g, cx - half, y, 2, 1, GOLD.lo); P(g, cx + half - 2, y, 2, 1, GOLD.deep) }
+  }
+  // 어깨 걸쇠
+  P(g, TX + 2, TY - 3, 8, 6, GOLD.base)
+  P(g, TX + TW - 10, TY - 3, 8, 6, GOLD.lo)
+  P(g, TX + 3, TY - 2, 4, 3, GOLD.hi3)
+  // 빛의 잔상
+  for (let i = 0; i < 5; i++) {
+    const t = 0.3 + i * 0.14
+    const wave = Math.sin(t * 3.1 + step * 1.2) * (3 + t * 5) + sway * t
+    P(g, 32 + wave - 18 - i * 2, top + t * (bottom - top), 3, 2, 'rgba(255,210,80,.45)')
+  }
+}
+
+/** 셔틀보드 — 발밑에 떠올라 빛의 궤적을 남긴다 */
+function drawMount(g, look, step) {
+  if (look.mount !== 'shuttleBoard') return
+  const y = 88 + (step ? -1 : 0)
+  const board = ramp('#2f6fc0')
+  // 판
+  P(g, 12, y, 40, 6, board.base)
+  P(g, 12, y, 40, 2, board.hi2)
+  P(g, 12, y + 4, 40, 2, board.deep)
+  P(g, 10, y + 1, 4, 4, board.lo)
+  P(g, 50, y + 1, 4, 4, board.lo)
+  // 금빛 라인
+  P(g, 16, y + 2, 32, 1, GOLD.base)
+  // 아래로 뿜는 빛
+  for (let i = 0; i < 4; i++) {
+    const w = 36 - i * 7
+    P(g, 32 - w / 2, y + 6 + i, w, 1, `rgba(120,200,255,${0.5 - i * 0.11})`)
+  }
+  // 궤적
+  for (let i = 0; i < 4; i++) {
+    P(g, 6 - i * 2 + (step ? 2 : 0), y + 2 + i, 5, 1, `rgba(160,220,255,${0.45 - i * 0.1})`)
+    P(g, 54 + i * 2 - (step ? 2 : 0), y + 2 + i, 5, 1, `rgba(160,220,255,${0.35 - i * 0.08})`)
+  }
+}
+
+/** 갑주·투구·엑스칼리버에 얹는 금빛 발광 */
+function drawUltraGlow(g, look, dir, step) {
+  const t = step
+  // 옷 — 갑주 가장자리가 흐른다
+  if (look.outfit === 'heroSuit') {
+    const bx = TX + 5
+    const bw = TW - 10
+    P(g, bx, TY, bw, 2, GOLD.hi3)
+    P(g, bx, TY + TH - 3, bw, 2, GOLD.base)
+    P(g, bx, TY, 2, TH, GOLD.base)
+    P(g, bx + bw - 2, TY, 2, TH, GOLD.lo)
+    // 가슴 문장
+    P(g, 28, TY + 8, 8, 8, GOLD.hi3)
+    P(g, 30, TY + 6, 4, 12, GOLD.base)
+    // 어깨 갑
+    P(g, TX - 1, TY + 1, 9, 7, GOLD.lo)
+    P(g, TX + TW - 8, TY + 1, 9, 7, GOLD.lo2)
+    P(g, TX, TY + 2, 5, 3, GOLD.hi3)
+  }
+  // 투구 — 양옆 빛의 날개
+  if (look.acc === 'heroHelm') {
+    const y = HY
+    P(g, HX - 3, y - 2, HW + 6, 14, GOLD.base)
+    P(g, HX - 3, y - 2, HW + 6, 4, GOLD.hi3)
+    P(g, HX + 2, y + 10, HW - 4, 3, GOLD.lo2)
+    P(g, HX + 12, y - 8, 5, 8, GOLD.hi3)   // 정수리 뿔
+    for (let i = 0; i < 4; i++) {
+      const w = 7 - i
+      P(g, HX - 6 - i * 3, y + 1 + i * 2 - t, w, 3, `rgba(255,232,140,${0.9 - i * 0.18})`)
+      P(g, HX + HW - 1 + i * 3, y + 1 + i * 2 + t, w, 3, `rgba(255,232,140,${0.8 - i * 0.17})`)
+    }
+  }
+  // 반짝임 — 걸음마다 자리가 바뀐다
+  if (look.cape === 'heroCape' || look.outfit === 'heroSuit' || look.acc === 'heroHelm' ||
+      look.mount === 'shuttleBoard' || look.racket?.model === 'excalibur') {
+    const seed = (t + 2) * 7
+    for (let i = 0; i < 7; i++) {
+      const sx = 4 + ((i * 17 + seed * 5) % 56)
+      const sy = 10 + ((i * 29 + seed * 11) % 74)
+      P(g, sx, sy, 2, 2, '#fff6c0')
+      P(g, sx - 1, sy, 4, 1, 'rgba(255,240,170,.65)')
+      P(g, sx, sy - 1, 1, 4, 'rgba(255,240,170,.65)')
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------------
@@ -623,6 +766,9 @@ function drawBody(g, look, gender, dir, frame) {
   const hair = look.hair || 'short'
   const hairC = look.hairColor || '#2b1d16'
 
+  // 망토는 몸보다 뒤 (뒤통수를 볼 때만 앞으로 온다)
+  if (dir !== DIR.up) drawCape(g, look, dir, step)
+  drawMount(g, look, step)
   drawRacket(g, look, dir, step, true)
   if (LONG_HAIR.has(hair)) drawHair(g, hair, hairC, dir, true)
 
@@ -649,6 +795,8 @@ function drawBody(g, look, gender, dir, frame) {
   drawFace(g, look, dir)
   drawAcc(g, look, dir)
   drawRacket(g, look, dir, step, false)
+  if (dir === DIR.up) drawCape(g, look, dir, step)
+  drawUltraGlow(g, look, dir, step)
 }
 
 function drawFrame(g, look, gender, dir, frame) {
@@ -676,7 +824,7 @@ export function lookKey(look, gender) {
   return [
     gender, look.skin, look.hair, look.hairColor, look.eyes, look.outfit,
     look.top, look.bottom, look.bottomStyle, look.shoes, look.shoeStyle,
-    look.acc, r.model, r.frame, r.string, r.grip, r.wrap,
+    look.acc, look.cape, look.mount, r.model, r.frame, r.string, r.grip, r.wrap,
   ].join('|')
 }
 

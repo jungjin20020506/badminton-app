@@ -8,7 +8,7 @@ import { useGame, defaultLook } from '../game/store.js'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES, LEVELS, LEVEL_COLOR,
-  BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
+  BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS, CAPES, MOUNTS,
 } from '../game/constants.js'
 
 const DIR_LABEL = ['정면', '뒤', '왼쪽', '오른쪽']
@@ -104,6 +104,8 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
   const owned = useGame((s) => s.owned)
   const buy = useGame((s) => s.buy)
 
+  const auth = useGame((s) => s.auth)
+  const canSeeUltra = !!auth?.superAdmin
   const [tab, setTab] = useState('basic')
   const [name, setName] = useState(me?.name || '')
   const [gender, setGender] = useState(me?.gender || '남')
@@ -143,6 +145,7 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
     ['hair', '💇 머리'],
     ['cloth', '👕 옷'],
     ['racket', '🏸 라켓'],
+    ...(canSeeUltra ? [['ultra', '👑 초레어']] : []),
   ]
 
   return (
@@ -290,6 +293,33 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                   owned={mode === 'edit' ? owned : null}
                   onBuy={(it) => buy(it)}
                 />
+              </>
+            )}
+
+            {tab === 'ultra' && (
+              <>
+                <div className="ultra-note">
+                  👑 관리자 전용 장비야. 걸치면 금빛 오라가 감돌고 걸을 때마다 반짝여.
+                </div>
+                <div className="sect">🦸 망토</div>
+                <Options
+                  items={CAPES}
+                  value={look.cape || 'noCape'}
+                  onPick={(v) => patch({ cape: v })}
+                  owned={mode === 'edit' ? owned : null}
+                  onBuy={(it) => buy(it)}
+                />
+                <div className="sect">🛹 탈것</div>
+                <Options
+                  items={MOUNTS}
+                  value={look.mount || 'noMount'}
+                  onPick={(v) => patch({ mount: v })}
+                  owned={mode === 'edit' ? owned : null}
+                  onBuy={(it) => buy(it)}
+                />
+                <div className="muted" style={{ marginTop: 10 }}>
+                  갑주·투구·엑스칼리버는 각각 <b>옷 / 액세서리 / 라켓</b> 탭 맨 아래에 있어.
+                </div>
               </>
             )}
 

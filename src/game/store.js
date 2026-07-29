@@ -7,7 +7,7 @@ import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES,
   DECORS, COURT_SKINS, DAILY_QUESTS, TITLES, expToNext, chapterOf,
-  ROSTER_SEED, BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
+  ROSTER_SEED, BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS, CAPES, MOUNTS,
 } from './constants.js'
 import { pickBestCombo } from './matching.js'
 import { MAX_COURTS } from './layout.js'
@@ -91,6 +91,8 @@ export const defaultLook = (gender = '남') => ({
   shoes: '#ffffff',
   shoeStyle: 'basic',
   acc: 'none',
+  cape: 'noCape',
+  mount: 'noMount',
   racket: { model: 'classic', frame: '#ef4444', string: '#ffffff', grip: '#1f2937', wrap: 'plain' },
   height: 1,
 })
@@ -127,7 +129,7 @@ const emptyCourt = (id) => ({
 const defaultOwned = () => {
   const owned = {}
   ;[...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...RACKET_MODELS, ...ACCESSORIES, ...COURT_SKINS,
-    ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS]
+    ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS, ...CAPES, ...MOUNTS]
     .filter((i) => (i.price ?? 0) === 0)
     .forEach((i) => (owned[i.id] = true))
   return owned
@@ -870,7 +872,8 @@ export const useGame = create((set, get) => ({
     }
     const pool = [...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...ACCESSORIES, ...RACKET_MODELS, ...DECORS, ...COURT_SKINS,
       ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS]
-      .filter((i) => (i.price ?? 0) > 0 && !s.owned[i.id])
+      // 초레어템은 뽑기로 안 나온다 — 오직 9,999코인을 모아야 한다
+      .filter((i) => (i.price ?? 0) > 0 && !i.ultra && !s.owned[i.id])
     if (!pool.length) {
       set({ coins: s.coins - COST + 500 })
       get().toast('모든 아이템을 다 모았어! 대신 500🪙 돌려줄게 ✨', 'good')

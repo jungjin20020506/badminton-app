@@ -229,7 +229,10 @@ export async function subscribeRooms(cb) {
  * 주소 검색(카카오 지도)은 셔틀빌리지에 없으므로 coords 는 null 로 둔다.
  * 콕맵은 coords 가 있는 방만 지도에 찍으므로(안전 가드 확인됨) 지도에만 안 뜬다.
  */
-export async function createRoom({ name, location, description, levelLimit = 'N조', maxPlayers = 20, password = '' }) {
+export async function createRoom({
+  name, location, description, levelLimit = 'N조', maxPlayers = 20, password = '',
+  numInProgressCourts = 2, numScheduledMatches = 4, admins = [],
+}) {
   const { f } = await ensure()
   const user = auth.currentUser
   const s = useGame.getState()
@@ -247,12 +250,32 @@ export async function createRoom({ name, location, description, levelLimit = 'N�
     adminName: s.auth?.profile?.name || '방장',
     createdAt: f.serverTimestamp(),
     playerCount: 0,
-    numScheduledMatches: 4,
-    numInProgressCourts: 2,
+    numScheduledMatches: Math.max(1, Math.min(12, parseInt(numScheduledMatches, 10) || 4)),
+    numInProgressCourts: Math.max(1, Math.min(6, parseInt(numInProgressCourts, 10) || 2)),
+    admins: admins.filter(Boolean),
     scheduledMatches: {},
     inProgressCourts: [],
   })
   return ref.id
+}
+
+/** 방 설정 바꾸기 (방 관리자만) — 콕스타 SettingsModal 과 같은 필드 */
+export async function updateRoomSettings(patch) {
+  const { f } = await ensure()
+  const s = useGame.getState()
+  if (s.online?.status !== 'room') throw new Error('경기방에 들어가 있어야 해요.')
+  if (!s.online.isAdmin) throw new Error('방 관리자만 바꿀 수 있어요.')
+  const clean = {}
+  if (patch.name != null) clean.name = String(patch.name).trim()
+  if (patch.location != null) clean.location = String(patch.location).trim()
+  if (patch.description != null) clean.description = String(patch.description).trim()
+  if (patch.levelLimit != null) clean.levelLimit = patch.levelLimit
+  if (patch.maxPlayers != null) clean.maxPlayers = Math.max(4, parseInt(patch.maxPlayers, 10) || 20)
+  if (patch.numInProgressCourts != null) clean.numInProgressCourts = Math.max(1, Math.min(6, parseInt(patch.numInProgressCourts, 10) || 2))
+  if (patch.numScheduledMatches != null) clean.numScheduledMatches = Math.max(1, Math.min(12, parseInt(patch.numScheduledMatches, 10) || 4))
+  if (patch.admins != null) clean.admins = patch.admins.filter(Boolean)
+  if (patch.password != null) clean.password = patch.password
+  await f.updateDoc(f.doc(db, 'rooms', s.online.roomId), clean)
 }
 
 // -----------------------------------------------------------------------------------
@@ -570,6 +593,7 @@ export const cockstar = {
   initAuth, signInKakao, sendPhoneCode, verifyPhoneCode, signInAdmin, logout,
   saveProfile, saveLook, subscribeRooms, createRoom, enterRoom, leaveRoom,
   setResting, startCourt, endCourt, setCourtCountRemote, resetCourts, saveQueues,
+  updateRoomSettings,
   convertToEmail, isSuperAdmin, isRoomAdmin,
 }
 

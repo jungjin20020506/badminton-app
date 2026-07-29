@@ -28,6 +28,9 @@ export const LEVEL_COLOR = {
 
 export const PLAYERS_PER_MATCH = 4
 
+/** 초레어템 가격 — 분야마다 딱 하나, 9,999코인 */
+export const ULTRA_PRICE = 9999
+
 /** 자동매칭 민감도 — 기존 앱과 동일한 4단계 */
 export const SENSITIVITIES = [
   { key: 'low', label: '낮음', offset: -60, short: '회전율 우선', desc: '기다리지 않고 바로 경기를 만듭니다.' },
@@ -120,6 +123,10 @@ export const OUTFIT_STYLES = [
   { id: 'sash', label: '사선 배색', price: 880 },
   { id: 'hoodie', label: '후드 집업', price: 1100 },
   { id: 'club', label: '클럽 저지', price: 1400 },
+  {
+    id: 'heroSuit', label: '✨ 여명의 갑주', price: ULTRA_PRICE, ultra: true,
+    desc: '가장자리가 금빛으로 흐르는 갑주',
+  },
 ]
 
 export const RACKET_MODELS = [
@@ -131,6 +138,11 @@ export const RACKET_MODELS = [
   { id: 'retro', label: '레트로 우드', price: 1800, desc: '체력 +4 (묵직하다)', bonus: { stamina: 4 } },
   { id: 'pro', label: '프로 카본', price: 2400, desc: '전 스탯 +2', bonus: { power: 2, technique: 2, speed: 2, stamina: 2, sense: 2 } },
   { id: 'neon', label: '네온 글로우', price: 3200, desc: '전 스탯 +3 · 밤에 빛난다', bonus: { power: 3, technique: 3, speed: 3, stamina: 3, sense: 3 } },
+  {
+    id: 'excalibur', label: '⚔️ 엑스칼리버', price: ULTRA_PRICE, ultra: true,
+    desc: '전 스탯 +6 · 스트링이 빛나고 궤적이 남는다',
+    bonus: { power: 6, technique: 6, speed: 6, stamina: 6, sense: 6 },
+  },
 ]
 
 /** 그립 감는 방식 — 라켓 손잡이 무늬 */
@@ -145,6 +157,29 @@ export const RACKET_COLORS = [
   '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#c0c0c0', '#d4af37',
 ]
 
+/**
+ * 초레어템 — 분야마다 딱 하나. 9,999코인.
+ * 히어로처럼 보이도록 펄럭임·빛·반짝임 효과가 붙는다.
+ * 지금은 관리자 계정으로 접속했을 때만 상점에 나타난다. (ultra: true)
+ */
+/** 망토 — 새 부위 */
+export const CAPES = [
+  { id: 'noCape', label: '없음', price: 0 },
+  {
+    id: 'heroCape', label: '🦸 여명의 망토', price: ULTRA_PRICE, ultra: true,
+    desc: '걸을 때마다 바람에 펄럭이고 빛의 잔상이 남는다',
+  },
+]
+
+/** 탈것 — 새 부위. 발밑에 떠올라 함께 움직인다 */
+export const MOUNTS = [
+  { id: 'noMount', label: '없음', price: 0 },
+  {
+    id: 'shuttleBoard', label: '🛹 셔틀보드', price: ULTRA_PRICE, ultra: true,
+    desc: '발밑에 떠올라 빛의 궤적을 남기는 보드',
+  },
+]
+
 export const ACCESSORIES = [
   { id: 'none', label: '없음', price: 0 },
   { id: 'wristband', label: '손목밴드', price: 200 },
@@ -156,6 +191,10 @@ export const ACCESSORIES = [
   { id: 'glasses', label: '스포츠 고글', price: 800 },
   { id: 'mask', label: '마스크', price: 500 },
   { id: 'crown', label: '챔피언 왕관', price: 3000 },
+  {
+    id: 'heroHelm', label: '⚡ 여명의 투구', price: ULTRA_PRICE, ultra: true,
+    desc: '양옆에 빛의 날개가 돋은 투구',
+  },
 ]
 
 export const STAT_KEYS = [
@@ -242,6 +281,21 @@ export const CHAPTERS = [
   { n: 4, need: 50, label: '소문난 마을', desc: '셔틀타운이 근처에 소문나기 시작했다.' },
   { n: 5, need: 120, label: '전설의 셔틀타운', desc: '이제 이 마을을 모르는 사람이 없다.' },
 ]
+
+/** 초레어템 목록 (분야 무관) */
+export const ULTRA_IDS = ['heroCape', 'shuttleBoard', 'heroHelm', 'heroSuit', 'excalibur']
+
+/** 이 사람이 초레어템을 하나라도 걸치고 있는가 — 오라 효과를 켤지 결정한다 */
+export function hasUltra(look) {
+  if (!look) return false
+  return (
+    look.cape === 'heroCape' ||
+    look.mount === 'shuttleBoard' ||
+    look.acc === 'heroHelm' ||
+    look.outfit === 'heroSuit' ||
+    look.racket?.model === 'excalibur'
+  )
+}
 
 /** 지금 받을 수 있는(달성했지만 아직 안 받은) 미션 목록 */
 export function readyQuests(today = {}, quests = {}) {

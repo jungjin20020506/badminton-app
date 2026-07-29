@@ -19,6 +19,7 @@ import { TILE, OBJECTS } from '../pixel/tileset.js'
 import { daylightTint } from '../pixel/palette.js'
 import { villageLevel } from '../game/social.js'
 import { useGame } from '../game/store.js'
+import { hasUltra } from '../game/constants.js'
 import { objectTexture, actorTexture, setActorFrame, ACTOR_W, ACTOR_H } from './textures.js'
 
 // 스프라이트가 카메라 쪽으로 살짝 눕는 각도 — 완전히 수직이면 위에서 볼 때 납작해 보인다
@@ -139,11 +140,21 @@ function Props({ mapId, lv, courtCount }) {
 function Actor({ actor, isMe }) {
   const ref = useRef(null)
   const matRef = useRef(null)
+  const auraRef = useRef(null)
   const tex = useMemo(() => actorTexture(actor.look, actor.gender), [actor.look, actor.gender])
+  const ultra = useMemo(() => hasUltra(actor.look), [actor.look])
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const g = ref.current
     if (!g) return
+    // 초레어 오라 — 숨 쉬듯 커졌다 작아진다
+    if (auraRef.current) {
+      const t = clock.elapsedTime
+      const pulse = 1 + Math.sin(t * 2.4) * 0.09
+      auraRef.current.scale.set(pulse, pulse, 1)
+      auraRef.current.material.opacity = 0.34 + Math.sin(t * 2.4) * 0.12
+      auraRef.current.rotation.z = t * 0.35
+    }
     const a = isMe ? world.player : actor
     const src = isMe ? world.player : actor
     const fx = src.moving ? src.from[0] + (src.x - src.from[0]) * src.prog : (src.fx ?? src.x)
@@ -162,8 +173,51 @@ function Actor({ actor, isMe }) {
     <mesh ref={ref} rotation={[-LEAN, 0, 0]} castShadow>
       <planeGeometry args={[ACTOR_W, ACTOR_H]} />
       <meshBasicMaterial ref={matRef} map={tex} transparent alphaTest={0.5} side={THREE.DoubleSide} />
+      {ultra && (
+        <mesh ref={auraRef} position={[0, -0.1, -0.02]}>
+          <planeGeometry args={[ACTOR_W * 2.4, ACTOR_H * 1.5]} />
+          <meshBasicMaterial
+            color="#ffd24a"
+            transparent
+            opacity={0.34}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            map={auraTexture()}
+          />
+        </mesh>
+      )}
     </mesh>
   )
+}
+
+// 오라 텍스처 — 가운데가 밝고 가장자리로 사라지는 원. 한 번만 만든다.
+let auraTex = null
+function auraTexture() {
+  if (auraTex) return auraTex
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const g = c.getContext('2d')
+  const grd = g.createRadialGradient(64, 64, 4, 64, 64, 62)
+  grd.addColorStop(0, 'rgba(255,255,220,.95)')
+  grd.addColorStop(0.35, 'rgba(255,214,90,.5)')
+  grd.addColorStop(1, 'rgba(255,190,60,0)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, 128, 128)
+  // 빛살
+  g.globalCompositeOperation = 'lighter'
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
+    g.save(); g.translate(64, 64); g.rotate(a)
+    const lg = g.createLinearGradient(0, 0, 60, 0)
+    lg.addColorStop(0, 'rgba(255,240,170,.5)')
+    lg.addColorStop(1, 'rgba(255,240,170,0)')
+    g.fillStyle = lg
+    g.fillRect(0, -3, 60, 6)
+    g.restore()
+  }
+  auraTex = new THREE.CanvasTexture(c)
+  auraTex.colorSpace = THREE.SRGBColorSpace
+  return auraTex
 }
 
 function Actors({ mapId }) {

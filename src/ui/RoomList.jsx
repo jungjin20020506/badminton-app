@@ -3,6 +3,7 @@
 // ===================================================================================
 import { useEffect, useState } from 'react'
 import { useGame, TUTORIAL } from '../game/store.js'
+import { LEVELS, LEVEL_COLOR } from '../game/constants.js'
 import { cockstar } from '../net/cockstar.js'
 
 /** 입장에 성공하면 곧바로 대진표를 펼쳐 준다 — 여기가 이 게임의 목적지다 */
@@ -22,7 +23,10 @@ export default function RoomList({ onClose }) {
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ name: '', location: '', description: '', maxPlayers: 20, password: '' })
+  const [form, setForm] = useState({
+    name: '', location: '', description: '', maxPlayers: 20, password: '',
+    levelLimit: 'N조', numInProgressCourts: 2, numScheduledMatches: 4, adminsText: '',
+  })
 
   useEffect(() => {
     let stop = null
@@ -52,7 +56,10 @@ export default function RoomList({ onClose }) {
     if (!form.name.trim()) return toast('경기방 이름을 적어줘!', 'warn')
     setBusy(true)
     try {
-      const id = await cockstar.createRoom(form)
+      const id = await cockstar.createRoom({
+        ...form,
+        admins: form.adminsText.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean),
+      })
       const room = { id, ...form, adminUid: auth.uid, password: form.password }
       await cockstar.enterRoom(room, form.password)
       toast('경기방을 만들었어! 🎉', 'good')
@@ -127,11 +134,41 @@ export default function RoomList({ onClose }) {
         <input className="ac-input" style={{ marginTop: 8 }} placeholder="소개 (선택)"
           value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         <div className="row" style={{ marginTop: 8 }}>
-          <input className="ac-input" type="number" min="4" placeholder="정원" value={form.maxPlayers}
+          <input className="pk-input" type="number" min="4" placeholder="정원" value={form.maxPlayers}
             onChange={(e) => setForm({ ...form, maxPlayers: e.target.value })} />
-          <input className="ac-input" placeholder="비밀번호 (선택)" value={form.password}
+          <input className="pk-input" placeholder="비밀번호 (선택)" value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })} />
         </div>
+
+        <div className="sect">급수 제한 (이 급수 이상만 입장)</div>
+        <div className="row wrap">
+          {LEVELS.map((l) => (
+            <button key={l} className={`pk-btn sm ${form.levelLimit === l ? 'primary' : ''}`}
+              style={form.levelLimit === l ? {} : { color: LEVEL_COLOR[l] }}
+              onClick={() => setForm({ ...form, levelLimit: l })}>{l}</button>
+          ))}
+        </div>
+
+        <div className="sect">코트 수</div>
+        <div className="row wrap">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <button key={n} className={`pk-btn sm ${Number(form.numInProgressCourts) === n ? 'primary' : ''}`}
+              onClick={() => setForm({ ...form, numInProgressCourts: n })}>{n}</button>
+          ))}
+        </div>
+
+        <div className="sect">경기 예정 칸 수</div>
+        <div className="row wrap">
+          {[2, 4, 6, 8, 10, 12].map((n) => (
+            <button key={n} className={`pk-btn sm ${Number(form.numScheduledMatches) === n ? 'primary' : ''}`}
+              onClick={() => setForm({ ...form, numScheduledMatches: n })}>{n}</button>
+          ))}
+        </div>
+
+        <div className="sect">부관리자 (선택)</div>
+        <input className="pk-input" placeholder="아이디나 이메일을 쉼표로 구분"
+          value={form.adminsText} onChange={(e) => setForm({ ...form, adminsText: e.target.value })} />
+
         <div className="muted" style={{ marginTop: 8 }}>
           여기서 만든 방은 콕스타 목록에도 바로 보여. 다만 지도(콕맵)에 표시하려면
           콕스타에서 주소를 한 번 검색해 저장해줘.
