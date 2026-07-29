@@ -9,6 +9,7 @@ import { useGame, defaultLook } from '../game/store.js'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES, LEVELS, LEVEL_COLOR,
+  BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
 } from '../game/constants.js'
 
 function Turntable({ look, gender, spin }) {
@@ -262,8 +263,24 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                 />
                 <div className="sect">상의 색</div>
                 <Swatches colors={CLOTH_COLORS} value={look.top} onPick={(c) => patch({ top: c })} />
+                <div className="sect">하의</div>
+                <Options
+                  items={BOTTOM_STYLES}
+                  value={look.bottomStyle || (gender === '여' ? 'skirt' : 'shorts')}
+                  onPick={(v) => patch({ bottomStyle: v })}
+                  owned={mode === 'edit' ? owned : null}
+                  onBuy={(it) => buy(it)}
+                />
                 <div className="sect">하의 색</div>
                 <Swatches colors={CLOTH_COLORS} value={look.bottom} onPick={(c) => patch({ bottom: c })} />
+                <div className="sect">신발</div>
+                <Options
+                  items={SHOE_STYLES}
+                  value={look.shoeStyle || 'basic'}
+                  onPick={(v) => patch({ shoeStyle: v })}
+                  owned={mode === 'edit' ? owned : null}
+                  onBuy={(it) => buy(it)}
+                />
                 <div className="sect">신발 색</div>
                 <Swatches colors={CLOTH_COLORS} value={look.shoes} onPick={(c) => patch({ shoes: c })} />
                 <div className="sect">액세서리</div>
@@ -293,6 +310,14 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                 <Swatches colors={RACKET_COLORS} value={look.racket.string} onPick={(c) => patchRacket({ string: c })} />
                 <div className="sect">그립 색</div>
                 <Swatches colors={RACKET_COLORS} value={look.racket.grip} onPick={(c) => patchRacket({ grip: c })} />
+                <div className="sect">그립 감기</div>
+                <Options
+                  items={GRIP_WRAPS}
+                  value={look.racket.wrap || 'plain'}
+                  onPick={(v) => patchRacket({ wrap: v })}
+                  owned={mode === 'edit' ? owned : null}
+                  onBuy={(it) => buy(it)}
+                />
               </>
             )}
           </div>

@@ -7,7 +7,7 @@ import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES,
   DECORS, COURT_SKINS, DAILY_QUESTS, TITLES, expToNext,
-  ROSTER_SEED, LEVEL_POWER,
+  ROSTER_SEED, LEVEL_POWER, BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
 } from './constants.js'
 import { pickBestCombo, bestLevelSplit } from './matching.js'
 import { courtLayout, MAX_COURTS, clampRoam } from './layout.js'
@@ -74,9 +74,11 @@ export const defaultLook = (gender = '남') => ({
   outfit: 'tee',
   top: '#3b82f6',
   bottom: '#1f2937',
+  bottomStyle: gender === '여' ? 'skirt' : 'shorts',
   shoes: '#ffffff',
+  shoeStyle: 'basic',
   acc: 'none',
-  racket: { model: 'classic', frame: '#ef4444', string: '#ffffff', grip: '#1f2937' },
+  racket: { model: 'classic', frame: '#ef4444', string: '#ffffff', grip: '#1f2937', wrap: 'plain' },
   height: 1,
 })
 
@@ -112,7 +114,8 @@ const emptyCourt = (id) => ({
 
 const defaultOwned = () => {
   const owned = {}
-  ;[...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...RACKET_MODELS, ...ACCESSORIES, ...COURT_SKINS]
+  ;[...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...RACKET_MODELS, ...ACCESSORIES, ...COURT_SKINS,
+    ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS]
     .filter((i) => (i.price ?? 0) === 0)
     .forEach((i) => (owned[i.id] = true))
   return owned
@@ -903,7 +906,8 @@ export const useGame = create((set, get) => ({
       get().toast('코인이 부족해요! (300🪙 필요)', 'warn')
       return null
     }
-    const pool = [...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...ACCESSORIES, ...RACKET_MODELS, ...DECORS, ...COURT_SKINS]
+    const pool = [...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...ACCESSORIES, ...RACKET_MODELS, ...DECORS, ...COURT_SKINS,
+      ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS]
       .filter((i) => (i.price ?? 0) > 0 && !s.owned[i.id])
     if (!pool.length) {
       set({ coins: s.coins - COST + 500 })

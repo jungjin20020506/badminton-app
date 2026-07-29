@@ -1020,15 +1020,38 @@ export default function Character({
       >
         <sphereGeometry args={[0.084, 14, 12]} />
       </mesh>
+      {/* 긴바지 — 다리보다 넓은 통이 덮인다. 몸에 붙는 레깅스와 실루엣으로 구별된다 */}
+      {bottomStyle === 'long' && (
+        <mesh position={[0, -0.1, 0]} material={bottomMat} castShadow>
+          <cylinderGeometry args={[0.096, 0.104, 0.23, 18, 1, true]} />
+        </mesh>
+      )}
       <group ref={calfRef} position={[0, -0.14, 0]}>
-        {/* 종아리 — 긴바지·레깅스는 발목까지 옷감 */}
+        {/* 종아리 — 긴바지·레깅스는 발목까지 옷감. 레깅스는 살에 딱 붙는다 */}
         <mesh
           position={[0, -0.1, 0]}
           material={bottomStyle === 'long' || bottomStyle === 'leggings' ? bottomMat : skinMat}
           castShadow
         >
-          <capsuleGeometry args={[bottomStyle === 'long' ? 0.084 : 0.078, 0.02, 6, 14]} />
+          <capsuleGeometry args={[bottomStyle === 'leggings' ? 0.074 : 0.078, 0.02, 6, 14]} />
         </mesh>
+        {/* 긴바지 밑단 — 신발 위로 살짝 접혀 내려온다 */}
+        {bottomStyle === 'long' && (
+          <>
+            <mesh position={[0, -0.055, 0]} material={bottomMat} castShadow>
+              <cylinderGeometry args={[0.104, 0.109, 0.16, 18, 1, true]} />
+            </mesh>
+            <mesh position={[0, -0.128, 0]} material={bottomMat} castShadow>
+              <cylinderGeometry args={[0.111, 0.106, 0.036, 18, 1, true]} />
+            </mesh>
+          </>
+        )}
+        {/* 레깅스 발목단 — 얇은 흰 밴드가 있어야 '레깅스'로 읽힌다 */}
+        {bottomStyle === 'leggings' && (
+          <mesh position={[0, -0.115, 0]} material={whiteMat}>
+            <cylinderGeometry args={[0.077, 0.077, 0.028, 16, 1, true]} />
+          </mesh>
+        )}
         {/* 신발 */}
         <group position={[0, -0.13, 0]}>
           {/* 밑창 — 흰 벽돌처럼 보이지 않게 얇고 둥글게 */}
@@ -1165,7 +1188,7 @@ export default function Character({
         {(bottomStyle === 'long' || bottomStyle === 'leggings') && (
           <mesh position={[0, 0.265, 0]} material={bottomMat} castShadow>
             <cylinderGeometry
-              args={[0.19, bottomStyle === 'long' ? 0.212 : 0.2, 0.17, 20, 1, true]}
+              args={[0.19, bottomStyle === 'long' ? 0.218 : 0.198, 0.17, 20, 1, true]}
             />
           </mesh>
         )}
