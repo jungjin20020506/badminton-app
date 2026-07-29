@@ -5,7 +5,7 @@
 //   START  : 포켓몬식 세로 메뉴
 // ===================================================================================
 import { useEffect, useState } from 'react'
-import { useGame } from '../game/store.js'
+import { useGame, isGod } from '../game/store.js'
 import { expToNext, LEVEL_COLOR, readyQuests } from '../game/constants.js'
 import { world } from '../pixel/engine.js'
 import Pad from './Pad.jsx'
@@ -140,6 +140,7 @@ export function CheckIn() {
 // -----------------------------------------------------------------------------------
 function TopBar({ onMenu }) {
   const coins = useGame((s) => s.coins)
+  const god = useGame(isGod)          // 관리자는 코인이 무제한이라 ∞ 로 보여 준다
   const me = useGame((s) => s.me)
   const timeOfDay = useGame((s) => s.timeOfDay)
   const day = useGame((s) => s.day)
@@ -171,7 +172,7 @@ function TopBar({ onMenu }) {
       </div>
 
       <div className="tb-right">
-        <div className="pk-win tb-coin">🪙 {coins.toLocaleString()}</div>
+        <div className="pk-win tb-coin">🪙 {god ? '∞' : coins.toLocaleString()}</div>
         <div className="pk-win tb-lv">
           <b>Lv.{me.lv}</b>
           <div className="expbar"><i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} /></div>

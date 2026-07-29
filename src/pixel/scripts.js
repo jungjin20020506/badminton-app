@@ -4,7 +4,7 @@
 // NPC·간판·가구마다 어떤 이야기를 하고 무엇을 열어 주는지 여기 모아 둔다.
 // 「말을 걸면 대화를 하다가 상점이 열린다」 는 흐름이 전부 여기서 만들어진다.
 // ===================================================================================
-import { useGame } from '../game/store.js'
+import { useGame, isGod, canAfford } from '../game/store.js'
 import { CHATTER, DAILY_QUESTS } from '../game/constants.js'
 import { todayBoard } from '../game/social.js'
 
@@ -444,7 +444,7 @@ const SCRIPTS = {
 
   vending: () => {
     const s = S()
-    if (s.coins < 60) return [{ say: '자판기다. 이온음료 60🪙.' }, { say: '…코인이 모자란다.' }]
+    if (!canAfford(s, 60)) return [{ say: '자판기다. 이온음료 60🪙.' }, { say: '…코인이 모자란다.' }]
     return [
       {
         ask: '자판기다. 이온음료를 뽑을까? (60🪙)',
@@ -454,7 +454,7 @@ const SCRIPTS = {
             then: [
               {
                 do: () => {
-                  useGame.setState({ coins: S().coins - 60 })
+                  if (!isGod(S())) useGame.setState({ coins: S().coins - 60 })
                   S().advanceTime(1)
                   S().toast('이온음료를 마셨다! 시원하다 🥤', 'good')
                 },

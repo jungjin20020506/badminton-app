@@ -126,14 +126,47 @@ const emptyCourt = (id) => ({
   result: null,
 })
 
+/** 상점에 올라가는 모든 물건 (기본품 + 유료품 + 초레어템) */
+const ALL_ITEMS = () => [
+  ...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...RACKET_MODELS, ...ACCESSORIES, ...COURT_SKINS,
+  ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS, ...CAPES, ...MOUNTS,
+]
+
 const defaultOwned = () => {
   const owned = {}
-  ;[...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...RACKET_MODELS, ...ACCESSORIES, ...COURT_SKINS,
-    ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS, ...CAPES, ...MOUNTS]
-    .filter((i) => (i.price ?? 0) === 0)
-    .forEach((i) => (owned[i.id] = true))
+  ALL_ITEMS().filter((i) => (i.price ?? 0) === 0).forEach((i) => (owned[i.id] = true))
   return owned
 }
+
+// -----------------------------------------------------------------------------------
+// 관리자 모드
+//
+// 관리자 계정으로 접속하면 9999코인짜리 초레어템까지 상점 전체가 열리고,
+// 코인이 줄지 않는다. 운영자가 무엇이든 즉시 입어 보고 확인할 수 있어야 하니까.
+// 저장 파일에는 손대지 않는다 — 로그아웃하면 원래 소지품으로 돌아온다.
+// -----------------------------------------------------------------------------------
+export const isGod = (s) => !!s?.auth?.superAdmin
+
+/**
+ * 관리자면 전부 가진 것으로 친다.
+ * 이 함수는 zustand 셀렉터로 쓰이므로 매번 같은 객체를 돌려줘야 한다 —
+ * 새 객체를 만들면 React 가 스냅샷이 계속 바뀐다고 보고 무한 렌더에 빠진다.
+ */
+let ALL_OWNED = null
+export function ownedOf(s) {
+  if (!isGod(s)) return s.owned
+  if (!ALL_OWNED) {
+    ALL_OWNED = {}
+    ALL_ITEMS().forEach((i) => (ALL_OWNED[i.id] = true))
+  }
+  return ALL_OWNED
+}
+
+/** 관리자는 아무리 써도 코인이 그대로다 */
+const spend = (s, n) => (isGod(s) ? s.coins : s.coins - n)
+
+/** 관리자는 잔액 검사를 통과한다 */
+export const canAfford = (s, n) => isGod(s) || s.coins >= n
 
 // -----------------------------------------------------------------------------------
 // 저장 / 불러오기
@@ -729,9 +762,9 @@ export const useGame = create((set, get) => ({
 
   buy: (item) => {
     const s = get()
-    if (s.owned[item.id]) return get().toast('이미 가지고 있어요.', 'warn')
-    if (s.coins < item.price) return get().toast('코인이 부족해요 🪙', 'warn')
-    set({ coins: s.coins - item.price, owned: { ...s.owned, [item.id]: true } })
+    if (ownedOf(s)[item.id]) return get().toast('이미 가지고 있어요.', 'warn')
+    if (!canAfford(s, item.price)) return get().toast('코인이 부족해요 🪙', 'warn')
+    set({ coins: spend(s, item.price), owned: { ...s.owned, [item.id]: true } })
     get().toast(`${item.label} 구입 완료!`, 'good')
     get().checkTrophies()
     saveState(get())
@@ -866,16 +899,16 @@ export const useGame = create((set, get) => ({
   pullGacha: () => {
     const s = get()
     const COST = 300
-    if (s.coins < COST) {
+    if (!canAfford(s, COST)) {
       get().toast('코인이 부족해요! (300🪙 필요)', 'warn')
       return null
     }
     const pool = [...HAIR_STYLES, ...EYE_STYLES, ...OUTFIT_STYLES, ...ACCESSORIES, ...RACKET_MODELS, ...DECORS, ...COURT_SKINS,
       ...BOTTOM_STYLES, ...SHOE_STYLES, ...GRIP_WRAPS]
       // 초레어템은 뽑기로 안 나온다 — 오직 9,999코인을 모아야 한다
-      .filter((i) => (i.price ?? 0) > 0 && !i.ultra && !s.owned[i.id])
+      .filter((i) => (i.price ?? 0) > 0 && !i.ultra && !ownedOf(s)[i.id])
     if (!pool.length) {
-      set({ coins: s.coins - COST + 500 })
+      set({ coins: spend(s, COST) + (isGod(s) ? 0 : 500) })
       get().toast('모든 아이템을 다 모았어! 대신 500🪙 돌려줄게 ✨', 'good')
       saveState(get())
       return { label: '코인 500', rare: false }
@@ -883,7 +916,7 @@ export const useGame = create((set, get) => ({
     const item = pool[Math.floor(Math.random() * pool.length)]
     const rare = item.price >= 900
     set({
-      coins: s.coins - COST,
+      coins: spend(s, COST),
       owned: { ...s.owned, [item.id]: true },
       gachaPulls: s.gachaPulls + 1,
     })

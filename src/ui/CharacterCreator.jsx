@@ -4,7 +4,7 @@
 // ===================================================================================
 import { useState, useRef, useEffect } from 'react'
 import { drawBig, CW, CH } from '../pixel/sprites.js'
-import { useGame, defaultLook } from '../game/store.js'
+import { useGame, defaultLook, ownedOf } from '../game/store.js'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES, LEVELS, LEVEL_COLOR,
@@ -101,7 +101,7 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
   const me = useGame((s) => s.players.me)
   const setLook = useGame((s) => s.setLook)
   const setPlayerInfo = useGame((s) => s.setPlayerInfo)
-  const owned = useGame((s) => s.owned)
+  const owned = useGame(ownedOf)   // 관리자는 전부 열려 있다
   const buy = useGame((s) => s.buy)
 
   const auth = useGame((s) => s.auth)

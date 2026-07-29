@@ -3,7 +3,7 @@
 // 콕스타(기존 매칭 앱)의 운영 기능을 동물의 숲 톤으로 옮겨 담았다.
 // ===================================================================================
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useGame } from '../game/store.js'
+import { useGame, ownedOf, isGod } from '../game/store.js'
 import {
   LEVELS, LEVEL_COLOR, SENSITIVITIES, STAT_KEYS, DAILY_QUESTS, TITLES,
   HAIR_STYLES, EYE_STYLES, OUTFIT_STYLES, ACCESSORIES, RACKET_MODELS,
@@ -165,7 +165,6 @@ function RosterPanel() {
 // -----------------------------------------------------------------------------------
 function ShopPanel() {
   const coins = useGame((s) => s.coins)
-  const owned = useGame((s) => s.owned)
   const buy = useGame((s) => s.buy)
   const setLook = useGame((s) => s.setLook)
   const setSetting = useGame((s) => s.setSetting)
@@ -174,8 +173,9 @@ function ShopPanel() {
   const meLook = useGame((s) => s.players.me?.look)
   const [tab, setTab] = useState('hair')
 
-  // 초레어템은 지금은 관리자 계정으로 접속했을 때만 진열대에 오른다
+  // 관리자 계정은 초레어템까지 진열대 전체가 열리고, 코인이 줄지 않는다
   const canSeeUltra = !!auth?.superAdmin
+  const owned = useGame(ownedOf)
 
   const CATS = [
     ['hair', '💇 머리', HAIR_STYLES],
@@ -215,7 +215,7 @@ function ShopPanel() {
     <>
       <div className="spread">
         <div className="muted">셔틀마트에 온 걸 환영해! 🪙 코인은 경기를 뛰면 모여.</div>
-        <div className="ac-chip">🪙 {coins.toLocaleString()}</div>
+        <div className="ac-chip">🪙 {canSeeUltra ? '∞' : coins.toLocaleString()}</div>
       </div>
       <div className="tabs" style={{ marginTop: 10 }}>
         {CATS.map(([k, l]) => (
@@ -224,7 +224,8 @@ function ShopPanel() {
       </div>
       {canSeeUltra && (
         <div className="ultra-note">
-          👑 관리자 전용 — <b>초레어템</b>이 진열대에 올라와 있어. 분야마다 딱 하나, {ULTRA_PRICE.toLocaleString()}코인.
+          👑 관리자 모드 — <b>초레어템</b>({ULTRA_PRICE.toLocaleString()}코인)을 포함해 모든 물건이 열려 있고,
+          코인은 아무리 써도 줄지 않아.
         </div>
       )}
       <div className="opt-grid">
@@ -281,6 +282,7 @@ function MePanel() {
   const achievements = useGame((s) => s.achievements)
   const bestLift = useGame((s) => s.bestLift)
   const coins = useGame((s) => s.coins)
+  const godMode = useGame(isGod)
   const setPanel = useGame((s) => s.setPanel)
   const need = expToNext(me.lv)
 
@@ -312,7 +314,7 @@ function MePanel() {
               <span>경기</span><b>{career.games}판</b>
               <span>도감</span><b>{career.partners}명</b>
               <span>배지</span><b>{gotCount}/{BADGES.length}</b>
-              <span>코인</span><b>{coins.toLocaleString()}</b>
+              <span>코인</span><b>{godMode ? '∞' : coins.toLocaleString()}</b>
             </div>
             <div className="expbar" style={{ width: '100%', marginTop: 6 }}>
               <i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} />
@@ -855,7 +857,9 @@ function RankPanel() {
 function GachaPanel() {
   const pull = useGame((s) => s.pullGacha)
   const coins = useGame((s) => s.coins)
+  const god = useGame(isGod)
   const pulls = useGame((s) => s.gachaPulls)
+  const broke = !god && coins < 300
   const [rolling, setRolling] = useState(false)
   const [result, setResult] = useState(null)
 
@@ -880,8 +884,8 @@ function GachaPanel() {
       <div className="muted" style={{ marginTop: 6 }}>
         1회 300🪙 · 머리·옷·라켓·마당 장식이 랜덤으로 나와!<br />지금까지 {pulls}번 뽑았어.
       </div>
-      <button className="ac-btn yellow wide" style={{ marginTop: 16 }} disabled={rolling || coins < 300} onClick={go}>
-        {coins < 300 ? '코인이 부족해 🪙' : '🎁 300🪙로 뽑기'}
+      <button className="ac-btn yellow wide" style={{ marginTop: 16 }} disabled={rolling || broke} onClick={go}>
+        {broke ? '코인이 부족해 🪙' : '🎁 300🪙로 뽑기'}
       </button>
     </div>
   )
