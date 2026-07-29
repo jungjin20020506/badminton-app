@@ -517,10 +517,99 @@ function playerLook() {
   return s.players.me
 }
 
-export function render(ctx, viewW, viewH) {
+// -----------------------------------------------------------------------------------
+// HD-2D 후처리
+//
+// 옥토패스 트래블러가 「2D인데 3D처럼」 보이는 비결은 스프라이트가 아니라 후처리다.
+//   · 틸트시프트 — 위아래를 흐리게 해서 미니어처 디오라마처럼 보이게
+//   · 블룸 — 밝은 부분이 번져 공기감을 만든다
+// 도트는 가운데 초점 구간에서 또렷하게 남는다.
+// -----------------------------------------------------------------------------------
+const post = { scene: null, sceneG: null, small: null, smallG: null, w: 0, h: 0 }
+
+function ensurePost(w, h) {
+  if (post.w === w && post.h === h) return
+  post.w = w
+  post.h = h
+  post.scene = document.createElement('canvas')
+  post.scene.width = w
+  post.scene.height = h
+  post.sceneG = post.scene.getContext('2d')
+  post.sceneG.imageSmoothingEnabled = false
+  post.small = document.createElement('canvas')
+  post.small.width = Math.max(1, Math.round(w / 4))
+  post.small.height = Math.max(1, Math.round(h / 4))
+  post.smallG = post.small.getContext('2d')
+}
+
+function applyHd2d(out, w, h) {
+  const src = post.scene
+  // 사양이 낮은 기기에서는 후처리를 건너뛴다 (설정 → 그래픽 '낮음')
+  if (useGame.getState().graphics === 'low') {
+    out.imageSmoothingEnabled = false
+    out.drawImage(src, 0, 0)
+    return
+  }
+  // ① 원본 (초점 구간은 도트 그대로)
+  out.imageSmoothingEnabled = false
+  out.drawImage(src, 0, 0)
+
+  // ② 틸트시프트 — 위/아래를 흐리게 덮는다
+  const band = Math.round(h * 0.20)
+  if (band > 8 && out.filter !== undefined) {
+    out.save()
+    out.imageSmoothingEnabled = true
+    // 위쪽
+    out.filter = 'blur(1.7px)'
+    out.beginPath(); out.rect(0, 0, w, band); out.clip()
+    out.drawImage(src, 0, 0)
+    out.restore()
+    out.save()
+    out.imageSmoothingEnabled = true
+    out.filter = 'blur(0.8px)'
+    out.beginPath(); out.rect(0, band, w, Math.round(band * 0.4)); out.clip()
+    out.drawImage(src, 0, 0)
+    out.restore()
+    // 아래쪽
+    out.save()
+    out.imageSmoothingEnabled = true
+    out.filter = 'blur(2.0px)'
+    out.beginPath(); out.rect(0, h - band, w, band); out.clip()
+    out.drawImage(src, 0, 0)
+    out.restore()
+    out.save()
+    out.imageSmoothingEnabled = true
+    out.filter = 'blur(0.9px)'
+    out.beginPath(); out.rect(0, h - band - Math.round(band * 0.4), w, Math.round(band * 0.4)); out.clip()
+    out.drawImage(src, 0, 0)
+    out.restore()
+  }
+
+  // ③ 블룸 — 축소 → 흐리게 → 밝은 부분만 덧씌우기
+  if (out.filter !== undefined) {
+    const g = post.smallG
+    g.save()
+    g.filter = 'brightness(1.9) contrast(2.6) blur(2px)'
+    g.clearRect(0, 0, post.small.width, post.small.height)
+    g.drawImage(src, 0, 0, post.small.width, post.small.height)
+    g.restore()
+    out.save()
+    out.imageSmoothingEnabled = true
+    out.globalCompositeOperation = 'lighter'
+    out.globalAlpha = 0.12
+    out.drawImage(post.small, 0, 0, w, h)
+    out.restore()
+  }
+  out.imageSmoothingEnabled = false
+}
+
+export function render(outCtx, viewW, viewH) {
   const m = world.map
   if (!m) return
   const t = world.theme
+
+  ensurePost(viewW, viewH)
+  const ctx = post.sceneG || outCtx
 
   ctx.imageSmoothingEnabled = false
   // 지도 바깥 여백 — 바깥이면 하늘색, 실내면 어둡게 깔아 액자처럼 보이게
@@ -647,16 +736,72 @@ export function render(ctx, viewW, viewH) {
     }
   }
 
+  // ── 떠다니는 입자 (꽃잎 · 먼지 · 반딧불이) ──
+  drawParticles(ctx, viewW, viewH, m.outdoor)
+
   // ── 비네팅 — 가장자리를 살짝 눌러 화면 가운데로 시선을 모은다 ──
   ctx.drawImage(vignette(viewW, viewH), 0, 0)
 
-  // ── 암전 ──
+  // ── HD-2D 후처리 → 실제 화면으로 ──
+  if (ctx !== outCtx) applyHd2d(outCtx, viewW, viewH)
+
+  // ── 암전 (후처리 위에) ──
   if (world.fade > 0) {
-    ctx.globalAlpha = world.fade
-    ctx.fillStyle = '#000000'
-    ctx.fillRect(0, 0, viewW, viewH)
-    ctx.globalAlpha = 1
+    outCtx.globalAlpha = world.fade
+    outCtx.fillStyle = '#000000'
+    outCtx.fillRect(0, 0, viewW, viewH)
+    outCtx.globalAlpha = 1
   }
+}
+
+// -----------------------------------------------------------------------------------
+// 떠다니는 입자 — 화면에 공기를 넣는다
+// 낮에는 꽃잎과 먼지가 흐르고, 밤에는 반딧불이가 깜빡인다.
+// -----------------------------------------------------------------------------------
+const parts = []
+const PETAL_COLORS = ['#ffb7d5', '#ffd9e8', '#fff0a8', '#ffffff']
+
+function drawParticles(g, w, h, outdoor) {
+  const hour = useGame.getState().timeOfDay
+  const night = hour < 5.6 || hour > 19.4
+  const want = outdoor ? (night ? 14 : 22) : 10
+
+  while (parts.length < want) {
+    parts.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: 6 + Math.random() * 16,
+      vy: 4 + Math.random() * 10,
+      s: 1 + Math.floor(Math.random() * 2),
+      sway: Math.random() * Math.PI * 2,
+      c: PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)],
+    })
+  }
+  while (parts.length > want) parts.pop()
+
+  const dt = 1 / 60
+  parts.forEach((pt) => {
+    pt.sway += dt * 2
+    pt.x += (pt.vx + Math.sin(pt.sway) * 8) * dt
+    pt.y += pt.vy * dt
+    if (pt.x > w + 4) { pt.x = -4; pt.y = Math.random() * h }
+    if (pt.y > h + 4) { pt.y = -4; pt.x = Math.random() * w }
+
+    if (night && outdoor) {
+      // 반딧불이
+      const blink = 0.4 + 0.6 * Math.abs(Math.sin(pt.sway * 1.4))
+      g.globalAlpha = blink
+      g.fillStyle = '#d8ff8a'
+      g.fillRect(pt.x | 0, pt.y | 0, 2, 2)
+      g.globalAlpha = blink * 0.3
+      g.fillRect((pt.x | 0) - 2, (pt.y | 0) - 2, 6, 6)
+    } else {
+      g.globalAlpha = outdoor ? 0.75 : 0.35
+      g.fillStyle = outdoor ? pt.c : '#fff6d8'
+      g.fillRect(pt.x | 0, pt.y | 0, pt.s + 1, pt.s)
+    }
+  })
+  g.globalAlpha = 1
 }
 
 // 비네팅은 화면 크기가 바뀔 때만 새로 굽는다
