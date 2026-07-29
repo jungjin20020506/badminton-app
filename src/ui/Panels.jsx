@@ -12,7 +12,7 @@ import {
 import { MAX_COURTS } from '../game/layout.js'
 import { clockText } from './Hud.jsx'
 import { villageLevel, VILLAGE_LEVELS, TROPHIES, pickDailyPartner, pickRival, dexList, todayBoard } from '../game/social.js'
-import { drawBig } from '../pixel/sprites.js'
+import { drawBig, CW, CH } from '../pixel/sprites.js'
 import { cockstar } from '../net/cockstar.js'
 import MatchBoard from './MatchBoard.jsx'
 import RoomList from './RoomList.jsx'
@@ -239,7 +239,7 @@ function MiniPortrait({ look, gender, size = 3 }) {
     g.clearRect(0, 0, cv.width, cv.height)
     drawBig(g, look, gender, 0, 0, 0, 0, size)
   }, [look, gender, size])
-  return <canvas ref={ref} width={16 * size} height={24 * size} className="tc-portrait" />
+  return <canvas ref={ref} width={CW * size} height={CH * size} className="tc-portrait" />
 }
 
 function MePanel() {

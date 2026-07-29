@@ -1,29 +1,60 @@
 // ===================================================================================
-// 셔틀몬스터 — 픽셀 타일 & 오브젝트 그리기
+// 셔틀몬스터 — 픽셀 타일 & 오브젝트 (32px 고해상도)
 //
-// 외부 이미지 파일을 하나도 쓰지 않는다. 잔디 한 포기, 지붕 기와 한 장까지
-// 전부 이 파일 안에서 fillRect 로 찍어 만든 뒤 오프스크린 캔버스에 구워 둔다.
-//  - 바닥 타일(16x16) : 맵을 열 때 한 번에 큰 캔버스로 구워 두고 잘라 쓴다
-//  - 오브젝트(나무/건물/진열대…) : 종류·테마별로 한 번만 구워 두고 drawImage
-// 덕분에 맵이 커져도 매 프레임 비용은 drawImage 몇 번이면 끝난다.
+// 옛날 게임보이 도트가 아니라, 스타듀밸리·최신 2D 닌텐도 게임처럼
+// 「2D인데 입체로 보이는」 그림을 목표로 한다. 그러기 위해 세 가지를 지킨다.
+//
+//  ① 재질마다 명암 5단계 — 하이라이트 / 밝은면 / 기본 / 그늘 / 깊은그늘
+//  ② 접지 그림자(AO) — 물건이 바닥에 닿는 자리는 반드시 어둡게
+//  ③ 입체 투시 — 건물은 지붕 경사 + 정면 벽 + 측면을 함께 보여 준다
+//
+// 외부 이미지는 여전히 한 장도 쓰지 않는다. 전부 fillRect 로 찍어 굽는다.
 // ===================================================================================
 
-export const TILE = 16
+export const TILE = 32
 
 // -----------------------------------------------------------------------------------
-// 픽셀 유틸
+// 픽셀 · 색 유틸
 // -----------------------------------------------------------------------------------
 const P = (g, x, y, w, h, c) => {
   g.fillStyle = c
-  g.fillRect(x | 0, y | 0, w | 0, h | 0)
+  g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h))
 }
 const dot = (g, x, y, c) => P(g, x, y, 1, 1, c)
 
-/** 좌표를 씨앗으로 항상 같은 무늬가 나오게 (맵을 다시 열어도 잔디가 안 흔들린다) */
+/** 좌표를 씨앗으로 항상 같은 무늬가 나오게 */
 export function hash2(x, y, salt = 0) {
   let h = (x * 374761393 + y * 668265263 + salt * 2246822519) | 0
   h = Math.imul(h ^ (h >>> 13), 1274126177)
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
+
+export function shade(hex, amt) {
+  if (!hex || hex[0] !== '#') return hex
+  const n = parseInt(hex.slice(1), 16)
+  const cl = (v) => Math.max(0, Math.min(255, Math.round(v)))
+  const r = cl(((n >> 16) & 255) + amt)
+  const g = cl(((n >> 8) & 255) + amt)
+  const b = cl((n & 255) + amt)
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+}
+
+/** 색 하나 → 명암 5단계. 밝은 쪽은 노랗게, 어두운 쪽은 푸르게 기울여 공기감을 준다 */
+export function ramp(hex) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const mk = (dr, dg, db) => {
+    const cl = (v) => Math.max(0, Math.min(255, Math.round(v)))
+    return `#${((cl(r + dr) << 16) | (cl(g + dg) << 8) | cl(b + db)).toString(16).padStart(6, '0')}`
+  }
+  return {
+    hi2: mk(46, 44, 26),
+    hi: mk(24, 23, 12),
+    base: hex,
+    lo: mk(-24, -22, -12),
+    lo2: mk(-50, -46, -26),
+    deep: mk(-78, -72, -46),
+  }
 }
 
 function makeCanvas(w, h) {
@@ -35,210 +66,335 @@ function makeCanvas(w, h) {
   return { c, g }
 }
 
-/** #rrggbb 를 조금 어둡게/밝게 */
-export function shade(hex, amt) {
-  const n = parseInt(hex.slice(1), 16)
-  const cl = (v) => Math.max(0, Math.min(255, Math.round(v)))
-  const r = cl(((n >> 16) & 255) + amt)
-  const gg = cl(((n >> 8) & 255) + amt)
-  const b = cl((n & 255) + amt)
-  return `#${((r << 16) | (gg << 8) | b).toString(16).padStart(6, '0')}`
+/** 접지 그림자 — 물건이 바닥에 닿는 자리 (부드럽게 퍼지는 타원) */
+function contactShadow(g, cx, cy, rx, ry, alpha = 0.3) {
+  for (let i = 3; i >= 1; i--) {
+    g.fillStyle = `rgba(16,20,34,${(alpha / 3) * i * 0.55})`
+    g.beginPath()
+    g.ellipse(cx, cy, rx * (i / 3), ry * (i / 3), 0, 0, Math.PI * 2)
+    g.fill()
+  }
+}
+
+/** 덩어리 하나 (나뭇잎 뭉치 등) */
+function blob(g, cx, cy, r, c) {
+  for (let y = -r; y <= r; y++) {
+    const w = Math.round(Math.sqrt(Math.max(0, r * r - y * y)))
+    if (w > 0) P(g, cx - w, cy + y, w * 2, 1, c)
+  }
 }
 
 // -----------------------------------------------------------------------------------
-// 바닥 타일 — 16x16
-// key 는 맵 문자열에서 쓰는 글자다.
+// 바닥 타일 — 32x32
 // -----------------------------------------------------------------------------------
 
-/** 잔디 — 밑색 3종을 섞고 풀잎을 두세 개 심는다 */
+/** 잔디 — 밑색 위에 풀잎을 심고, 군데군데 마른 풀과 잔돌을 섞는다 */
 function tGrass(g, t, x, y) {
   const p = t.ground
-  const base = p.grass[Math.floor(hash2(x, y, 1) * p.grass.length)]
-  P(g, 0, 0, 16, 16, base)
-  for (let i = 0; i < 5; i++) {
-    const r = hash2(x, y, 10 + i)
-    const bx = Math.floor(r * 14) + 1
-    const by = Math.floor(hash2(x, y, 40 + i) * 14) + 1
-    const c = r > 0.55 ? p.grassDot : p.grassDark
-    P(g, bx, by, 1, 2, c)
-    if (r > 0.8) dot(g, bx + 1, by + 1, c)
+  const r0 = ramp(p.grass[Math.floor(hash2(x, y, 1) * p.grass.length)])
+  P(g, 0, 0, TILE, TILE, r0.base)
+
+  // 아주 옅은 명암 얼룩 — 평평해 보이지 않을 만큼만
+  for (let i = 0; i < 2; i++) {
+    const bx = Math.floor(hash2(x, y, 20 + i) * 22)
+    const by = Math.floor(hash2(x, y, 30 + i) * 24)
+    const w = 8 + Math.floor(hash2(x, y, 40 + i) * 10)
+    P(g, bx, by, w, 3, i % 2 ? r0.hi : r0.lo)
+  }
+  // 풀잎 — 촘촘하고 가늘게
+  for (let i = 0; i < 30; i++) {
+    const r = hash2(x, y, 60 + i)
+    const bx = Math.floor(r * 31)
+    const by = Math.floor(hash2(x, y, 90 + i) * 29)
+    const h = 2 + Math.floor(hash2(x, y, 120 + i) * 3)
+    const c = r > 0.78 ? r0.hi2 : r > 0.52 ? r0.hi : r0.lo
+    P(g, bx, by, 1, h, c)
+  }
+  // 잔돌 · 마른 잎
+  if (hash2(x, y, 200) > 0.82) {
+    const bx = 6 + Math.floor(hash2(x, y, 201) * 18)
+    const by = 6 + Math.floor(hash2(x, y, 202) * 18)
+    P(g, bx, by, 3, 2, '#9c9482')
+    P(g, bx, by, 2, 1, '#c0b8a4')
+    P(g, bx, by + 2, 3, 1, 'rgba(16,20,34,.22)')
   }
 }
 
-/** 꽃밭 — 잔디 위에 네잎 꽃 한 송이 */
+/** 꽃밭 — 잔디 위에 작은 들꽃 몇 송이 */
 function tFlower(g, t, x, y) {
   tGrass(g, t, x, y)
-  const petals = ['#ff7ba8', '#ffe066', '#ffffff', '#a88cff']
-  const c = petals[Math.floor(hash2(x, y, 3) * petals.length)]
-  const cx = 4 + Math.floor(hash2(x, y, 4) * 7)
-  const cy = 4 + Math.floor(hash2(x, y, 5) * 7)
-  P(g, cx, cy - 2, 2, 2, c)
-  P(g, cx, cy + 2, 2, 2, c)
-  P(g, cx - 2, cy, 2, 2, c)
-  P(g, cx + 2, cy, 2, 2, c)
-  P(g, cx, cy, 2, 2, '#ffd84a')
+  const sets = [
+    ['#ff7ba8', '#ffb3cd', '#ffd84a'],
+    ['#ffe066', '#fff2ae', '#e8a13a'],
+    ['#ffffff', '#e8f0ff', '#ffd84a'],
+    ['#a88cff', '#cdbcff', '#ffe9a8'],
+  ]
+  const n = 2 + Math.floor(hash2(x, y, 3) * 2)
+  for (let k = 0; k < n; k++) {
+    const [c1, c2, cc] = sets[Math.floor(hash2(x, y, 4 + k) * sets.length)]
+    const cx = 6 + Math.floor(hash2(x, y, 10 + k) * 20)
+    const cy = 6 + Math.floor(hash2(x, y, 20 + k) * 20)
+    P(g, cx, cy - 3, 3, 3, c1)
+    P(g, cx, cy + 3, 3, 3, c1)
+    P(g, cx - 3, cy, 3, 3, c1)
+    P(g, cx + 3, cy, 3, 3, c1)
+    P(g, cx, cy - 3, 2, 1, c2)
+    P(g, cx - 3, cy, 1, 2, c2)
+    P(g, cx, cy, 3, 3, cc)
+    P(g, cx + 1, cy + 4, 1, 3, '#3f8a46')
+  }
 }
 
-/** 풀숲 — 포켓몬의 그 풀숲. 밟으면 사각사각 소리가 날 것 같은 뭉치 */
+/** 풀숲 — 밟으면 사각사각할 것 같은 무성한 수풀 */
 function tTall(g, t, x, y) {
   const p = t.ground
-  P(g, 0, 0, 16, 16, p.grassDark)
-  for (let i = 0; i < 3; i++) {
-    const bx = i * 5 + 1
-    const off = hash2(x, y, 60 + i) > 0.5 ? 0 : 1
-    P(g, bx, 6 + off, 4, 8, p.grass[0])
-    P(g, bx + 1, 3 + off, 2, 4, p.grass[2])
-    P(g, bx, 6 + off, 1, 6, p.grassDot)
-    P(g, bx + 3, 8 + off, 1, 5, shade(p.grassDark, -14))
+  const r0 = ramp(p.grassDark)
+  P(g, 0, 0, TILE, TILE, r0.lo)
+  const g1 = ramp(p.grass[0])
+  for (let i = 0; i < 5; i++) {
+    const bx = i * 6 + 1
+    const off = Math.floor(hash2(x, y, 60 + i) * 3)
+    // 잎 다발
+    P(g, bx, 12 + off, 5, 18, g1.lo)
+    P(g, bx, 12 + off, 3, 18, g1.base)
+    P(g, bx + 1, 5 + off, 3, 9, g1.hi)
+    P(g, bx + 1, 5 + off, 1, 7, g1.hi2)
+    P(g, bx + 4, 15 + off, 1, 12, r0.lo2)
   }
-  P(g, 0, 14, 16, 2, shade(p.grassDark, -18))
+  // 아래쪽 그늘
+  P(g, 0, 27, TILE, 5, 'rgba(16,20,34,.26)')
+  P(g, 0, 30, TILE, 2, 'rgba(16,20,34,.3)')
 }
 
-/** 흙길 */
+/** 흙길 — 따뜻한 모래흙. 자갈과 발자국 결이 보인다 */
 function tDirt(g, t, x, y) {
   const p = t.ground
-  P(g, 0, 0, 16, 16, p.dirt[Math.floor(hash2(x, y, 7) * p.dirt.length)])
-  for (let i = 0; i < 6; i++) {
-    const bx = Math.floor(hash2(x, y, 70 + i) * 15)
-    const by = Math.floor(hash2(x, y, 90 + i) * 15)
-    dot(g, bx, by, hash2(x, y, 110 + i) > 0.5 ? p.dirtDot : shade(p.dirt[0], 14))
+  const r0 = ramp(p.dirt[Math.floor(hash2(x, y, 7) * p.dirt.length)])
+  P(g, 0, 0, TILE, TILE, r0.base)
+  // 결
+  for (let i = 0; i < 5; i++) {
+    const bx = Math.floor(hash2(x, y, 70 + i) * 24)
+    const by = Math.floor(hash2(x, y, 80 + i) * 30)
+    P(g, bx, by, 5 + Math.floor(hash2(x, y, 85 + i) * 7), 2, i % 2 ? r0.hi : r0.lo)
+  }
+  // 자갈
+  for (let i = 0; i < 7; i++) {
+    const bx = Math.floor(hash2(x, y, 100 + i) * 30)
+    const by = Math.floor(hash2(x, y, 110 + i) * 30)
+    const s = hash2(x, y, 120 + i)
+    if (s > 0.55) {
+      P(g, bx, by, 2, 2, r0.lo2)
+      dot(g, bx, by, r0.hi2)
+    } else {
+      dot(g, bx, by, r0.lo)
+    }
   }
 }
 
-/** 보도블록 — 8x8 네 장 */
+/** 보도블록 — 벽돌 사이 홈에 그늘이 들어가 입체로 보인다 */
 function tBrick(g, t, x, y) {
   const p = t.ground
-  P(g, 0, 0, 16, 16, p.brickLine)
+  const grout = shade(p.brickLine, -14)
+  P(g, 0, 0, TILE, TILE, grout)
   for (let qy = 0; qy < 2; qy++) {
     for (let qx = 0; qx < 2; qx++) {
       const c = p.brick[Math.floor(hash2(x * 2 + qx, y * 2 + qy, 9) * p.brick.length)]
-      P(g, qx * 8, qy * 8, 7, 7, c)
-      P(g, qx * 8, qy * 8, 7, 1, shade(c, 10))
+      const r0 = ramp(c)
+      const ox = qx * 16
+      const oy = qy * 16
+      P(g, ox + 1, oy + 1, 14, 14, r0.base)
+      if (hash2(x * 2 + qx, y * 2 + qy, 300) > 0.7) P(g, ox + 3, oy + 4, 8, 6, r0.lo)
+      P(g, ox + 1, oy + 1, 14, 2, r0.hi)   // 윗면 빛
+      P(g, ox + 1, oy + 1, 2, 14, r0.hi)
+      P(g, ox + 1, oy + 13, 14, 2, r0.lo)  // 아랫면 그늘
+      P(g, ox + 13, oy + 1, 2, 14, r0.lo)
+      // 돌결
+      for (let i = 0; i < 3; i++) {
+        const bx = ox + 3 + Math.floor(hash2(x * 4 + qx, y * 4 + qy, 130 + i) * 10)
+        const by = oy + 3 + Math.floor(hash2(x * 4 + qx, y * 4 + qy, 140 + i) * 10)
+        dot(g, bx, by, r0.lo2)
+      }
     }
   }
+  // 홈의 깊은 그늘
+  P(g, 0, 0, TILE, 1, 'rgba(16,20,34,.2)')
+  P(g, 0, 16, TILE, 1, 'rgba(16,20,34,.2)')
+  P(g, 0, 0, 1, TILE, 'rgba(16,20,34,.2)')
+  P(g, 16, 0, 1, TILE, 'rgba(16,20,34,.2)')
 }
 
 /** 모래 */
 function tSand(g, t, x, y) {
   const p = t.ground
-  P(g, 0, 0, 16, 16, p.sand[Math.floor(hash2(x, y, 11) * p.sand.length)])
-  for (let i = 0; i < 7; i++) {
-    dot(g, Math.floor(hash2(x, y, 130 + i) * 16), Math.floor(hash2(x, y, 150 + i) * 16), shade(p.sand[1], -10))
+  const r0 = ramp(p.sand[Math.floor(hash2(x, y, 11) * p.sand.length)])
+  P(g, 0, 0, TILE, TILE, r0.base)
+  for (let i = 0; i < 4; i++) {
+    P(g, Math.floor(hash2(x, y, 130 + i) * 24), Math.floor(hash2(x, y, 140 + i) * 28), 8, 2, r0.hi)
+  }
+  for (let i = 0; i < 14; i++) {
+    dot(g, Math.floor(hash2(x, y, 150 + i) * 32), Math.floor(hash2(x, y, 170 + i) * 32), i % 3 ? r0.lo : r0.hi2)
   }
 }
 
-/** 물 — frame 0/1 로 물결이 흐른다 */
+/** 물 — 깊이감 있는 파랑에 물결과 반짝임 */
 function tWater(g, t, x, y, frame) {
   const p = t.ground
-  P(g, 0, 0, 16, 16, p.water[0])
-  P(g, 0, 0, 16, 8, p.water[1])
-  const s = frame ? 4 : 0
-  for (let i = 0; i < 2; i++) {
-    const wy = 3 + i * 7 + (hash2(x, y, 170 + i) > 0.5 ? 1 : 0)
-    const wx = ((Math.floor(hash2(x, y, 180 + i) * 10) + s) % 12) + 1
-    P(g, wx, wy, 4, 1, p.waterFoam)
-    P(g, wx + 5, wy + 2, 2, 1, p.waterFoam)
+  const deep = ramp(p.water[0])
+  const shallow = ramp(p.water[1])
+  P(g, 0, 0, TILE, TILE, deep.base)
+  P(g, 0, 0, TILE, 18, shallow.base)
+  P(g, 0, 14, TILE, 5, shallow.lo)
+  // 물결
+  const s = frame ? 6 : 0
+  for (let i = 0; i < 4; i++) {
+    const wy = 3 + i * 8 + Math.floor(hash2(x, y, 170 + i) * 3)
+    const wx = ((Math.floor(hash2(x, y, 180 + i) * 20) + s) % 26) + 1
+    P(g, wx, wy, 8, 2, p.waterFoam)
+    P(g, wx + 2, wy + 1, 5, 1, '#ffffff')
+    P(g, wx + 10, wy + 3, 4, 1, p.waterFoam)
   }
-  P(g, 0, 15, 16, 1, shade(p.water[0], -18))
+  // 반짝임
+  if (hash2(x, y, 190) > 0.6) {
+    const bx = 4 + Math.floor(hash2(x, y, 191) * 22)
+    const by = 4 + Math.floor(hash2(x, y, 192) * 22)
+    P(g, bx, by + (frame ? 1 : 0), 3, 1, '#ffffff')
+    P(g, bx + 1, by - 1 + (frame ? 1 : 0), 1, 3, '#ffffff')
+  }
+  P(g, 0, TILE - 2, TILE, 2, deep.lo2)
 }
 
-/** 실내 마루 — 가로 널판 */
+/** 실내 마루 — 널판에 나뭇결과 옹이, 이음새 그늘 */
 function tWood(g, t, x, y) {
   const p = t.ground
   const c = p.floor[(y + (x >> 2)) % p.floor.length]
-  P(g, 0, 0, 16, 16, c)
-  P(g, 0, 0, 16, 1, shade(c, 12))
-  P(g, 0, 7, 16, 1, p.floorLine)
-  P(g, 0, 15, 16, 1, p.floorLine)
-  const seam = (x * 5 + y * 3) % 16
-  P(g, seam, 0, 1, 7, p.floorLine)
-  P(g, (seam + 9) % 16, 8, 1, 7, p.floorLine)
-  for (let i = 0; i < 3; i++) {
-    P(g, Math.floor(hash2(x, y, 190 + i) * 12) + 2, i * 5 + 2, 3, 1, shade(c, -8))
-  }
-}
-
-/** 실내 타일 바닥 — 체크 */
-function tTileFloor(g, t, x, y) {
-  const p = t.ground
-  const a = p.floor[0]
-  const b = p.floor[1]
-  for (let qy = 0; qy < 2; qy++) {
-    for (let qx = 0; qx < 2; qx++) {
-      P(g, qx * 8, qy * 8, 8, 8, (x + y + qx + qy) % 2 ? a : b)
+  const r0 = ramp(c)
+  P(g, 0, 0, TILE, TILE, r0.base)
+  // 널판 두 줄
+  for (let k = 0; k < 2; k++) {
+    const oy = k * 16
+    P(g, 0, oy, TILE, 1, r0.hi)
+    P(g, 0, oy + 14, TILE, 2, r0.lo2)
+    P(g, 0, oy + 13, TILE, 1, r0.lo)
+    // 나뭇결
+    for (let i = 0; i < 4; i++) {
+      const gy = oy + 2 + Math.floor(hash2(x, y * 2 + k, 190 + i) * 10)
+      const gx = Math.floor(hash2(x, y * 2 + k, 200 + i) * 20)
+      P(g, gx, gy, 8 + Math.floor(hash2(x, y, 210 + i) * 10), 1, r0.lo)
+    }
+    // 옹이
+    if (hash2(x, y * 2 + k, 220) > 0.78) {
+      const kx = 6 + Math.floor(hash2(x, y * 2 + k, 221) * 18)
+      P(g, kx, oy + 5, 4, 3, r0.lo2)
+      P(g, kx + 1, oy + 6, 2, 1, ramp(c).deep)
     }
   }
-  P(g, 0, 0, 16, 1, p.floorLine)
-  P(g, 0, 0, 1, 16, p.floorLine)
-  P(g, 0, 8, 16, 1, p.floorLine)
-  P(g, 8, 0, 1, 16, p.floorLine)
+  // 세로 이음새
+  const seam = (x * 7 + y * 5) % 30
+  P(g, seam, 0, 1, 15, r0.lo2)
+  P(g, seam + 1, 0, 1, 15, r0.hi)
+  P(g, (seam + 17) % 30, 16, 1, 15, r0.lo2)
 }
 
-/** 카펫 — 짜임 무늬가 들어간 융단 */
+/** 실내 타일 바닥 — 광택 있는 정사각 타일 */
+function tTileFloor(g, t, x, y) {
+  const p = t.ground
+  const a = ramp(p.floor[0])
+  const b = ramp(p.floor[1])
+  for (let qy = 0; qy < 2; qy++) {
+    for (let qx = 0; qx < 2; qx++) {
+      const r0 = (x + y + qx + qy) % 2 ? a : b
+      const ox = qx * 16
+      const oy = qy * 16
+      P(g, ox, oy, 16, 16, r0.base)
+      P(g, ox, oy, 16, 1, r0.hi2)
+      P(g, ox, oy, 1, 16, r0.hi)
+      P(g, ox, oy + 15, 16, 1, r0.lo2)
+      P(g, ox + 15, oy, 1, 16, r0.lo)
+      // 광택
+      P(g, ox + 2, oy + 2, 5, 1, r0.hi2)
+      P(g, ox + 2, oy + 3, 3, 1, r0.hi2)
+    }
+  }
+}
+
+/** 카펫 — 짜임과 술이 보이는 융단 */
 function tCarpet(g, t, x, y) {
-  const a = t.ground.accent
-  const hi = shade(a, 26)
-  const lo = shade(a, -26)
-  P(g, 0, 0, 16, 16, a)
-  // 씨실·날실
-  for (let i = 0; i < 16; i += 4) {
-    P(g, i, 0, 1, 16, (x + i) % 8 ? hi : lo)
-    P(g, 0, i, 16, 1, (y + i) % 8 ? lo : hi)
+  const r0 = ramp(t.ground.accent)
+  P(g, 0, 0, TILE, TILE, r0.base)
+  for (let i = 0; i < TILE; i += 4) {
+    P(g, i, 0, 2, TILE, (x * 8 + i) % 8 ? r0.hi : r0.lo)
+    P(g, 0, i, TILE, 1, (y * 8 + i) % 8 ? r0.lo : r0.hi)
   }
-  // 가운데 마름모
-  for (let i = 0; i < 4; i++) {
-    P(g, 8 - i, 4 + i, i * 2 + 1, 1, hi)
-    P(g, 8 - i, 11 - i, i * 2 + 1, 1, hi)
+  // 가운데 마름모 무늬
+  for (let i = 0; i < 8; i++) {
+    P(g, 16 - i, 8 + i, i * 2, 1, r0.hi2)
+    P(g, 16 - i, 23 - i, i * 2, 1, r0.hi2)
   }
+  P(g, 12, 14, 8, 4, r0.lo2)
 }
 
-/** 실내 벽 — 아랫단(굽도리 있음) */
-function tWallBot(g, t) {
-  const p = t.ground
-  P(g, 0, 0, 16, 16, p.wall)
-  P(g, 0, 0, 16, 1, shade(p.wall, -10))
-  P(g, 0, 11, 16, 5, p.wallLo)
-  P(g, 0, 11, 16, 1, shade(p.wallLo, 20))
-}
-
-/** 실내 벽 — 윗단(벽지 줄무늬) */
-function tWallTop(g, t, x, y) {
-  const p = t.ground
-  P(g, 0, 0, 16, 16, p.wall)
-  P(g, 0, 6, 16, 2, shade(p.wall, -12))
-  for (let i = 0; i < 16; i += 4) P(g, i + ((x + y) % 2 ? 1 : 3), 10, 1, 4, shade(p.wall, -8))
-  P(g, 0, 15, 16, 1, p.wallLo)
-}
-
-/** 문 앞 매트 — 여기를 밟으면 다른 지도로 넘어간다 (발판처럼 차분하게) */
-function tMat(g, t) {
-  const a = t.ground.accent
-  P(g, 0, 0, 16, 16, '#6b6257')
-  P(g, 0, 2, 16, 12, '#4c453d')
-  P(g, 1, 3, 14, 10, '#5a534a')
-  // 발판 결
-  for (let i = 2; i < 15; i += 3) P(g, i, 4, 1, 8, '#443e37')
-  // 살짝 들어간 테두리에 지역 색을 한 줄
-  P(g, 1, 2, 14, 1, shade(a, 10))
-  P(g, 1, 13, 14, 1, shade(a, -30))
-}
-
-/** 체육관 마루 */
+/** 체육관 마루 — 반들반들한 우드 코트 */
 function tGymFloor(g, t, x, y) {
   const p = t.ground
   const c = p.floor[(y >> 1) % 2]
-  P(g, 0, 0, 16, 16, c)
-  P(g, 0, 15, 16, 1, p.floorLine)
-  P(g, ((x * 7) % 16), 0, 1, 16, shade(c, -6))
-  P(g, 0, 3, 10, 1, shade(c, 8))
+  const r0 = ramp(c)
+  P(g, 0, 0, TILE, TILE, r0.base)
+  P(g, 0, 0, TILE, 2, r0.hi)
+  P(g, 0, TILE - 2, TILE, 2, r0.lo2)
+  for (let i = 0; i < 5; i++) {
+    P(g, Math.floor(hash2(x, y, 230 + i) * 20), 3 + i * 6, 14, 1, r0.lo)
+  }
+  P(g, ((x * 11) % 30), 0, 1, TILE, r0.lo2)
+  // 조명 반사
+  P(g, 4, 4, 10, 2, r0.hi2)
+  P(g, 4, 6, 5, 1, r0.hi2)
 }
 
-/** 아무것도 없는 칸 (지도 바깥) */
-function tVoid(g, t) {
-  P(g, 0, 0, 16, 16, '#101018')
+/** 실내 벽 — 아랫단 (굽도리 + 벽 그늘) */
+function tWallBot(g, t) {
+  const p = t.ground
+  const r0 = ramp(p.wall)
+  const rl = ramp(p.wallLo)
+  P(g, 0, 0, TILE, TILE, r0.base)
+  P(g, 0, 0, TILE, 3, rl.lo2)     // 위쪽 벽에서 떨어지는 그늘
+  P(g, 0, 3, TILE, 2, 'rgba(16,20,34,.14)')
+  P(g, 0, 20, TILE, 12, rl.base)  // 굽도리
+  P(g, 0, 20, TILE, 2, rl.hi)
+  P(g, 0, 29, TILE, 3, rl.lo2)
+  P(g, 0, 30, TILE, 2, 'rgba(16,20,34,.28)')
 }
 
-// 맵 문자 → 타일 정의
+/** 실내 벽 — 윗단 (벽지 무늬) */
+function tWallTop(g, t, x, y) {
+  const p = t.ground
+  const r0 = ramp(p.wall)
+  P(g, 0, 0, TILE, TILE, r0.base)
+  P(g, 0, 0, TILE, 2, r0.hi)
+  P(g, 0, 12, TILE, 3, r0.lo)
+  P(g, 0, 15, TILE, 1, r0.hi)
+  for (let i = 0; i < TILE; i += 8) {
+    P(g, i + ((x + y) % 2 ? 2 : 6), 20, 2, 8, r0.lo)
+    P(g, i + ((x + y) % 2 ? 2 : 6), 20, 1, 8, r0.hi)
+  }
+  P(g, 0, TILE - 2, TILE, 2, ramp(p.wallLo).lo)
+}
+
+/** 문 앞 매트 */
+function tMat(g, t) {
+  const a = ramp(t.ground.accent)
+  P(g, 0, 0, TILE, TILE, '#5c554b')
+  P(g, 0, 4, TILE, 24, '#403a33')
+  P(g, 1, 5, 30, 22, '#4e473e')
+  for (let i = 3; i < 30; i += 4) P(g, i, 7, 2, 18, '#38322c')
+  P(g, 1, 4, 30, 2, a.lo)
+  P(g, 1, 26, 30, 2, a.deep)
+  P(g, 0, 28, TILE, 4, 'rgba(16,20,34,.2)')
+}
+
+function tVoid(g) {
+  P(g, 0, 0, TILE, TILE, '#0b0f1a')
+}
+
 export const TILES = {
   '.': { draw: tGrass, solid: 0 },
   ',': { draw: tFlower, solid: 0 },
@@ -258,440 +414,684 @@ export const TILES = {
 }
 
 // -----------------------------------------------------------------------------------
-// 오브젝트 — 타일 위에 세워지는 입체물. 아래쪽 기준으로 정렬해서 뒤로 걸어갈 수 있다.
-// w,h 는 타일 개수. solidRows 는 아래에서 몇 줄이 막히는지.
+// 오브젝트
 // -----------------------------------------------------------------------------------
-
-/** 나뭇잎 뭉치 하나 */
-function blob(g, cx, cy, r, c) {
-  for (let y = -r; y <= r; y++) {
-    const w = Math.round(Math.sqrt(Math.max(0, r * r - y * y)))
-    P(g, cx - w, cy + y, w * 2 + 1, 1, c)
-  }
-}
 
 function oTree(g, t, seed) {
   const p = t.ground
-  // 32 x 48
-  P(g, 13, 30, 6, 16, p.trunk)
-  P(g, 13, 30, 2, 16, shade(p.trunk, 16))
-  P(g, 17, 30, 2, 16, p.trunkLo)
-  P(g, 11, 44, 10, 3, p.trunkLo)
-  blob(g, 16, 20, 13, p.leafLo)
-  blob(g, 16, 18, 12, p.leaf)
-  blob(g, 12, 14, 8, p.leafHi)
-  blob(g, 21, 16, 6, p.leafHi)
-  for (let i = 0; i < 14; i++) {
-    const a = hash2(seed, i, 5) * Math.PI * 2
-    const rr = 4 + hash2(seed, i, 6) * 9
-    dot(g, 16 + Math.cos(a) * rr, 18 + Math.sin(a) * rr * 0.9, p.leafLo)
+  const trunk = ramp(p.trunk)
+  const leaf = ramp(p.leaf)
+  const W = 64, H = 96
+  contactShadow(g, 32, 90, 24, 7, 0.34)
+  // 줄기
+  P(g, 26, 58, 12, 34, trunk.base)
+  P(g, 26, 58, 4, 34, trunk.hi)
+  P(g, 34, 58, 4, 34, trunk.lo2)
+  for (let i = 0; i < 6; i++) {
+    P(g, 28 + Math.floor(hash2(seed, i, 1) * 8), 62 + i * 5, 2, 4, trunk.lo)
   }
-  P(g, 4, 44, 24, 3, 'rgba(0,0,0,.16)')
+  // 뿌리
+  P(g, 20, 86, 24, 6, trunk.lo)
+  P(g, 20, 86, 8, 3, trunk.base)
+  P(g, 38, 88, 6, 3, trunk.lo2)
+  // 잎 — 뒤쪽 어두운 덩어리부터 앞쪽 밝은 덩어리 순으로 겹친다
+  blob(g, 32, 40, 27, leaf.lo2)
+  blob(g, 32, 36, 25, leaf.lo)
+  blob(g, 28, 32, 21, leaf.base)
+  blob(g, 22, 26, 13, leaf.hi)
+  blob(g, 40, 30, 12, leaf.hi)
+  blob(g, 24, 20, 8, leaf.hi2)
+  // 잎 알갱이
+  for (let i = 0; i < 60; i++) {
+    const a = hash2(seed, i, 5) * Math.PI * 2
+    const rr = 6 + hash2(seed, i, 6) * 22
+    const px = 32 + Math.cos(a) * rr
+    const py = 36 + Math.sin(a) * rr * 0.92
+    const s = hash2(seed, i, 7)
+    P(g, px, py, 2, 2, s > 0.72 ? leaf.hi2 : s > 0.4 ? leaf.hi : leaf.lo2)
+  }
+  // 아래쪽 그늘
+  for (let i = 0; i < 26; i++) {
+    const a = Math.PI * (0.15 + (i / 26) * 0.7)
+    P(g, 32 + Math.cos(a) * 24 - 1, 36 + Math.sin(a) * 24, 3, 3, leaf.lo2)
+  }
 }
 
 function oPine(g, t, seed) {
   const p = t.ground
-  P(g, 14, 34, 4, 12, p.trunk)
-  P(g, 10, 44, 12, 3, p.trunkLo)
-  for (let i = 0; i < 4; i++) {
-    const y = 8 + i * 8
-    const w = 6 + i * 4
-    P(g, 16 - w, y + 6, w * 2, 6, p.leafLo)
-    P(g, 16 - w + 1, y + 4, w * 2 - 2, 4, p.leaf)
-    P(g, 16 - w + 3, y + 3, 5, 3, p.leafHi)
+  const trunk = ramp(p.trunk)
+  const leaf = ramp(p.leafLo)
+  contactShadow(g, 32, 90, 22, 6, 0.34)
+  P(g, 28, 68, 8, 24, trunk.base)
+  P(g, 28, 68, 3, 24, trunk.hi)
+  P(g, 20, 88, 24, 5, trunk.lo)
+  for (let i = 0; i < 5; i++) {
+    const yy = 10 + i * 15
+    const w = 8 + i * 6
+    P(g, 32 - w, yy + 12, w * 2, 12, leaf.lo2)
+    P(g, 32 - w + 2, yy + 7, w * 2 - 4, 9, leaf.base)
+    P(g, 32 - w + 6, yy + 4, w - 2, 6, leaf.hi)
+    P(g, 32 - w + 6, yy + 4, 4, 4, leaf.hi2)
   }
-  P(g, 14, 4, 4, 6, p.leaf)
-  P(g, 4, 44, 24, 3, 'rgba(0,0,0,.16)')
+  P(g, 29, 2, 6, 12, leaf.base)
+  P(g, 29, 2, 2, 10, leaf.hi)
 }
 
 function oBush(g, t, seed) {
   const p = t.ground
-  blob(g, 8, 10, 7, p.leafLo)
-  blob(g, 8, 9, 6, p.leaf)
-  blob(g, 6, 7, 3, p.leafHi)
+  const leaf = ramp(p.leaf)
+  contactShadow(g, 16, 29, 13, 4, 0.3)
+  blob(g, 16, 19, 14, leaf.lo2)
+  blob(g, 16, 17, 12, leaf.base)
+  blob(g, 11, 13, 7, leaf.hi)
+  blob(g, 21, 15, 5, leaf.hi)
+  for (let i = 0; i < 22; i++) {
+    const a = hash2(seed, i, 2) * Math.PI * 2
+    const rr = 3 + hash2(seed, i, 3) * 11
+    P(g, 16 + Math.cos(a) * rr, 17 + Math.sin(a) * rr * 0.9, 2, 2, hash2(seed, i, 4) > 0.6 ? leaf.hi2 : leaf.lo2)
+  }
+  // 열매
   for (let i = 0; i < 3; i++) {
-    dot(g, 3 + Math.floor(hash2(seed, i, 2) * 11), 5 + Math.floor(hash2(seed, i, 3) * 8), '#ff5c6c')
+    const bx = 5 + Math.floor(hash2(seed, i, 8) * 22)
+    const by = 9 + Math.floor(hash2(seed, i, 9) * 14)
+    P(g, bx, by, 3, 3, '#e03a3a')
+    dot(g, bx, by, '#ff8a8a')
   }
-  P(g, 2, 14, 12, 2, 'rgba(0,0,0,.14)')
 }
 
-function oRock(g, t) {
-  P(g, 3, 6, 10, 8, '#9aa0a8')
-  P(g, 4, 5, 8, 3, '#b6bcc4')
-  P(g, 5, 4, 5, 2, '#cbd0d6')
-  P(g, 3, 12, 10, 2, '#767c86')
-  P(g, 2, 14, 12, 2, 'rgba(0,0,0,.16)')
+function oRock(g) {
+  contactShadow(g, 16, 29, 12, 4, 0.32)
+  const r0 = ramp('#9aa0a8')
+  P(g, 5, 12, 22, 16, r0.base)
+  P(g, 7, 9, 18, 6, r0.hi)
+  P(g, 10, 6, 11, 5, r0.hi2)
+  P(g, 5, 24, 22, 4, r0.lo2)
+  P(g, 20, 12, 7, 16, r0.lo)
+  // 갈라진 결
+  P(g, 12, 13, 2, 9, r0.lo2)
+  P(g, 14, 20, 5, 2, r0.lo2)
+  P(g, 9, 11, 4, 2, r0.hi2)
 }
 
-function oSign(g, t) {
-  P(g, 7, 9, 2, 6, '#7b5230')
-  P(g, 2, 2, 12, 8, '#b9834b')
-  P(g, 3, 3, 10, 6, '#e6c48d')
-  P(g, 4, 4, 8, 1, '#8a6234')
-  P(g, 4, 6, 6, 1, '#8a6234')
-  P(g, 2, 14, 12, 2, 'rgba(0,0,0,.16)')
+function oSign(g) {
+  contactShadow(g, 16, 30, 10, 3, 0.3)
+  const wood = ramp('#b9834b')
+  const board = ramp('#e6c48d')
+  P(g, 14, 18, 5, 13, wood.lo)
+  P(g, 14, 18, 2, 13, wood.base)
+  P(g, 3, 3, 26, 17, wood.lo2)
+  P(g, 5, 5, 22, 13, board.base)
+  P(g, 5, 5, 22, 2, board.hi)
+  P(g, 5, 16, 22, 2, board.lo)
+  for (let i = 0; i < 3; i++) P(g, 8, 8 + i * 3, 14 - i * 4, 2, wood.lo)
+  P(g, 3, 19, 26, 2, 'rgba(16,20,34,.28)')
 }
 
-function oLamp(g, t) {
-  P(g, 6, 8, 4, 22, '#4a5060')
-  P(g, 4, 28, 8, 3, '#343a48')
-  P(g, 3, 2, 10, 8, '#2c3240')
-  P(g, 4, 3, 8, 6, '#ffe9a8')
-  P(g, 5, 4, 3, 3, '#fffdf0')
-  P(g, 2, 1, 12, 2, '#4a5060')
+function oLamp(g) {
+  contactShadow(g, 16, 61, 11, 4, 0.34)
+  const m = ramp('#4a5060')
+  P(g, 12, 16, 8, 46, m.base)
+  P(g, 12, 16, 3, 46, m.hi)
+  P(g, 18, 16, 2, 46, m.lo2)
+  P(g, 8, 58, 16, 5, m.lo)
+  P(g, 8, 58, 16, 2, m.base)
+  // 등
+  P(g, 5, 3, 22, 16, m.lo2)
+  P(g, 7, 5, 18, 12, '#ffe9a8')
+  P(g, 8, 6, 8, 6, '#fffdf0')
+  P(g, 7, 14, 18, 3, '#e8c878')
+  P(g, 3, 1, 26, 4, m.base)
+  P(g, 3, 1, 26, 2, m.hi)
+  // 불빛 번짐
+  g.fillStyle = 'rgba(255,224,140,.18)'
+  g.beginPath(); g.ellipse(16, 11, 18, 14, 0, 0, Math.PI * 2); g.fill()
 }
 
-function oBench(g, t) {
-  P(g, 2, 8, 28, 4, '#c08a52')
-  P(g, 2, 8, 28, 1, '#dba86e')
-  P(g, 2, 3, 28, 4, '#c08a52')
-  P(g, 2, 3, 28, 1, '#dba86e')
-  P(g, 4, 12, 3, 6, '#6b6f78')
-  P(g, 25, 12, 3, 6, '#6b6f78')
-  P(g, 2, 17, 28, 2, 'rgba(0,0,0,.16)')
+function oBench(g) {
+  contactShadow(g, 32, 36, 26, 4, 0.3)
+  const w = ramp('#c08a52')
+  const m = ramp('#6b6f78')
+  P(g, 3, 16, 58, 8, w.base)
+  P(g, 3, 16, 58, 2, w.hi2)
+  P(g, 3, 22, 58, 2, w.lo2)
+  P(g, 3, 5, 58, 8, w.base)
+  P(g, 3, 5, 58, 2, w.hi2)
+  P(g, 3, 11, 58, 2, w.lo2)
+  P(g, 8, 24, 5, 12, m.base)
+  P(g, 51, 24, 5, 12, m.base)
+  P(g, 8, 24, 2, 12, m.hi)
+  P(g, 51, 24, 2, 12, m.hi)
 }
 
-function oFence(g, t) {
-  P(g, 0, 5, 16, 3, '#d8b98a')
-  P(g, 0, 10, 16, 3, '#d8b98a')
-  P(g, 2, 2, 3, 13, '#b9834b')
-  P(g, 11, 2, 3, 13, '#b9834b')
-  P(g, 0, 15, 16, 1, 'rgba(0,0,0,.14)')
+function oFence(g) {
+  const w = ramp('#d8b98a')
+  const post = ramp('#b9834b')
+  contactShadow(g, 16, 30, 12, 3, 0.24)
+  P(g, 0, 10, TILE, 6, w.base)
+  P(g, 0, 10, TILE, 2, w.hi)
+  P(g, 0, 20, TILE, 6, w.base)
+  P(g, 0, 20, TILE, 2, w.hi)
+  P(g, 4, 4, 6, 26, post.base)
+  P(g, 22, 4, 6, 26, post.base)
+  P(g, 4, 4, 2, 26, post.hi)
+  P(g, 22, 4, 2, 26, post.hi)
 }
 
-function oVending(g, t) {
-  P(g, 1, 2, 14, 28, '#c8342c')
-  P(g, 2, 3, 12, 14, '#2c3240')
-  for (let i = 0; i < 6; i++) {
-    P(g, 3 + (i % 3) * 4, 4 + Math.floor(i / 3) * 6, 3, 5, ['#ffe066', '#7ad0ff', '#8ef08a'][i % 3])
+function oVending(g) {
+  contactShadow(g, 32, 61, 16, 4, 0.34)
+  const body = ramp('#c8342c')
+  P(g, 3, 4, 26, 58, body.base)
+  P(g, 3, 4, 4, 58, body.hi)
+  P(g, 25, 4, 4, 58, body.lo2)
+  P(g, 3, 4, 26, 3, body.hi2)
+  // 진열창
+  P(g, 5, 8, 22, 28, '#20263c')
+  P(g, 6, 9, 20, 26, '#2c3550')
+  const cans = ['#ffe066', '#7ad0ff', '#8ef08a', '#ff9ec4']
+  for (let i = 0; i < 8; i++) {
+    P(g, 8 + (i % 4) * 5, 12 + Math.floor(i / 4) * 11, 4, 9, cans[i % 4])
+    P(g, 8 + (i % 4) * 5, 12 + Math.floor(i / 4) * 11, 4, 2, '#ffffff')
+    P(g, 8 + (i % 4) * 5, 19 + Math.floor(i / 4) * 11, 4, 2, 'rgba(0,0,0,.3)')
   }
-  P(g, 3, 19, 10, 3, '#f0f0f0')
-  P(g, 3, 24, 5, 4, '#2c3240')
-  P(g, 1, 30, 14, 2, '#8a1e18')
-  P(g, 0, 31, 16, 1, 'rgba(0,0,0,.2)')
+  P(g, 6, 9, 20, 3, 'rgba(255,255,255,.22)')
+  // 버튼 · 배출구
+  P(g, 6, 39, 20, 6, '#f0f0f0')
+  for (let i = 0; i < 4; i++) P(g, 8 + i * 5, 41, 3, 3, '#e0524c')
+  P(g, 6, 48, 12, 8, '#20263c')
+  P(g, 7, 49, 10, 6, '#0d1120')
+  P(g, 3, 59, 26, 3, body.deep)
 }
 
 // ── 실내 가구 ───────────────────────────────────────────────────────────────────
 function oCounter(g, t) {
-  // 2x1 칸을 쓰지만 그림은 22px — 상판이 살짝 솟아 보이게
-  const c = t.ground.accent
-  const wood = '#b98a52'
-  // 앞면(옆판)
-  P(g, 1, 8, 30, 13, shade(c, -42))
-  P(g, 2, 9, 28, 11, shade(c, -26))
-  for (let i = 4; i < 29; i += 7) P(g, i, 11, 5, 7, shade(c, -36))
+  const c = ramp(t.ground.accent)
+  const wood = ramp('#b98a52')
+  contactShadow(g, 32, 42, 30, 4, 0.32)
+  // 앞판
+  P(g, 2, 16, 60, 26, c.lo2)
+  P(g, 4, 18, 56, 22, c.lo)
+  for (let i = 6; i < 58; i += 14) {
+    P(g, i, 21, 11, 16, c.deep)
+    P(g, i, 21, 11, 1, c.base)
+  }
   // 상판
-  P(g, 0, 5, 32, 4, wood)
-  P(g, 0, 5, 32, 1, shade(wood, 26))
-  P(g, 0, 8, 32, 1, shade(wood, -34))
-  // 계산대 + 작은 화분
-  P(g, 4, 1, 7, 5, '#e8ecf2')
-  P(g, 5, 2, 5, 2, '#2a3550')
-  P(g, 5, 4, 2, 1, '#8fa0c8')
-  P(g, 24, 2, 4, 4, '#8a5a3a')
-  P(g, 23, 0, 6, 3, '#3f9a5c')
-  P(g, 1, 21, 30, 1, 'rgba(0,0,0,.3)')
+  P(g, 0, 10, 64, 8, wood.base)
+  P(g, 0, 10, 64, 2, wood.hi2)
+  P(g, 0, 16, 64, 2, wood.deep)
+  P(g, 0, 17, 64, 1, 'rgba(16,20,34,.3)')
+  // 계산대
+  P(g, 8, 1, 15, 10, '#e8ecf2')
+  P(g, 8, 1, 15, 2, '#ffffff')
+  P(g, 10, 3, 11, 5, '#20263c')
+  P(g, 11, 4, 5, 2, '#8fa0c8')
+  P(g, 8, 9, 15, 2, '#b8bec8')
+  // 작은 화분
+  P(g, 47, 4, 9, 7, '#8a5a3a')
+  P(g, 47, 4, 9, 2, '#a87450')
+  blob(g, 51, 2, 6, '#3f9a5c')
+  blob(g, 49, 0, 4, '#55b872')
 }
 
-function oShelf(g, t) {
-  // 1x2 — 마트 진열대
-  P(g, 0, 2, 16, 30, '#8e96a8')
-  P(g, 1, 3, 14, 28, '#c6ccd8')
-  const goods = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#c77dff', '#ff9f45']
+function oShelf(g) {
+  const m = ramp('#8e96a8')
+  contactShadow(g, 16, 62, 14, 4, 0.32)
+  P(g, 0, 2, TILE, 60, m.lo2)
+  P(g, 2, 4, 28, 56, m.hi)
+  P(g, 2, 4, 28, 56, m.base)
+  const goods = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff', '#ff9f45']
   for (let r = 0; r < 4; r++) {
-    P(g, 1, 3 + r * 7, 14, 1, '#8e96a8')
+    const sy = 6 + r * 14
+    // 선반 판
+    P(g, 1, sy + 11, 30, 3, m.lo2)
+    P(g, 1, sy + 11, 30, 1, m.hi2)
     for (let i = 0; i < 3; i++) {
-      P(g, 2 + i * 5, 5 + r * 7, 4, 5, goods[(r * 3 + i) % goods.length])
-      P(g, 2 + i * 5, 5 + r * 7, 4, 1, '#ffffff')
+      const c = ramp(goods[(r * 3 + i) % goods.length])
+      const bx = 3 + i * 9
+      P(g, bx, sy, 8, 11, c.base)
+      P(g, bx, sy, 3, 11, c.hi)
+      P(g, bx + 6, sy, 2, 11, c.lo2)
+      P(g, bx, sy, 8, 2, c.hi2)
+      P(g, bx, sy + 4, 8, 2, '#ffffff')
+      P(g, bx, sy + 9, 8, 2, 'rgba(16,20,34,.25)')
     }
   }
-  P(g, 0, 31, 16, 1, 'rgba(0,0,0,.25)')
+  P(g, 0, 2, 2, 60, m.hi)
+  P(g, 30, 2, 2, 60, m.lo2)
 }
 
-function oPlant(g, t) {
-  P(g, 4, 22, 8, 9, '#b96a3a')
-  P(g, 4, 22, 8, 2, '#d98a54')
-  blob(g, 8, 15, 7, '#2f7a46')
-  blob(g, 5, 11, 4, '#43a05c')
-  blob(g, 11, 12, 4, '#43a05c')
-  P(g, 3, 30, 10, 2, 'rgba(0,0,0,.2)')
+function oPlant(g) {
+  contactShadow(g, 16, 61, 12, 4, 0.32)
+  const pot = ramp('#b96a3a')
+  const leaf = ramp('#2f7a46')
+  P(g, 7, 44, 18, 18, pot.base)
+  P(g, 7, 44, 6, 18, pot.hi)
+  P(g, 21, 44, 4, 18, pot.lo2)
+  P(g, 5, 42, 22, 6, pot.hi)
+  P(g, 5, 46, 22, 2, pot.lo)
+  P(g, 8, 40, 16, 4, '#4a3a2a')
+  blob(g, 16, 28, 15, leaf.lo2)
+  blob(g, 16, 26, 13, leaf.base)
+  blob(g, 10, 20, 8, leaf.hi)
+  blob(g, 22, 22, 7, leaf.hi)
+  for (let i = 0; i < 5; i++) P(g, 8 + i * 4, 12 + (i % 2) * 5, 3, 8, leaf.hi2)
 }
 
-function oTable(g, t) {
-  P(g, 1, 3, 30, 8, '#d8a868')
-  P(g, 1, 3, 30, 2, '#eec48c')
-  P(g, 3, 11, 3, 5, '#a87840')
-  P(g, 26, 11, 3, 5, '#a87840')
-  P(g, 12, 5, 8, 4, '#ffffff')
-  P(g, 1, 15, 30, 1, 'rgba(0,0,0,.2)')
+function oTable(g) {
+  const w = ramp('#d8a868')
+  contactShadow(g, 32, 32, 28, 4, 0.3)
+  P(g, 2, 6, 60, 14, w.base)
+  P(g, 2, 6, 60, 3, w.hi2)
+  P(g, 2, 17, 60, 3, w.lo2)
+  P(g, 6, 20, 6, 12, w.lo)
+  P(g, 52, 20, 6, 12, w.lo)
+  // 위에 놓인 컵과 접시
+  P(g, 24, 2, 14, 6, '#ffffff')
+  P(g, 24, 2, 14, 2, '#f0f4fa')
+  P(g, 26, 7, 10, 2, '#c8ccd4')
+  P(g, 44, 1, 7, 8, '#e8ecf2')
+  P(g, 45, 2, 5, 4, '#8a5a3a')
 }
 
 function oBed(g, t) {
-  // 2x2
-  P(g, 1, 2, 30, 28, '#a8703c')
-  P(g, 2, 3, 28, 26, '#e8e4dc')
-  P(g, 2, 3, 28, 9, '#f6f4ee')
-  P(g, 5, 5, 22, 6, '#ffffff')
-  P(g, 2, 14, 28, 15, t.ground.accent)
-  P(g, 2, 14, 28, 2, shade(t.ground.accent, 26))
-  for (let i = 4; i < 28; i += 6) P(g, i, 18, 2, 8, shade(t.ground.accent, -20))
-  P(g, 1, 29, 30, 2, 'rgba(0,0,0,.2)')
+  const frame = ramp('#a8703c')
+  const sheet = ramp('#eae6de')
+  const quilt = ramp(t.ground.accent)
+  contactShadow(g, 32, 62, 30, 5, 0.3)
+  P(g, 2, 4, 60, 58, frame.lo2)
+  P(g, 4, 6, 56, 54, sheet.base)
+  P(g, 4, 6, 56, 4, sheet.hi2)
+  // 베개
+  P(g, 10, 9, 44, 16, sheet.hi2)
+  P(g, 10, 9, 44, 3, '#ffffff')
+  P(g, 10, 22, 44, 3, sheet.lo)
+  // 이불
+  P(g, 4, 28, 56, 32, quilt.base)
+  P(g, 4, 28, 56, 3, quilt.hi2)
+  P(g, 4, 31, 56, 2, quilt.hi)
+  for (let i = 8; i < 56; i += 12) {
+    P(g, i, 35, 4, 22, quilt.lo2)
+    P(g, i + 4, 35, 2, 22, quilt.hi)
+  }
+  P(g, 4, 56, 56, 4, quilt.deep)
+  P(g, 2, 4, 4, 58, frame.base)
+  P(g, 58, 4, 4, 58, frame.lo2)
 }
 
-function oTv(g, t) {
-  P(g, 2, 2, 28, 11, '#2a2e38')
-  P(g, 4, 4, 24, 7, '#7fd4f5')
-  P(g, 5, 5, 10, 3, '#c9f0ff')
-  P(g, 13, 13, 6, 2, '#2a2e38')
-  P(g, 6, 15, 20, 2, '#4a505c')
-  P(g, 2, 16, 28, 1, 'rgba(0,0,0,.2)')
+function oTv(g) {
+  contactShadow(g, 32, 33, 26, 4, 0.3)
+  const b = ramp('#2a2e38')
+  P(g, 4, 4, 56, 22, b.base)
+  P(g, 4, 4, 56, 2, b.hi)
+  P(g, 8, 8, 48, 14, '#7fd4f5')
+  P(g, 9, 9, 20, 6, '#c9f0ff')
+  P(g, 9, 17, 46, 4, '#5ab4dc')
+  P(g, 4, 24, 56, 3, b.lo2)
+  P(g, 26, 27, 12, 4, b.base)
+  P(g, 14, 31, 36, 3, b.lo)
 }
 
-function oPc(g, t) {
-  P(g, 1, 4, 14, 10, '#dfe4ec')
-  P(g, 2, 5, 12, 7, '#2b6fd8')
-  P(g, 3, 6, 5, 2, '#9fd0ff')
-  P(g, 3, 14, 10, 2, '#aab2c0')
-  P(g, 1, 15, 14, 1, 'rgba(0,0,0,.2)')
+function oPc(g) {
+  contactShadow(g, 16, 30, 13, 4, 0.3)
+  const m = ramp('#dfe4ec')
+  P(g, 2, 6, 28, 20, m.base)
+  P(g, 2, 6, 28, 2, m.hi2)
+  P(g, 4, 8, 24, 14, '#2b6fd8')
+  P(g, 5, 9, 10, 4, '#9fd0ff')
+  P(g, 5, 18, 22, 3, '#1a4fa8')
+  P(g, 2, 24, 28, 3, m.lo2)
+  P(g, 6, 27, 20, 4, ramp('#aab2c0').base)
+  P(g, 6, 27, 20, 1, '#c8ceda')
 }
 
-function oLocker(g, t) {
-  P(g, 1, 2, 14, 29, '#5e6a86')
-  P(g, 2, 3, 12, 13, '#8b97b4')
-  P(g, 2, 17, 12, 13, '#8b97b4')
-  P(g, 11, 8, 2, 3, '#e8e8f0')
-  P(g, 11, 22, 2, 3, '#e8e8f0')
-  P(g, 3, 5, 8, 1, '#41496a')
-  P(g, 1, 30, 14, 2, 'rgba(0,0,0,.25)')
+function oLocker(g) {
+  const m = ramp('#5e6a86')
+  contactShadow(g, 16, 62, 14, 4, 0.32)
+  P(g, 1, 2, 30, 60, m.lo2)
+  P(g, 3, 4, 26, 26, m.base)
+  P(g, 3, 34, 26, 26, m.base)
+  P(g, 3, 4, 26, 2, m.hi2)
+  P(g, 3, 34, 26, 2, m.hi2)
+  P(g, 3, 27, 26, 3, m.deep)
+  P(g, 3, 57, 26, 3, m.deep)
+  P(g, 24, 14, 3, 6, '#e8e8f0')
+  P(g, 24, 44, 3, 6, '#e8e8f0')
+  for (let i = 0; i < 3; i++) {
+    P(g, 8, 8 + i * 2, 14, 1, m.lo)
+    P(g, 8, 38 + i * 2, 14, 1, m.lo)
+  }
+  P(g, 1, 2, 3, 60, m.hi)
 }
 
 function oMachine(g, t, seed) {
-  // 1x2 — 뽑기 기계
-  const body = ['#ff5c8a', '#4db2ff', '#ffc93c'][seed % 3]
-  P(g, 1, 4, 14, 27, body)
-  P(g, 1, 4, 14, 2, shade(body, 30))
-  P(g, 2, 6, 12, 12, '#f4f8ff')
-  for (let i = 0; i < 7; i++) {
-    P(g, 3 + (i % 4) * 3, 8 + Math.floor(i / 4) * 4, 2, 2, ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff'][i % 4])
+  const body = ramp(['#ff5c8a', '#4db2ff', '#ffc93c'][seed % 3])
+  contactShadow(g, 16, 62, 14, 4, 0.34)
+  P(g, 2, 6, 28, 56, body.base)
+  P(g, 2, 6, 4, 56, body.hi)
+  P(g, 26, 6, 4, 56, body.lo2)
+  P(g, 2, 6, 28, 3, body.hi2)
+  // 캡슐 창
+  P(g, 4, 10, 24, 26, '#f4f8ff')
+  P(g, 5, 11, 22, 24, '#e2ecff')
+  const caps = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#c77dff']
+  for (let i = 0; i < 12; i++) {
+    const cx = 7 + (i % 4) * 6
+    const cy = 14 + Math.floor(i / 4) * 7
+    P(g, cx, cy, 5, 5, caps[i % caps.length])
+    dot(g, cx + 1, cy + 1, '#ffffff')
   }
-  P(g, 5, 20, 6, 3, '#2a2e38')
-  P(g, 6, 25, 4, 3, '#2a2e38')
-  P(g, 1, 30, 14, 1, 'rgba(0,0,0,.3)')
+  P(g, 5, 11, 22, 4, 'rgba(255,255,255,.55)')
+  // 손잡이 · 배출구
+  P(g, 10, 40, 12, 5, '#20263c')
+  P(g, 13, 41, 6, 3, '#8fa0c8')
+  P(g, 11, 49, 10, 8, '#20263c')
+  P(g, 12, 50, 8, 6, '#0d1120')
+  P(g, 2, 59, 28, 3, body.deep)
 }
 
-function oScoreboard(g, t) {
-  // 3x2
-  P(g, 2, 2, 44, 22, '#20263c')
-  P(g, 4, 4, 40, 14, '#0d1120')
+function oScoreboard(g) {
+  contactShadow(g, 48, 62, 34, 5, 0.32)
+  const b = ramp('#20263c')
+  P(g, 4, 4, 88, 44, b.base)
+  P(g, 4, 4, 88, 3, b.hi)
+  P(g, 8, 8, 80, 32, '#0d1120')
+  P(g, 8, 8, 80, 2, '#080b14')
   for (let i = 0; i < 2; i++) {
-    P(g, 8 + i * 20, 7, 5, 8, '#ff5a3c')
-    P(g, 15 + i * 20, 7, 5, 8, '#ff5a3c')
+    const ox = 16 + i * 40
+    P(g, ox, 14, 10, 20, '#ff5a3c')
+    P(g, ox + 14, 14, 10, 20, '#ff5a3c')
+    P(g, ox, 14, 10, 3, '#ff8a6c')
+    P(g, ox + 14, 14, 10, 3, '#ff8a6c')
   }
-  P(g, 22, 9, 2, 2, '#ffd84a')
-  P(g, 22, 13, 2, 2, '#ffd84a')
-  P(g, 10, 24, 5, 8, '#4a5060')
-  P(g, 33, 24, 5, 8, '#4a5060')
-  P(g, 2, 31, 44, 1, 'rgba(0,0,0,.25)')
+  P(g, 45, 18, 5, 5, '#ffd84a')
+  P(g, 45, 27, 5, 5, '#ffd84a')
+  P(g, 8, 8, 80, 6, 'rgba(255,255,255,.07)')
+  P(g, 4, 45, 88, 4, b.deep)
+  P(g, 20, 49, 8, 14, ramp('#4a5060').base)
+  P(g, 68, 49, 8, 14, ramp('#4a5060').base)
 }
 
 // ── 마을이 자라면 생기는 것들 ────────────────────────────────────────────────────
 function oFlag(g, t) {
-  // 1x2 — 축제 깃발
-  const a = t.ground.accent
-  P(g, 6, 4, 2, 26, '#c8ccd4')
-  P(g, 6, 4, 1, 26, '#e8ecf2')
-  P(g, 8, 5, 8, 9, a)
-  P(g, 8, 5, 8, 2, shade(a, 30))
-  for (let i = 0; i < 4; i++) P(g, 15 - i, 6 + i, 1, 9 - i * 2, shade(a, -30))
-  P(g, 5, 2, 4, 3, '#ffd21f')
-  P(g, 4, 29, 6, 2, 'rgba(0,0,0,.18)')
+  const a = ramp(t.ground.accent)
+  const pole = ramp('#c8ccd4')
+  contactShadow(g, 16, 61, 8, 3, 0.3)
+  P(g, 13, 8, 5, 54, pole.base)
+  P(g, 13, 8, 2, 54, pole.hi2)
+  P(g, 17, 10, 18, 20, a.base)
+  P(g, 17, 10, 18, 4, a.hi2)
+  for (let i = 0; i < 8; i++) P(g, 33 - i * 2, 12 + i * 2, 2, 20 - i * 4, a.lo2)
+  P(g, 11, 4, 9, 6, '#ffd21f')
+  P(g, 11, 4, 9, 2, '#ffe97a')
 }
 
 function oSakura(g, t, seed) {
-  // 2x3 — 벚나무
-  P(g, 13, 30, 6, 16, '#7b5230')
-  P(g, 13, 30, 2, 16, '#96683f')
-  P(g, 11, 44, 10, 3, '#5c3c22')
-  const pink = '#ffb7d5'
-  const pinkLo = '#f090b8'
-  const pinkHi = '#ffdcec'
-  blob(g, 16, 20, 13, pinkLo)
-  blob(g, 16, 18, 12, pink)
-  blob(g, 12, 14, 8, pinkHi)
-  blob(g, 21, 16, 6, pinkHi)
-  for (let i = 0; i < 16; i++) {
+  const trunk = ramp('#7b5230')
+  const pink = ramp('#ffb7d5')
+  contactShadow(g, 32, 90, 24, 7, 0.32)
+  P(g, 26, 58, 12, 34, trunk.base)
+  P(g, 26, 58, 4, 34, trunk.hi)
+  P(g, 34, 58, 4, 34, trunk.lo2)
+  P(g, 20, 86, 24, 6, trunk.lo)
+  blob(g, 32, 40, 27, pink.lo2)
+  blob(g, 32, 36, 25, pink.lo)
+  blob(g, 28, 32, 21, pink.base)
+  blob(g, 22, 26, 13, pink.hi)
+  blob(g, 40, 30, 12, pink.hi)
+  blob(g, 24, 20, 8, '#ffffff')
+  for (let i = 0; i < 55; i++) {
     const a = hash2(seed, i, 5) * Math.PI * 2
-    const rr = 4 + hash2(seed, i, 6) * 10
-    dot(g, 16 + Math.cos(a) * rr, 18 + Math.sin(a) * rr * 0.9, i % 3 ? pinkHi : '#ffffff')
+    const rr = 6 + hash2(seed, i, 6) * 22
+    const s = hash2(seed, i, 7)
+    P(g, 32 + Math.cos(a) * rr, 36 + Math.sin(a) * rr * 0.92, 2, 2, s > 0.7 ? '#ffffff' : s > 0.4 ? pink.hi2 : pink.lo2)
   }
   // 흩날리는 꽃잎
-  for (let i = 0; i < 4; i++) dot(g, 4 + i * 7, 34 + (i % 3) * 4, pink)
-  P(g, 4, 44, 24, 3, 'rgba(0,0,0,.16)')
+  for (let i = 0; i < 6; i++) {
+    P(g, 6 + i * 9, 62 + (i % 3) * 9, 2, 2, pink.hi)
+  }
 }
 
-function oFountain(g, t) {
-  // 2x2 — 분수대
-  P(g, 1, 14, 30, 16, '#b8bcc6')
-  P(g, 2, 15, 28, 14, '#d6dae2')
-  P(g, 4, 17, 24, 10, '#4f9fe0')
-  P(g, 4, 17, 24, 3, '#78c0f0')
-  for (let i = 0; i < 5; i++) P(g, 6 + i * 5, 21 + (i % 2) * 3, 3, 1, '#bfe6ff')
-  // 가운데 물기둥
-  P(g, 14, 4, 4, 14, '#c8ccd4')
-  P(g, 15, 2, 2, 4, '#9fd8ff')
-  P(g, 13, 6, 1, 5, '#bfe6ff')
-  P(g, 18, 6, 1, 5, '#bfe6ff')
-  P(g, 11, 10, 1, 4, '#bfe6ff')
-  P(g, 20, 10, 1, 4, '#bfe6ff')
-  P(g, 1, 29, 30, 2, 'rgba(0,0,0,.2)')
+function oFountain(g) {
+  const stone = ramp('#b8bcc6')
+  const water = ramp('#4f9fe0')
+  contactShadow(g, 32, 60, 30, 5, 0.32)
+  P(g, 2, 26, 60, 34, stone.lo2)
+  P(g, 4, 28, 56, 30, stone.base)
+  P(g, 4, 28, 56, 3, stone.hi2)
+  P(g, 8, 33, 48, 22, water.base)
+  P(g, 8, 33, 48, 5, water.hi)
+  P(g, 8, 50, 48, 5, water.lo2)
+  for (let i = 0; i < 6; i++) P(g, 11 + i * 8, 39 + (i % 2) * 6, 6, 2, '#bfe6ff')
+  // 물기둥
+  P(g, 28, 8, 8, 26, stone.base)
+  P(g, 28, 8, 3, 26, stone.hi2)
+  P(g, 29, 2, 6, 8, '#9fd8ff')
+  P(g, 30, 0, 4, 4, '#ffffff')
+  for (let i = 0; i < 5; i++) {
+    P(g, 24 - i * 2, 10 + i * 4, 2, 5, '#bfe6ff')
+    P(g, 38 + i * 2, 10 + i * 4, 2, 5, '#bfe6ff')
+  }
+  P(g, 2, 56, 60, 4, stone.deep)
 }
 
-/** 배드민턴 코트 — 5x9 타일(80x144). 라인·네트까지 전부 픽셀로 */
+/** 배드민턴 코트 — 10x18 타일(320x576) */
 function oCourt(g, t) {
   const p = t.ground
-  const W = 80
-  const H = 144
-  P(g, 0, 0, W, H, p.court || '#2f7d55')
-  P(g, 4, 4, W - 8, H - 8, p.courtIn || '#3b8f63')
+  const W = 160, H = 288
+  const court = ramp(p.court || '#2f7d55')
+  const inner = ramp(p.courtIn || '#3b8f63')
+  P(g, 0, 0, W, H, court.base)
+  P(g, 0, 0, W, 4, court.hi)
+  P(g, 8, 8, W - 16, H - 16, inner.base)
+  // 바닥 결
+  for (let i = 0; i < 24; i++) P(g, 10, 12 + i * 11, W - 20, 1, inner.lo)
   const L = p.courtLine || '#f4f4e8'
-  const line = (x, y, w, h) => P(g, x, y, w, h, L)
-  // 바깥 라인
-  line(6, 6, W - 12, 1)
-  line(6, H - 7, W - 12, 1)
-  line(6, 6, 1, H - 12)
-  line(W - 7, 6, 1, H - 12)
-  // 단식 사이드라인
-  line(12, 6, 1, H - 12)
-  line(W - 13, 6, 1, H - 12)
-  // 짧은 서비스 라인
-  line(6, 52, W - 12, 1)
-  line(6, H - 53, W - 12, 1)
-  // 센터라인
-  line(W / 2 - 1, 6, 1, 46)
-  line(W / 2 - 1, H - 52, 1, 46)
-  // 롱 서비스 라인(복식)
-  line(6, 14, W - 12, 1)
-  line(6, H - 15, W - 12, 1)
+  const LS = 'rgba(16,20,34,.22)'
+  const line = (x, y, w, h) => { P(g, x, y + 1, w, h, LS); P(g, x, y, w, h, L) }
+  line(12, 12, W - 24, 2)
+  line(12, H - 14, W - 24, 2)
+  line(12, 12, 2, H - 26)
+  line(W - 14, 12, 2, H - 26)
+  line(24, 12, 2, H - 26)
+  line(W - 26, 12, 2, H - 26)
+  line(12, 104, W - 24, 2)
+  line(12, H - 106, W - 24, 2)
+  line(W / 2 - 1, 12, 2, 92)
+  line(W / 2 - 1, H - 104, 2, 92)
+  line(12, 28, W - 24, 2)
+  line(12, H - 30, W - 24, 2)
   // 네트
-  P(g, 2, H / 2 - 6, W - 4, 2, '#e8e8e8')
-  for (let y = H / 2 - 4; y < H / 2 + 5; y += 2) P(g, 2, y, W - 4, 1, 'rgba(240,240,240,.55)')
-  for (let x = 3; x < W - 3; x += 3) P(g, x, H / 2 - 4, 1, 9, 'rgba(240,240,240,.5)')
-  P(g, 1, H / 2 - 10, 2, 18, '#c8ccd4')
-  P(g, W - 3, H / 2 - 10, 2, 18, '#c8ccd4')
+  const ny = H / 2
+  P(g, 2, ny - 22, W - 4, 3, 'rgba(16,20,34,.25)')
+  P(g, 2, ny - 14, W - 4, 4, '#f0f0f0')
+  for (let yy = ny - 10; yy < ny + 12; yy += 3) P(g, 4, yy, W - 8, 1, 'rgba(240,240,240,.5)')
+  for (let xx = 6; xx < W - 6; xx += 5) P(g, xx, ny - 10, 1, 22, 'rgba(240,240,240,.45)')
+  P(g, 2, ny + 12, W - 4, 3, 'rgba(16,20,34,.2)')
+  const post = ramp('#c8ccd4')
+  P(g, 1, ny - 26, 5, 40, post.base)
+  P(g, 1, ny - 26, 2, 40, post.hi2)
+  P(g, W - 6, ny - 26, 5, 40, post.base)
+  P(g, W - 6, ny - 26, 2, 40, post.hi2)
 }
 
-// ── 건물 ────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------------
+// 건물 — 3/4 입체 투시
+// 지붕 경사 · 처마 그림자 · 정면 벽 · 측면 벽 · 기초 석재까지 한 장에 담는다
+// -----------------------------------------------------------------------------------
 
 /** 지붕 기와 */
-function roof(g, x, y, w, h, c) {
-  P(g, x, y, w, h, c)
-  P(g, x, y, w, 2, shade(c, 26))
-  for (let ry = y + 3; ry < y + h; ry += 4) {
-    P(g, x, ry, w, 1, shade(c, -22))
-    for (let rx = x + ((ry / 4) % 2 ? 3 : 0); rx < x + w; rx += 6) P(g, rx, ry - 3, 1, 3, shade(c, -14))
+function roofSlope(g, x, y, w, h, color) {
+  const r = ramp(color)
+  P(g, x, y, w, h, r.base)
+  // 위에서 아래로 갈수록 어두워지는 경사감
+  const bands = Math.floor(h / 7)
+  for (let i = 0; i < bands; i++) {
+    const by = y + i * 7
+    const t = i / Math.max(1, bands - 1)
+    P(g, x, by, w, 7, i === 0 ? r.hi2 : t < 0.4 ? r.hi : t < 0.75 ? r.base : r.lo)
+    // 기와 줄
+    P(g, x, by + 6, w, 1, r.lo2)
+    for (let sx = x + (i % 2 ? 5 : 0); sx < x + w; sx += 10) {
+      P(g, sx, by, 1, 6, r.lo2)
+      P(g, sx + 1, by, 1, 6, i < 2 ? r.hi2 : r.hi)
+    }
   }
-  P(g, x, y + h - 1, w, 1, shade(c, -34))
-}
-
-function window9(g, x, y, w, h) {
-  P(g, x, y, w, h, '#2a3550')
-  P(g, x + 1, y + 1, w - 2, h - 2, '#8fd8f8')
-  P(g, x + 1, y + 1, Math.floor(w / 2), Math.floor(h / 2), '#c8f0ff')
-  P(g, x + Math.floor(w / 2), y + 1, 1, h - 2, '#2a3550')
-  P(g, x + 1, y + Math.floor(h / 2), w - 2, 1, '#2a3550')
-}
-
-/** 간판 엠블럼 — 글자 대신 그림으로 어떤 가게인지 알린다 */
-function emblem(g, x, y, kind) {
-  if (kind === 'shuttle') {
-    // 셔틀콕
-    P(g, x + 5, y + 8, 6, 4, '#e8e8e8')
-    P(g, x + 6, y + 11, 4, 3, '#d0d0d0')
-    for (let i = 0; i < 5; i++) P(g, x + 2 + i * 2, y + 1 + Math.abs(2 - i), 2, 7 - Math.abs(2 - i), '#ffffff')
-    P(g, x + 5, y + 12, 6, 1, '#b0b0b0')
-  } else if (kind === 'racket') {
-    P(g, x + 4, y + 1, 8, 9, '#f0b429')
-    P(g, x + 5, y + 2, 6, 7, '#2a3550')
-    for (let i = 1; i < 6; i += 2) P(g, x + 5 + i, y + 2, 1, 7, '#8fa0c8')
-    for (let i = 1; i < 7; i += 2) P(g, x + 5, y + 2 + i, 6, 1, '#8fa0c8')
-    P(g, x + 7, y + 10, 2, 5, '#f0b429')
-  } else if (kind === 'heal') {
-    P(g, x + 6, y + 2, 4, 12, '#ffffff')
-    P(g, x + 2, y + 6, 12, 4, '#ffffff')
-  } else if (kind === 'star') {
-    const pts = [[7, 1], [6, 3], [8, 3], [4, 5], [10, 5], [3, 7], [11, 7], [5, 9], [9, 9], [4, 12], [10, 12]]
-    P(g, x + 3, y + 4, 10, 5, '#ffd84a')
-    P(g, x + 6, y + 1, 4, 4, '#ffd84a')
-    P(g, x + 4, y + 8, 3, 5, '#ffd84a')
-    P(g, x + 9, y + 8, 3, 5, '#ffd84a')
-    pts.forEach(([px, py]) => dot(g, x + px, y + py, '#fff1a8'))
-  } else if (kind === 'home') {
-    P(g, x + 2, y + 7, 12, 8, '#f0e0c0')
-    for (let i = 0; i < 7; i++) P(g, x + 8 - i - 1, y + 6 - i + 5, (i + 1) * 2, 1, '#c07048')
-    P(g, x + 6, y + 10, 4, 5, '#8a5a3a')
-  }
+  P(g, x, y, w, 2, r.hi2)           // 용마루 빛
+  P(g, x, y + h - 3, w, 3, r.deep)  // 처마 끝
 }
 
 /**
- * 가게 건물 한 채.
- * opts: { w,h(타일), roofC, wallC, sign, doorX }
+ * 집 한 채.
+ * opts: { w, h (타일), roofC, wallC, sign, doorX }
  */
 function makeBuilding(g, t, o) {
   const W = o.w * TILE
   const H = o.h * TILE
-  const rh = Math.floor(H * 0.42)
-  // 그림자
-  P(g, 2, H - 3, W - 4, 3, 'rgba(0,0,0,.18)')
-  // 벽
-  P(g, 2, rh - 4, W - 4, H - rh + 2, o.wallC)
-  P(g, 2, rh - 4, 3, H - rh + 2, shade(o.wallC, 16))
-  P(g, W - 5, rh - 4, 3, H - rh + 2, shade(o.wallC, -18))
-  P(g, 2, H - 5, W - 4, 3, shade(o.wallC, -28))
-  // 지붕 (벽보다 넓게 튀어나오게)
-  roof(g, 0, 2, W, rh, o.roofC)
-  P(g, 2, 0, W - 4, 3, shade(o.roofC, 34)) // 용마루
-  P(g, 0, rh + 1, W, 2, shade(o.roofC, -38))
-  P(g, 2, rh + 3, W - 4, 2, 'rgba(0,0,0,.16)') // 처마 그늘
-  // 간판판
-  const sw = Math.min(W - 20, 42)
-  const sx = Math.floor((W - sw) / 2)
-  const sy = rh + 4
-  P(g, sx - 2, sy - 2, sw + 4, 22, shade(o.roofC, -40))
-  P(g, sx, sy, sw, 18, '#f6f2e4')
-  emblem(g, sx + Math.floor(sw / 2) - 8, sy + 1, o.sign)
-  // 창문
-  const wy = sy + 24
-  if (wy + 12 < H - 22) {
-    window9(g, 8, wy, 14, 12)
-    window9(g, W - 22, wy, 14, 12)
+  const wall = ramp(o.wallC)
+  const roofH = Math.round(H * 0.40)
+  const wallTop = roofH - 8
+
+  // 접지 그림자
+  contactShadow(g, W / 2, H - 4, W * 0.46, 9, 0.36)
+
+  // ── 벽 ──
+  P(g, 6, wallTop, W - 12, H - wallTop - 6, wall.base)
+  // 세로 사이딩
+  for (let x = 6; x < W - 6; x += 8) {
+    P(g, x, wallTop, 1, H - wallTop - 6, wall.lo)
+    P(g, x + 1, wallTop, 1, H - wallTop - 6, wall.hi)
   }
-  // 문 — 포켓몬 상점의 그 자동문 (유리 두 짝 + 위쪽 표시등)
+  // 좌우 모서리 (입체감)
+  P(g, 6, wallTop, 8, H - wallTop - 6, wall.hi)
+  P(g, W - 16, wallTop, 10, H - wallTop - 6, wall.lo)
+  P(g, W - 8, wallTop, 2, H - wallTop - 6, wall.lo2)
+  // 처마 밑 그늘
+  P(g, 6, wallTop, W - 12, 10, 'rgba(16,20,34,.3)')
+  P(g, 6, wallTop + 10, W - 12, 5, 'rgba(16,20,34,.13)')
+  // 기초 석재
+  const stone = ramp('#9a9488')
+  P(g, 4, H - 16, W - 8, 12, stone.base)
+  P(g, 4, H - 16, W - 8, 3, stone.hi)
+  for (let x = 4; x < W - 8; x += 14) {
+    P(g, x, H - 16, 1, 12, stone.lo2)
+    P(g, x + 7, H - 10, 1, 6, stone.lo2)
+  }
+  P(g, 4, H - 6, W - 8, 3, stone.deep)
+
+  // ── 지붕 ──
+  roofSlope(g, 0, 4, W, roofH, o.roofC)
+  const rr = ramp(o.roofC)
+  P(g, 0, 0, W, 5, rr.hi2)            // 용마루 캡
+  P(g, 0, 3, W, 2, rr.lo)
+  P(g, 0, roofH + 4, W, 3, rr.deep)   // 처마 판
+  P(g, 0, roofH + 6, W, 2, 'rgba(16,20,34,.35)')
+
+  // ── 간판 ──
+  const sw = Math.min(W - 40, 92)
+  const sx = Math.round((W - sw) / 2)
+  const sy = wallTop + 16
+  const sr = ramp(o.roofC)
+  P(g, sx - 4, sy - 4, sw + 8, 44, sr.deep)
+  P(g, sx - 2, sy - 2, sw + 4, 40, sr.lo2)
+  P(g, sx, sy, sw, 36, '#f6f2e4')
+  P(g, sx, sy, sw, 3, '#ffffff')
+  P(g, sx, sy + 33, sw, 3, '#d8d2c0')
+  emblem(g, sx + Math.floor(sw / 2) - 16, sy + 2, o.sign)
+  P(g, sx - 4, sy + 40, sw + 8, 4, 'rgba(16,20,34,.28)')
+
+  // ── 창문 ──
+  const wy = sy + 52
+  if (wy + 30 < H - 60) {
+    window9(g, 18, wy, 30, 28)
+    window9(g, W - 48, wy, 30, 28)
+  }
+
+  // ── 자동문 ──
   const dcx = ((o.doorX ?? Math.floor(o.w / 2)) + 0.5) * TILE
-  const dw = 20
+  const dw = 44
   const dx = Math.round(dcx - dw / 2)
-  const dTop = H - 30
-  P(g, dx - 1, dTop, dw + 2, 28, '#33384a')       // 문틀
-  P(g, dx, dTop + 1, dw, 5, shade(o.roofC, -14))  // 상단 표시등 판
-  for (let i = 0; i < 3; i++) P(g, dx + 4 + i * 5, dTop + 2, 3, 2, '#ffe066')
-  P(g, dx + 1, dTop + 7, dw - 2, 19, '#8fd8f8')   // 유리
-  P(g, dx + dw / 2 - 1, dTop + 7, 2, 19, '#33384a') // 가운데 문설주
-  // 유리에 비친 빛
-  for (let i = 0; i < 4; i++) {
-    P(g, dx + 2 + i, dTop + 9 + i, 3, 1, '#d6f2ff')
-    P(g, dx + dw / 2 + 2 + i, dTop + 12 + i, 3, 1, '#c2ecff')
+  const dTop = H - 66
+  P(g, dx - 4, dTop - 4, dw + 8, 56, '#232838')
+  P(g, dx - 2, dTop - 2, dw + 4, 52, '#33384a')
+  // 상단 표시등
+  P(g, dx, dTop, dw, 10, sr.lo)
+  for (let i = 0; i < 3; i++) P(g, dx + 7 + i * 11, dTop + 3, 6, 4, '#ffe066')
+  // 유리
+  P(g, dx + 1, dTop + 12, dw - 2, 36, '#8fd8f8')
+  P(g, dx + 1, dTop + 12, dw - 2, 6, '#b4e6ff')
+  P(g, dx + dw / 2 - 2, dTop + 12, 4, 36, '#33384a')
+  for (let i = 0; i < 7; i++) {
+    P(g, dx + 3 + i, dTop + 16 + i, 5, 2, 'rgba(255,255,255,.6)')
+    P(g, dx + dw / 2 + 4 + i, dTop + 22 + i, 5, 2, 'rgba(255,255,255,.42)')
   }
-  P(g, dx + 1, dTop + 25, dw - 2, 1, '#5a6070')
-  // 계단
-  P(g, dx - 4, H - 4, dw + 8, 4, '#d6d2c6')
-  P(g, dx - 4, H - 4, dw + 8, 1, '#efece2')
-  P(g, dx - 2, H - 1, dw + 4, 1, 'rgba(0,0,0,.2)')
+  P(g, dx + 1, dTop + 45, dw - 2, 3, '#5a6070')
+  // 현관 계단
+  P(g, dx - 10, H - 12, dw + 20, 10, '#d6d2c6')
+  P(g, dx - 10, H - 12, dw + 20, 3, '#efece2')
+  P(g, dx - 14, H - 5, dw + 28, 5, '#c2beb2')
+  P(g, dx - 14, H - 5, dw + 28, 2, '#dedace')
+  P(g, dx - 14, H - 2, dw + 28, 2, 'rgba(16,20,34,.3)')
+}
+
+function window9(g, x, y, w, h) {
+  const fr = ramp('#8a6e4e')
+  P(g, x - 3, y - 3, w + 6, h + 6, fr.lo2)
+  P(g, x - 2, y - 2, w + 4, h + 4, fr.base)
+  P(g, x - 2, y - 2, w + 4, 2, fr.hi)
+  P(g, x, y, w, h, '#3f6f9c')
+  P(g, x, y, w, Math.floor(h / 2), '#8fd8f8')
+  // 유리 반사
+  for (let i = 0; i < 6; i++) P(g, x + 2 + i * 2, y + 2 + i * 2, 6, 2, 'rgba(255,255,255,.5)')
+  // 창살
+  P(g, x + Math.floor(w / 2) - 1, y, 2, h, fr.base)
+  P(g, x, y + Math.floor(h / 2) - 1, w, 2, fr.base)
+  // 커튼
+  P(g, x, y, 5, h, 'rgba(255,240,220,.55)')
+  P(g, x + w - 5, y, 5, h, 'rgba(255,240,220,.42)')
+  P(g, x, y + h - 3, w, 3, 'rgba(16,20,34,.3)')
+}
+
+/** 간판 엠블럼 — 글자 대신 그림으로 어떤 가게인지 알린다 (32x32) */
+function emblem(g, x, y, kind) {
+  if (kind === 'shuttle') {
+    P(g, x + 11, y + 17, 11, 8, '#e8e8e8')
+    P(g, x + 11, y + 17, 4, 8, '#ffffff')
+    P(g, x + 13, y + 24, 7, 5, '#c8c8c8')
+    for (let i = 0; i < 5; i++) {
+      const h = 15 - Math.abs(2 - i) * 3
+      P(g, x + 5 + i * 5, y + 3 + Math.abs(2 - i) * 2, 4, h, '#ffffff')
+      P(g, x + 5 + i * 5, y + 3 + Math.abs(2 - i) * 2, 1, h, '#d4d8e0')
+    }
+    P(g, x + 11, y + 27, 11, 2, '#a8a8a8')
+  } else if (kind === 'racket') {
+    P(g, x + 7, y + 1, 18, 20, '#f0b429')
+    P(g, x + 9, y + 3, 14, 16, '#20263c')
+    for (let i = 2; i < 14; i += 3) P(g, x + 9 + i, y + 3, 1, 16, '#8fa0c8')
+    for (let i = 2; i < 16; i += 3) P(g, x + 9, y + 3 + i, 14, 1, '#8fa0c8')
+    P(g, x + 7, y + 1, 18, 3, '#ffd76a')
+    P(g, x + 14, y + 21, 4, 10, '#f0b429')
+    P(g, x + 14, y + 21, 1, 10, '#ffd76a')
+  } else if (kind === 'heal') {
+    P(g, x + 12, y + 4, 8, 24, '#ff5c8a')
+    P(g, x + 4, y + 12, 24, 8, '#ff5c8a')
+    P(g, x + 12, y + 4, 3, 24, '#ff8fb2')
+    P(g, x + 4, y + 12, 24, 3, '#ff8fb2')
+  } else if (kind === 'star') {
+    P(g, x + 6, y + 10, 20, 9, '#ffd84a')
+    P(g, x + 12, y + 2, 8, 9, '#ffd84a')
+    P(g, x + 8, y + 18, 6, 11, '#ffd84a')
+    P(g, x + 18, y + 18, 6, 11, '#ffd84a')
+    P(g, x + 12, y + 2, 3, 9, '#fff1a8')
+    P(g, x + 6, y + 10, 8, 3, '#fff1a8')
+  } else if (kind === 'home') {
+    P(g, x + 5, y + 14, 22, 15, '#f0e0c0')
+    for (let i = 0; i < 12; i++) P(g, x + 16 - i - 1, y + 13 - i + 8, (i + 1) * 2, 1, '#c07048')
+    P(g, x + 12, y + 20, 8, 9, '#8a5a3a')
+    P(g, x + 5, y + 26, 22, 3, '#d8c8a8')
+  }
 }
 
 // -----------------------------------------------------------------------------------
-// 오브젝트 등록표
-//   w,h        : 타일 크기
-//   solidRows  : 아래에서 몇 줄이 막히는지 (0 이면 안 막힘)
-//   drawW/drawH: 실제 그림 크기(픽셀). 없으면 w*16, h*16
+// 오브젝트 등록표 (w,h 는 타일 개수)
 // -----------------------------------------------------------------------------------
 export const OBJECTS = {
   tree: { w: 2, h: 3, solidRows: 1, draw: oTree },
@@ -700,21 +1100,20 @@ export const OBJECTS = {
   rock: { w: 1, h: 1, solidRows: 1, draw: oRock },
   sign: { w: 1, h: 1, solidRows: 1, draw: oSign },
   lamp: { w: 1, h: 2, solidRows: 1, draw: oLamp },
-  bench: { w: 2, h: 1, solidRows: 1, draw: oBench, drawH: 19 },
+  bench: { w: 2, h: 1, solidRows: 1, draw: oBench, drawH: 38 },
   fence: { w: 1, h: 1, solidRows: 1, draw: oFence },
   vending: { w: 1, h: 2, solidRows: 1, draw: oVending },
-  counter: { w: 2, h: 1, solidRows: 1, draw: oCounter, drawH: 22 },
+  counter: { w: 2, h: 1, solidRows: 1, draw: oCounter, drawH: 44 },
   shelf: { w: 1, h: 2, solidRows: 2, draw: oShelf },
   plant: { w: 1, h: 2, solidRows: 1, draw: oPlant },
-  table: { w: 2, h: 1, solidRows: 1, draw: oTable },
+  table: { w: 2, h: 1, solidRows: 1, draw: oTable, drawH: 34 },
   bed: { w: 2, h: 2, solidRows: 2, draw: oBed },
-  tv: { w: 2, h: 1, solidRows: 1, draw: oTv, drawH: 17 },
-  pc: { w: 1, h: 1, solidRows: 1, draw: oPc },
+  tv: { w: 2, h: 1, solidRows: 1, draw: oTv, drawH: 35 },
+  pc: { w: 1, h: 1, solidRows: 1, draw: oPc, drawH: 32 },
   locker: { w: 1, h: 2, solidRows: 2, draw: oLocker },
   machine: { w: 1, h: 2, solidRows: 1, draw: oMachine },
   scoreboard: { w: 3, h: 2, solidRows: 2, draw: oScoreboard },
   court: { w: 5, h: 9, solidRows: 0, flat: true, draw: oCourt },
-  // 마을이 자라면 생기는 장식 — 길을 막지 않도록 전부 통과 가능
   flag: { w: 1, h: 2, solidRows: 0, draw: oFlag },
   sakura: { w: 2, h: 3, solidRows: 0, draw: oSakura },
   fountain: { w: 2, h: 2, solidRows: 0, draw: oFountain },
@@ -746,7 +1145,6 @@ export const OBJECTS = {
 // -----------------------------------------------------------------------------------
 const objCache = new Map()
 
-/** 오브젝트 스프라이트 한 장 (테마·변형별로 한 번만 굽는다) */
 export function objectSprite(kind, theme, variant = 0) {
   const key = `${kind}|${theme.id}|${variant}`
   const hit = objCache.get(key)
@@ -761,7 +1159,7 @@ export function objectSprite(kind, theme, variant = 0) {
   return c
 }
 
-// 잔디가 길 위로 자라 나오는 경계 처리 — 이 한 겹이 지도를 확 살린다
+// 잔디가 길 위로 자라 나오는 경계 처리
 const GRASSY = new Set(['.', ',', '"'])
 const HARD = new Set(['=', '_', 's'])
 
@@ -770,39 +1168,38 @@ function drawFringe(g, rows, theme, x, y) {
   const at = (xx, yy) => rows[yy]?.[xx]
   const ox = x * TILE
   const oy = y * TILE
-  const c1 = p.grass[0]
-  const c2 = p.grassDark
+  const r0 = ramp(p.grass[0])
+  const pick = (i) => (i % 4 === 0 ? r0.lo2 : i % 3 === 0 ? r0.hi : r0.base)
 
-  // 위쪽이 잔디 → 잔디가 길 위로 늘어진다
   if (GRASSY.has(at(x, y - 1))) {
+    P(g, ox, oy, TILE, 2, 'rgba(16,20,34,.13)')
     for (let i = 0; i < TILE; i++) {
-      const h = 1 + Math.floor(hash2(x * 16 + i, y, 201) * 3)
-      P(g, ox + i, oy, 1, h, i % 3 ? c1 : c2)
+      const h = 2 + Math.floor(hash2(x * TILE + i, y, 201) * 5)
+      P(g, ox + i, oy, 1, h, pick(i))
     }
   }
   if (GRASSY.has(at(x, y + 1))) {
     for (let i = 0; i < TILE; i++) {
-      const h = 1 + Math.floor(hash2(x * 16 + i, y, 202) * 2)
-      P(g, ox + i, oy + TILE - h, 1, h, i % 3 ? c1 : c2)
+      const h = 1 + Math.floor(hash2(x * TILE + i, y, 202) * 4)
+      P(g, ox + i, oy + TILE - h, 1, h, pick(i))
     }
   }
   if (GRASSY.has(at(x - 1, y))) {
     for (let i = 0; i < TILE; i++) {
-      const wq = 1 + Math.floor(hash2(x, y * 16 + i, 203) * 2)
-      P(g, ox, oy + i, wq, 1, i % 3 ? c1 : c2)
+      const w = 1 + Math.floor(hash2(x, y * TILE + i, 203) * 4)
+      P(g, ox, oy + i, w, 1, pick(i))
     }
   }
   if (GRASSY.has(at(x + 1, y))) {
     for (let i = 0; i < TILE; i++) {
-      const wq = 1 + Math.floor(hash2(x, y * 16 + i, 204) * 2)
-      P(g, ox + TILE - wq, oy + i, wq, 1, i % 3 ? c1 : c2)
+      const w = 1 + Math.floor(hash2(x, y * TILE + i, 204) * 4)
+      P(g, ox + TILE - w, oy + i, w, 1, pick(i))
     }
   }
 }
 
 /**
- * 지도의 바닥을 통째로 큰 캔버스에 굽는다.
- * 물결 때문에 프레임 2장을 만들어 번갈아 쓴다.
+ * 지도의 바닥을 통째로 큰 캔버스에 굽는다. (물결 때문에 프레임 2장)
  * opts.lights — 실내 창문에서 들어오는 빛 [x, y, w, h] (타일 단위)
  */
 export function bakeGround(rows, theme, opts = {}) {
@@ -821,23 +1218,36 @@ export function bakeGround(rows, theme, opts = {}) {
         g.drawImage(cell, x * TILE, y * TILE)
       }
     }
-    // 길 위로 잔디가 삐져나오는 경계
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (HARD.has(rows[y][x])) drawFringe(g, rows, theme, x, y)
       }
     }
-    // 실내 채광 — 창문에서 들어온 빛이 바닥에 깔린다
+    // 벽 아래로 떨어지는 그늘 (실내 입체감)
+    for (let y = 1; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const above = rows[y - 1][x]
+        const here = rows[y][x]
+        if ((above === 'w' || above === 'W') && here !== 'w' && here !== 'W' && here !== ' ') {
+          const grd = g.createLinearGradient(0, y * TILE, 0, y * TILE + 14)
+          grd.addColorStop(0, 'rgba(16,20,34,.30)')
+          grd.addColorStop(1, 'rgba(16,20,34,0)')
+          g.fillStyle = grd
+          g.fillRect(x * TILE, y * TILE, TILE, 14)
+        }
+      }
+    }
+    // 실내 채광
     ;(opts.lights || []).forEach(([lx, ly, lw, lh]) => {
       const grd = g.createLinearGradient(0, ly * TILE, 0, (ly + lh) * TILE)
-      grd.addColorStop(0, 'rgba(255,246,214,.34)')
+      grd.addColorStop(0, 'rgba(255,246,214,.30)')
       grd.addColorStop(1, 'rgba(255,246,214,0)')
       g.fillStyle = grd
       g.beginPath()
       g.moveTo(lx * TILE, ly * TILE)
       g.lineTo((lx + lw) * TILE, ly * TILE)
-      g.lineTo((lx + lw + 1) * TILE, (ly + lh) * TILE)
-      g.lineTo((lx - 1) * TILE, (ly + lh) * TILE)
+      g.lineTo((lx + lw + 1.4) * TILE, (ly + lh) * TILE)
+      g.lineTo((lx - 1.4) * TILE, (ly + lh) * TILE)
       g.closePath()
       g.fill()
     })

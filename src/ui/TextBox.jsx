@@ -6,7 +6,7 @@
 // ===================================================================================
 import { useEffect, useRef, useState } from 'react'
 import { useTalk } from '../pixel/talk.js'
-import { drawBig } from '../pixel/sprites.js'
+import { drawBig, CW, CH } from '../pixel/sprites.js'
 
 const SPEED = 26 // ms per char
 
@@ -17,10 +17,10 @@ function Face({ face }) {
     if (!cv || !face) return
     const g = cv.getContext('2d')
     g.clearRect(0, 0, cv.width, cv.height)
-    drawBig(g, face.look, face.gender, 0, 0, 0, 0, 3)
+    drawBig(g, face.look, face.gender, 0, 0, 0, 0, 2)
   }, [face])
   if (!face) return null
-  return <canvas ref={ref} width={48} height={72} className="talk-face" />
+  return <canvas ref={ref} width={CW * 2} height={CH * 2} className="talk-face" />
 }
 
 export default function TextBox() {

@@ -153,7 +153,7 @@ function buildTown() {
       {
         id: 'koko', name: '안내원 코코', x: 21, y: 12, dir: 0, wander: 0, script: 'koko',
         gender: '여',
-        look: { skin: 's2', hair: 'twintail', hairColor: '#f2d49b', eyes: 'sparkle', outfit: 'polo', top: '#ffd166', bottom: '#f97316', bottomStyle: 'skirt', shoes: '#ffffff', shoeStyle: 'basic', acc: 'visor', racket: { model: 'classic', frame: '#ffffff', string: '#ffffff', grip: '#f59e0b', wrap: 'plain' } },
+        look: { skin: 's2', hair: 'twintail', hairColor: '#d69f52', eyes: 'sparkle', outfit: 'polo', top: '#ffd166', bottom: '#f97316', bottomStyle: 'skirt', shoes: '#ffffff', shoeStyle: 'basic', acc: 'visor', racket: { model: 'classic', frame: '#ffffff', string: '#ffffff', grip: '#f59e0b', wrap: 'plain' } },
       },
       {
         id: 'kid1', name: '꼬마 지훈', x: 12, y: 17, dir: 3, wander: 1, notice: 3, script: 'kid1',

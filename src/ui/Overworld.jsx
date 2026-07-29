@@ -6,6 +6,7 @@
 // ===================================================================================
 import { useEffect, useRef, useState } from 'react'
 import { world, update, render, loadMap, restorePos } from '../pixel/engine.js'
+import { TILE } from '../pixel/tileset.js'
 import { useGame } from '../game/store.js'
 
 // 짧은 쪽에 대략 몇 칸을 보여 줄지 — 작을수록 확대돼 보인다
@@ -37,10 +38,10 @@ export default function Overworld() {
       const vw = box?.clientWidth || window.innerWidth
       const vh = box?.clientHeight || window.innerHeight
       if (!vw || !vh) return
-      const unit = Math.min(vw, vh) / (TILES_ON_SHORT_SIDE * 16)
+      const unit = Math.min(vw, vh) / (TILES_ON_SHORT_SIDE * TILE)
       if (!unit || !isFinite(unit)) return
-      const w = Math.max(160, Math.min(560, Math.round(vw / unit)))
-      const h = Math.max(160, Math.min(760, Math.round(vh / unit)))
+      const w = Math.max(320, Math.min(1100, Math.round(vw / unit)))
+      const h = Math.max(320, Math.min(1500, Math.round(vh / unit)))
       if (cv.width !== w || cv.height !== h) {
         cv.width = w
         cv.height = h

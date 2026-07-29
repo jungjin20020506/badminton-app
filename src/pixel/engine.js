@@ -647,6 +647,9 @@ export function render(ctx, viewW, viewH) {
     }
   }
 
+  // ── 비네팅 — 가장자리를 살짝 눌러 화면 가운데로 시선을 모은다 ──
+  ctx.drawImage(vignette(viewW, viewH), 0, 0)
+
   // ── 암전 ──
   if (world.fade > 0) {
     ctx.globalAlpha = world.fade
@@ -654,6 +657,26 @@ export function render(ctx, viewW, viewH) {
     ctx.fillRect(0, 0, viewW, viewH)
     ctx.globalAlpha = 1
   }
+}
+
+// 비네팅은 화면 크기가 바뀔 때만 새로 굽는다
+let vigC = null
+let vigKey = ''
+function vignette(w, h) {
+  const key = `${w}x${h}`
+  if (vigC && vigKey === key) return vigC
+  vigKey = key
+  vigC = document.createElement('canvas')
+  vigC.width = w
+  vigC.height = h
+  const g = vigC.getContext('2d')
+  const grd = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.34, w / 2, h / 2, Math.max(w, h) * 0.78)
+  grd.addColorStop(0, 'rgba(12,16,30,0)')
+  grd.addColorStop(0.62, 'rgba(12,16,30,.06)')
+  grd.addColorStop(1, 'rgba(12,16,30,.30)')
+  g.fillStyle = grd
+  g.fillRect(0, 0, w, h)
+  return vigC
 }
 
 /** 캐릭터가 풀숲에 서면 다리가 풀에 묻히도록 앞쪽 풀을 한 번 더 그린다 */
@@ -669,11 +692,13 @@ function drawGrassOverlay(ctx, camX, camY, viewW, viewH) {
     const sy = y * TILE - camY
     if (sx < -16 || sy < -16 || sx > viewW || sy > viewH) return
     const p = t.ground
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = p.grassDark
+      ctx.fillRect(sx + i * 6 + 1, sy + 16, 5, 16)
       ctx.fillStyle = p.grass[0]
-      ctx.fillRect(sx + i * 5 + 1, sy + 8, 4, 7)
+      ctx.fillRect(sx + i * 6 + 1, sy + 16, 3, 16)
       ctx.fillStyle = p.grassDot
-      ctx.fillRect(sx + i * 5 + 1, sy + 8, 1, 6)
+      ctx.fillRect(sx + i * 6 + 2, sy + 14, 1, 10)
     }
   })
 }

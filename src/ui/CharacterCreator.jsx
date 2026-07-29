@@ -3,7 +3,7 @@
 // 도트 캐릭터를 크게 확대해서 보여 준다. 사방으로 돌려 보고 걷는 모습도 볼 수 있다.
 // ===================================================================================
 import { useState, useRef, useEffect } from 'react'
-import { drawBig } from '../pixel/sprites.js'
+import { drawBig, CW, CH } from '../pixel/sprites.js'
 import { useGame, defaultLook } from '../game/store.js'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
@@ -34,11 +34,13 @@ function Preview({ look, gender }) {
       g.clearRect(0, 0, cv.width, cv.height)
       // 발밑 잔디판
       g.fillStyle = '#5cc45c'
-      g.fillRect(0, cv.height - 26, cv.width, 26)
+      g.fillRect(0, cv.height - 30, cv.width, 30)
+      g.fillStyle = '#68d066'
+      g.fillRect(0, cv.height - 30, cv.width, 4)
       g.fillStyle = '#4fb352'
-      for (let i = 0; i < cv.width; i += 9) g.fillRect(i + (i % 18 ? 3 : 0), cv.height - 20, 3, 3)
-      const scale = Math.floor(cv.height / 30)
-      drawBig(g, look, gender, dir, frame, Math.round((cv.width - 16 * scale) / 2), cv.height - 24 * scale - 12, scale)
+      for (let i = 0; i < cv.width; i += 9) g.fillRect(i + (i % 18 ? 3 : 0), cv.height - 22, 3, 4)
+      const scale = Math.max(2, Math.floor((cv.height - 24) / CH))
+      drawBig(g, look, gender, dir, frame, Math.round((cv.width - CW * scale) / 2), cv.height - CH * scale - 10, scale)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
@@ -46,7 +48,7 @@ function Preview({ look, gender }) {
 
   return (
     <div className="cc-preview">
-      <canvas ref={ref} width={160} height={190} className="cc-canvas" />
+      <canvas ref={ref} width={200} height={230} className="cc-canvas" />
       <div className="cc-preview-tools">
         <button className="pk-btn sm" onClick={() => setDir((d) => (d + 1) % 4)}>🔄 {DIR_LABEL[dir]}</button>
         <button className={`pk-btn sm ${walk ? 'primary' : ''}`} onClick={() => setWalk((v) => !v)}>
