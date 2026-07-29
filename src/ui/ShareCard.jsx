@@ -10,7 +10,7 @@ const FONT = '"Galmuri14", "Galmuri11", "Malgun Gothic", sans-serif'
 
 /** 지금 보고 있는 필드 화면을 그대로 떠 온다 */
 function grabField() {
-  const cv = document.querySelector('canvas.ow-canvas')
+  const cv = document.querySelector('.ow-canvas canvas') || document.querySelector('canvas.ow-canvas')
   if (!cv || !cv.width) return null
   try {
     return cv.toDataURL('image/png')
@@ -94,7 +94,8 @@ async function composeStory() {
   if (s.today.games > 0) {
     g.font = `400 42px ${FONT}`
     g.fillStyle = 'rgba(255,255,255,0.85)'
-    g.fillText(`오늘 ${s.today.games}경기 ${s.today.wins}승${s.winStreak >= 2 ? ` · ${s.winStreak}연승 🔥` : ''}`, 56, H - 108)
+    const face = s.today.newPartners > 0 ? ` · 새 얼굴 ${s.today.newPartners}명 📖` : ''
+    g.fillText(`오늘 ${s.today.games}경기${face}`, 56, H - 108)
   }
   g.shadowBlur = 0
 
