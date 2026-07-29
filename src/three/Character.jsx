@@ -397,12 +397,13 @@ function Hair({ style, color, R = 0.37, simple }) {
       return (
         <group>
           {shell(Math.PI * 0.3, Math.PI * 0.6, Math.PI * 0.72)}
-          <mesh position={[0, -0.3, -R * 0.5]} scale={[0.92, 1.5, 0.72]} material={mat} castShadow>
-            <sphereGeometry args={[R * 0.8, 22, 18]} />
+          {/* 뒷머리 — 등 가운데까지만. 더 길거나 넓으면 몸통을 통째로 덮어 우비처럼 보인다 */}
+          <mesh position={[0, -0.19, -R * 0.42]} scale={[0.8, 1.16, 0.68]} material={mat} castShadow>
+            <sphereGeometry args={[R * 0.72, 22, 18]} />
           </mesh>
           {[-1, 1].map((s) => (
-            <mesh key={s} position={[s * R * 0.8, -0.24, -R * 0.16]} scale={[0.28, 1.5, 0.5]} material={mat} castShadow>
-              <sphereGeometry args={[R * 0.52, 14, 12]} />
+            <mesh key={s} position={[s * R * 0.78, -0.17, -R * 0.14]} scale={[0.26, 1.2, 0.46]} material={mat} castShadow>
+              <sphereGeometry args={[R * 0.5, 14, 12]} />
             </mesh>
           ))}
         </group>
@@ -524,11 +525,16 @@ function Hair({ style, color, R = 0.37, simple }) {
     case 'afro':
       return (
         <group>
+          {/* 덩이만 얹으면 뒤통수·목덜미가 맨살로 남는다 — 밑에 두상 껍질을 깐다 */}
+          {shell(Math.PI * 0.28, Math.PI * 0.5, Math.PI * 0.72)}
           {[...Array(14)].map((_, i) => {
             const a = (i / 14) * Math.PI * 2
-            const y = R * (0.45 + Math.sin(i * 1.7) * 0.25)
+            // +Z 가 정면. 앞쪽 덩이는 위로 올리고 안쪽으로 당겨 눈을 가리지 않게 한다
+            const front = Math.max(0, Math.sin(a))
+            const ring = R * 0.85 * (1 - 0.22 * front)
+            const y = R * (0.48 + Math.sin(i * 1.7) * 0.22) + R * 0.34 * front
             return (
-              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * R * 0.85, y, Math.sin(a) * R * 0.85]}>
+              <mesh key={i} material={mat} castShadow position={[Math.cos(a) * ring, y, Math.sin(a) * ring]}>
                 <sphereGeometry args={[R * 0.5, 14, 12]} />
               </mesh>
             )
