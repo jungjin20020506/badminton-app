@@ -640,12 +640,23 @@ function Hair({ style, color, R = 0.37, simple }) {
 // -----------------------------------------------------------------------------------
 // 액세서리
 // -----------------------------------------------------------------------------------
+/** 색을 흰색 쪽으로 t만큼 당긴다 — 같은 색끼리 붙었을 때 형태를 살리는 용도 */
+function lighten(hex, t) {
+  const c = new THREE.Color(hex)
+  return '#' + c.lerp(new THREE.Color('#ffffff'), t).getHexString()
+}
+
 function Accessory({ id, color = '#ef4444', R = 0.37 }) {
   const mat = useMemo(() => charMaterial({ color, roughness: 0.7 }), [color])
   const glass = useMemo(
-    () => charMaterial({ color, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.5, rimIntensity: 0.7, envMapIntensity: 2 }),
+    // opacity가 높으면 렌즈가 눈을 지워버린다 — 눈이 비쳐 보일 만큼 얇게
+    () => charMaterial({ color, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.26, rimIntensity: 0.7, envMapIntensity: 2 }),
     [color]
   )
+  // 테/스트랩용 어두운 색 — 상의색을 그대로 쓰면 밝은 옷일 때 얼굴에 묻힌다
+  const frameMat = useMemo(() => charMaterial({ color: '#2f3643', roughness: 0.5 }), [])
+  // 천 액세서리(목수건)용 — 상의와 같은 색이면 형태가 전혀 안 읽혀서 밝기를 올린다
+  const clothMat = useMemo(() => charMaterial({ color: lighten(color, 0.55), roughness: 0.85 }), [color])
   if (!id || id === 'none') return null
   if (id === 'headband')
     return (
@@ -659,8 +670,9 @@ function Accessory({ id, color = '#ef4444', R = 0.37 }) {
         <mesh material={mat} castShadow>
           <sphereGeometry args={[R * 1.04, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
         </mesh>
-        <mesh position={[0, 0.0, 0.27]} rotation={[-0.12, 0, 0]} scale={[1.15, 0.14, 1]} material={mat} castShadow>
-          <sphereGeometry args={[0.24, 16, 10, 0, Math.PI, 0, Math.PI]} />
+        {/* 챙 — 아래로 기울여야 정면에서 윗면이 보인다. 평평하면 선 하나로만 읽힌다 */}
+        <mesh position={[0, -0.03, 0.24]} rotation={[0.2, 0, 0]} scale={[1.45, 0.13, 1.25]} material={mat} castShadow>
+          <sphereGeometry args={[0.24, 18, 10, 0, Math.PI, 0, Math.PI]} />
         </mesh>
         <mesh position={[0, 0.35, 0]} material={mat}>
           <sphereGeometry args={[0.035, 8, 8]} />
@@ -668,11 +680,48 @@ function Accessory({ id, color = '#ef4444', R = 0.37 }) {
       </group>
     )
   if (id === 'glasses')
+    // 스포츠 고글 — 얼굴 표면(z≈R)보다 앞으로 나와야 보인다. 안쪽에 두면 두상에 파묻힌다
     return (
-      <group position={[0, R * 0.12, R * 0.66]}>
-        <mesh scale={[1, 0.44, 0.34]} material={glass}>
-          <sphereGeometry args={[R * 0.56, 18, 14, 0, Math.PI * 2, 0, Math.PI]} />
+      // 눈은 얼굴 텍스처상 EYE_Y=268(중심 256)·EYE_DX=116이라 두상 중심보다 살짝 아래·좌우 R*0.45에 있다.
+      // 렌즈를 한 덩어리로 만들면 눈을 통째로 덮어버려서, 눈마다 하나씩 얹고 렌즈는 거의 투명하게 둔다.
+      <group position={[0, -R * 0.085, 0]}>
+        {[-1, 1].map((s) => (
+          <group key={s} position={[s * R * 0.45, 0, R * 0.8]}>
+            <mesh scale={[1, 0.84, 0.34]} material={glass}>
+              <sphereGeometry args={[R * 0.34, 16, 12]} />
+            </mesh>
+            {/* 토러스는 기본이 XY 평면(=카메라를 마주본다). X축으로 돌리면 정면에서 막대기 하나로 보인다 */}
+            <mesh scale={[1, 0.84, 1]} material={frameMat}>
+              <torusGeometry args={[R * 0.34, 0.02, 8, 22]} />
+            </mesh>
+          </group>
+        ))}
+        {/* 콧대 브릿지 */}
+        <mesh position={[0, 0, R * 0.88]} material={frameMat}>
+          <boxGeometry args={[R * 0.32, 0.026, 0.026]} />
         </mesh>
+        {/* 다리는 달지 않는다 — 두상이 구형이라 어떤 각도로 붙여도 얼굴 밖으로 삐져나온 막대기로 보인다 */}
+      </group>
+    )
+  if (id === 'towel')
+    // 목수건 — 목에 두르고 가슴 앞으로 두 가닥이 늘어진다
+    return (
+      <group position={[0, -R * 0.86, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1, 1, 0.85]} material={clothMat} castShadow>
+          <torusGeometry args={[R * 0.56, 0.062, 10, 24]} />
+        </mesh>
+        {/* 늘어진 두 가닥 — 넓으면 가슴을 덮는 앞치마처럼 보인다. 좁게, 좌우로 벌려서 */}
+        {[-1, 1].map((s) => (
+          <mesh
+            key={s}
+            position={[s * R * 0.3, -R * 0.34, R * 0.46]}
+            rotation={[0.18, 0, s * 0.24]}
+            material={clothMat}
+            castShadow
+          >
+            <boxGeometry args={[R * 0.17, R * 0.64, 0.045]} />
+          </mesh>
+        ))}
       </group>
     )
   if (id === 'visor')
@@ -682,8 +731,8 @@ function Accessory({ id, color = '#ef4444', R = 0.37 }) {
         <mesh material={mat} rotation={[Math.PI / 2, 0, 0]} castShadow>
           <torusGeometry args={[R * 0.98, 0.035, 10, 26]} />
         </mesh>
-        <mesh position={[0, -0.01, R * 0.74]} rotation={[-0.16, 0, 0]} scale={[1.15, 0.12, 1]} material={mat} castShadow>
-          <sphereGeometry args={[R * 0.66, 16, 10, 0, Math.PI, 0, Math.PI]} />
+        <mesh position={[0, -0.04, R * 0.66]} rotation={[0.22, 0, 0]} scale={[1.4, 0.12, 1.2]} material={mat} castShadow>
+          <sphereGeometry args={[R * 0.66, 18, 10, 0, Math.PI, 0, Math.PI]} />
         </mesh>
       </group>
     )
@@ -700,7 +749,9 @@ function Accessory({ id, color = '#ef4444', R = 0.37 }) {
     )
   if (id === 'mask')
     return (
-      <mesh position={[0, -R * 0.28, R * 0.5]} scale={[1, 0.62, 0.62]} castShadow>
+      // 입은 얼굴 텍스처상 MOUTH_Y=372(중심 256) — 두상 중심에서 R*0.45쯤 아래다. 그보다 위에 두면 입이 노출된다
+      // z를 당기면 두상 표면에 파묻혀 윗부분이 잘리고 입이 다시 드러난다 — 앞으로 충분히 빼 둔다
+      <mesh position={[0, -R * 0.42, R * 0.4]} scale={[0.92, 0.5, 0.56]} castShadow>
         <sphereGeometry args={[R * 0.82, 20, 16, Math.PI * 0.28, Math.PI * 0.44, Math.PI * 0.32, Math.PI * 0.5]} />
         <meshStandardMaterial color="#f7fafc" roughness={0.9} side={THREE.DoubleSide} />
       </mesh>
@@ -765,6 +816,7 @@ export default function Character({
 
   const skinMat = useMemo(() => skinMaterial(skin), [skin])
   const topMat = useMemo(() => clothMaterial(look.top), [look.top])
+  const bandMat = useMemo(() => clothMaterial(lighten(look.top, 0.55)), [look.top])
   const bottomMat = useMemo(() => clothMaterial(look.bottom), [look.bottom])
   const shoeMat = useMemo(() => glossMaterial(look.shoes), [look.shoes])
   const soleMat = useMemo(() => charMaterial({ color: '#f4f4f5', roughness: 0.8 }), [])
@@ -1024,8 +1076,9 @@ export default function Character({
         </mesh>
         <group ref={foreRef} position={[0, -0.135, 0]}>
           {look.acc === 'wristband' && !simple && (
-            <mesh position={[0, -0.012, 0]} material={topMat}>
-              <cylinderGeometry args={[0.076, 0.076, 0.04, 12]} />
+            // 상의색 그대로 쓰면 소매와 구분이 안 된다 — 밝게 빼고 조금 더 두껍게
+            <mesh position={[0, -0.014, 0]} material={bandMat}>
+              <cylinderGeometry args={[0.082, 0.082, 0.055, 14]} />
             </mesh>
           )}
           {/* 손 — 벙어리장갑처럼 동그랗게 */}
