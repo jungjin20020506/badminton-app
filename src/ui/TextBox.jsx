@@ -17,10 +17,10 @@ function Face({ face }) {
     if (!cv || !face) return
     const g = cv.getContext('2d')
     g.clearRect(0, 0, cv.width, cv.height)
-    drawBig(g, face.look, face.gender, 0, 0, 0, 0, 2)
+    drawBig(g, face.look, face.gender, 0, 0, 0, 0, 1)
   }, [face])
   if (!face) return null
-  return <canvas ref={ref} width={CW * 2} height={CH * 2} className="talk-face" />
+  return <canvas ref={ref} width={CW} height={CH} className="talk-face" />
 }
 
 export default function TextBox() {

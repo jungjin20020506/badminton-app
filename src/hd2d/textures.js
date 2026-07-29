@@ -49,8 +49,8 @@ export function actorTexture(look, gender) {
   }
   const t = base.clone()
   t.needsUpdate = true
-  t.magFilter = THREE.NearestFilter
-  t.minFilter = THREE.NearestFilter
+  t.magFilter = THREE.NearestFilter   // 가까이서는 도트가 각지게
+  t.minFilter = THREE.LinearFilter    // 멀리서는 부드럽게 (반짝임 방지)
   t.generateMipmaps = false
   t.colorSpace = THREE.SRGBColorSpace
   t.repeat.set(1 / 4, 1 / 4)
@@ -62,9 +62,13 @@ export function setActorFrame(tex, dir, frame) {
   tex.offset.set(frame / 4, 1 - (dir + 1) / 4)
 }
 
-/** 캐릭터 한 칸의 월드 크기 */
-export const ACTOR_W = CW / TILE
-export const ACTOR_H = CH / TILE
+/**
+ * 캐릭터의 월드 크기.
+ * 스프라이트는 타일의 2배 밀도(64x96)로 그리지만, 월드에서 차지하는 크기는
+ * 사람 비율(가로 1칸 · 세로 1.5칸)을 유지한다. 남는 픽셀은 그대로 디테일이 된다.
+ */
+export const ACTOR_W = 1.0
+export const ACTOR_H = 1.5
 
 export function clearTextureCache() {
   cache.forEach((t) => t.dispose?.())

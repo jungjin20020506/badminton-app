@@ -230,7 +230,7 @@ function ShopPanel() {
 // ⭐ 나
 // -----------------------------------------------------------------------------------
 /** 트레이너 카드에 들어가는 작은 도트 초상 */
-function MiniPortrait({ look, gender, size = 3 }) {
+function MiniPortrait({ look, gender, size = 1.5 }) {
   const ref = useRef(null)
   useEffect(() => {
     const cv = ref.current
@@ -335,7 +335,7 @@ function MePanel() {
           <div className="sect">⚔️ 나의 라이벌</div>
           <div className="court-mini live">
             <div className="row">
-              <MiniPortrait look={rival.player.look} gender={rival.player.gender} size={2} />
+              <MiniPortrait look={rival.player.look} gender={rival.player.gender} size={1} />
               <div style={{ flex: 1 }}>
                 <div className="row wrap">
                   <b>{rival.player.name}</b>
@@ -426,7 +426,7 @@ function DexPanel() {
         {shown.map(({ player: p, met: m, games }) => (
           <div key={p.id} className={`dex-cell ${m ? 'met' : ''}`}>
             {m ? (
-              <MiniPortrait look={p.look} gender={p.gender} size={2} />
+              <MiniPortrait look={p.look} gender={p.gender} size={1} />
             ) : (
               <div className="dex-unknown">?</div>
             )}

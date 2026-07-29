@@ -11,6 +11,7 @@ import { world } from '../pixel/engine.js'
 import Pad from './Pad.jsx'
 import TextBox from './TextBox.jsx'
 import { RoomDock, GoalHint, TurnAlarm } from './RoomDock.jsx'
+import MiniMap from './MiniMap.jsx'
 
 const pad2 = (n) => String(n).padStart(2, '0')
 export const clockText = (t) => {
@@ -279,6 +280,7 @@ export default function Hud() {
   return (
     <>
       {!panel && <TopBar onMenu={() => setMenu((v) => !v)} />}
+      {!panel && !showCheckIn && <MiniMap />}
       <StartMenu open={menu} onClose={() => setMenu(false)} />
       {!hidePad && <Pad onMenu={() => setMenu((v) => !v)} />}
       <GoalHint />

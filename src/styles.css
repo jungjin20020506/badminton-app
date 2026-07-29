@@ -335,6 +335,27 @@ input, select, textarea { font-family: var(--font); font-size: 16px; }
 .turn-card.now { background: #e0526e; color: #fff; box-shadow: 0 3px 0 #97253c; }
 .turn-card.now .tk-body em { color: #ffdfe6; }
 
+/* 미니맵 — 오른쪽 위, 상태창 아래 */
+.minimap {
+  position: absolute; z-index: 23;
+  top: calc(var(--safe-t) + 62px); right: 8px;
+  padding: 5px 5px 4px;
+  line-height: 0;
+  animation: dockIn .22s ease-out;
+}
+.minimap canvas {
+  display: block;
+  image-rendering: pixelated;
+  border: 2px solid var(--pk-frame);
+  border-radius: 3px;
+  max-width: 34vw; height: auto;
+}
+.mm-label {
+  display: block; line-height: 1.2; margin-top: 3px;
+  font-size: 9px; text-align: center; color: var(--pk-text-lo);
+}
+@media (max-width: 420px) { .minimap canvas { max-width: 28vw; } }
+
 /* 이야기 안내 한 줄 */
 .goal-hint {
   position: absolute; left: 50%; transform: translateX(-50%);

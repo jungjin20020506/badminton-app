@@ -195,7 +195,7 @@ function Actors({ mapId }) {
 // -----------------------------------------------------------------------------------
 // 카메라 — 기울여 내려다보며 플레이어를 따라간다
 // -----------------------------------------------------------------------------------
-const CAM = { back: 11.6, up: 8.7, look: 0.9 }
+const CAM = { back: 19.4, up: 14.6, look: 0.9 }
 // 카메라가 내려다보는 각도만큼 스프라이트도 눕혀야 납작해 보이지 않는다
 const CAM_PITCH = Math.atan2(CAM.up, CAM.back)
 
@@ -236,7 +236,7 @@ function Lights() {
     const fx = p.moving ? p.from[0] + (p.x - p.from[0]) * p.prog : p.x
     const fy = p.moving ? p.from[1] + (p.y - p.from[1]) * p.prog : p.y
     // 그림자 카메라가 플레이어를 따라다녀야 좁은 범위로도 선명한 그림자가 나온다
-    l.position.set(fx + 6, 14, fy - 6)
+    l.position.set(fx + 9, 20, fy - 9)
     l.target.position.set(fx, 0, fy)
     l.target.updateMatrixWorld()
   })
@@ -251,12 +251,12 @@ function Lights() {
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0012}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
-        shadow-camera-top={14}
-        shadow-camera-bottom={-14}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
+        shadow-camera-bottom={-20}
         shadow-camera-near={1}
-        shadow-camera-far={40}
+        shadow-camera-far={56}
       />
     </>
   )
