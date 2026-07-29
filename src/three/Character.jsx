@@ -835,6 +835,27 @@ export default function Character({
   )
   const torsoGeo = useMemo(() => torsoGeometry(female), [female])
 
+  // 몸통 표면 반지름 (월드 y 기준). 의상 디테일을 이 값에 맞춰야 몸에 붙는다.
+  // 몸통은 y 0.30~0.78 이고 0.70 위로는 머리에 가려진다 — 칼라·넥라인은 0.62~0.70 사이에 둔다.
+  const torsoR = useMemo(() => {
+    const w = female ? 0.93 : 1
+    const sh = female ? 0.94 : 1
+    const P = [
+      [0.30, 0.196 * w], [0.36, 0.204 * w], [0.45, 0.200 * w], [0.54, 0.188 * w],
+      [0.62, 0.166 * w * sh], [0.69, 0.142 * w * sh], [0.74, 0.106 * w * sh],
+    ]
+    return (y) => {
+      if (y <= P[0][0]) return P[0][1]
+      for (let i = 1; i < P.length; i++) {
+        if (y <= P[i][0]) {
+          const t = (y - P[i - 1][0]) / (P[i][0] - P[i - 1][0])
+          return P[i - 1][1] + t * (P[i][1] - P[i - 1][1])
+        }
+      }
+      return P[P.length - 1][1]
+    }
+  }, [female])
+
   // 하의 스타일 — 예전 데이터는 성별로만 갈렸으므로 없으면 그때 규칙을 따른다
   const bottomStyle = look.bottomStyle || (female ? 'skirt' : 'shorts')
   const shoeStyle = look.shoeStyle || 'basic'
@@ -1064,14 +1085,16 @@ export default function Character({
   const armPart = (s, armRef, foreRef) => {
     // 동물의 숲 팔 — 관절 없이 짧고 뭉툭한 토막에 벙어리 손
     const sleeveless = look.outfit === 'sleeveless'
+    // 라글란은 소매만 다른 색으로 빠지는 게 특징이다 — 이게 없으면 기본 티와 구분이 안 된다
+    const sleeveMat = sleeveless ? skinMat : look.outfit === 'raglan' ? whiteMat : topMat
     return (
       <group key={`arm${s}`} position={[s * (female ? 0.174 : 0.188), 0.7, 0.022]} rotation={[0, 0, s * 0.5]}>
       <group ref={armRef}>
         {/* 소매 */}
-        <mesh material={sleeveless ? skinMat : topMat} castShadow scale={[0.9, 1, 0.9]}>
+        <mesh material={sleeveMat} castShadow scale={[0.9, 1, 0.9]}>
           <sphereGeometry args={[0.076, 14, 12]} />
         </mesh>
-        <mesh position={[0, -0.055, 0]} material={sleeveless ? skinMat : topMat} castShadow>
+        <mesh position={[0, -0.055, 0]} material={sleeveMat} castShadow>
           <capsuleGeometry args={[0.07, 0.055, 6, 12]} />
         </mesh>
         <group ref={foreRef} position={[0, -0.135, 0]}>
@@ -1155,63 +1178,78 @@ export default function Character({
 
         {/* 의상 디테일 */}
         {!simple && look.outfit === 'stripe' &&
-          [0.6, 0.72, 0.84].map((y) => (
-            <mesh key={y} position={[0, y, 0]} scale={[1, 1, 0.82]} material={whiteMat}>
-              <cylinderGeometry args={[0.219, 0.219, 0.042, 24, 1, true]} />
+          [0.44, 0.545, 0.65].map((y) => (
+            <mesh key={y} position={[0, y, 0]} scale={[1, 1, 0.92]} material={whiteMat}>
+              <cylinderGeometry args={[torsoR(y) + 0.004, torsoR(y) + 0.004, 0.042, 24, 1, true]} />
             </mesh>
           ))}
+        {/* 라글란 — 목둘레 배색. 소매도 흰색으로 빠진다 (armPart 참고) */}
         {!simple && look.outfit === 'raglan' && (
-          <mesh position={[0, 0.94, 0]} scale={[1, 1, 0.82]} material={whiteMat}>
-            <cylinderGeometry args={[0.155, 0.175, 0.05, 20, 1, true]} />
+          <mesh position={[0, 0.663, 0]} scale={[1, 1, 0.92]} material={whiteMat}>
+            <cylinderGeometry args={[torsoR(0.69) + 0.005, torsoR(0.635) + 0.005, 0.055, 20, 1, true]} />
           </mesh>
         )}
+        {/* 지퍼 — 몸통이 위로 갈수록 좁아지므로 살짝 뒤로 눕혀야 표면에 붙는다 */}
         {!simple && (look.outfit === 'zipup' || look.outfit === 'hoodie') && (
-          <mesh position={[0, 0.7, 0.175]} material={charMaterial({ color: '#e5e7eb', roughness: 0.4, metalness: 0.5 })}>
-            <boxGeometry args={[0.026, 0.4, 0.014]} />
+          <mesh
+            position={[0, 0.55, torsoR(0.55) * 0.92 + 0.006]}
+            rotation={[-0.16, 0, 0]}
+            material={charMaterial({ color: '#e5e7eb', roughness: 0.4, metalness: 0.5 })}
+          >
+            <boxGeometry args={[0.026, 0.26, 0.014]} />
           </mesh>
         )}
-        {/* 후드 — 목 뒤에 얹힌 두건 */}
+        {/* 후드 — 목 뒤로 넘어간 두건 + 목을 감싸는 칼라 */}
         {!simple && look.outfit === 'hoodie' && (
           <>
-            <mesh position={[0, 0.95, -0.13]} rotation={[0.45, 0, 0]} scale={[1, 0.85, 0.7]} material={topMat} castShadow>
-              <sphereGeometry args={[0.23, 18, 14]} />
+            <mesh position={[0, 0.72, -0.2]} rotation={[0.4, 0, 0]} scale={[1.2, 0.8, 0.72]} material={topMat} castShadow>
+              <sphereGeometry args={[0.235, 18, 14]} />
+            </mesh>
+            <mesh position={[0, 0.678, 0]} scale={[1, 1, 0.94]} material={topMat} castShadow>
+              <cylinderGeometry args={[torsoR(0.71) + 0.022, torsoR(0.645) + 0.022, 0.07, 20, 1, true]} />
             </mesh>
             {[-1, 1].map((s) => (
-              <mesh key={s} position={[s * 0.05, 0.78, 0.17]} material={whiteMat}>
-                <cylinderGeometry args={[0.012, 0.012, 0.16, 6]} />
+              <mesh key={s} position={[s * 0.045, 0.585, torsoR(0.585) * 0.92 + 0.012]} rotation={[-0.16, 0, 0]} material={whiteMat}>
+                <cylinderGeometry args={[0.012, 0.012, 0.13, 6]} />
               </mesh>
             ))}
           </>
         )}
-        {/* 폴로 칼라 */}
+        {/* 폴로 칼라 — 턱 바로 아래에서 밖으로 벌어진다 */}
         {!simple && look.outfit === 'polo' && (
-          <mesh position={[0, 0.955, 0.02]} rotation={[0.25, 0, 0]} material={whiteMat} castShadow>
-            <cylinderGeometry args={[0.125, 0.16, 0.07, 18, 1, true]} />
+          <mesh position={[0, 0.668, 0.008]} rotation={[0.14, 0, 0]} scale={[1, 1, 0.94]} material={whiteMat} castShadow>
+            <cylinderGeometry args={[torsoR(0.705) + 0.004, torsoR(0.63) + 0.028, 0.078, 18, 1, true]} />
           </mesh>
         )}
-        {/* 브이넥 */}
-        {!simple && look.outfit === 'vneck' && (
-          <mesh position={[0, 0.9, 0.152]} rotation={[0, 0, Math.PI / 4]} material={skinMat}>
-            <boxGeometry args={[0.09, 0.09, 0.012]} />
-          </mesh>
-        )}
+        {/* 브이넥 — 마름모 한 장이면 무늬처럼 보인다. 실제로 V자 두 획을 그어 준다 */}
+        {!simple && look.outfit === 'vneck' &&
+          [-1, 1].map((s) => (
+            <mesh
+              key={s}
+              position={[s * 0.033, 0.652, torsoR(0.652) * 0.92 + 0.004]}
+              rotation={[0, s * -0.35, s * 0.62]}
+              material={skinMat}
+            >
+              <boxGeometry args={[0.036, 0.125, 0.012]} />
+            </mesh>
+          ))}
         {/* 사선 배색 */}
         {!simple && look.outfit === 'sash' && (
           <mesh position={[0, 0.7, 0]} rotation={[0, 0, 0.5]} scale={[1, 1, 0.83]} material={whiteMat}>
             <cylinderGeometry args={[0.222, 0.222, 0.09, 24, 1, true]} />
           </mesh>
         )}
-        {/* 등번호 · 클럽 저지 */}
+        {/* 등번호 · 클럽 저지 — 등판 한가운데. 예전엔 턱 뒤라 아예 안 보였다 */}
         {!simple && (look.outfit === 'number' || look.outfit === 'club') && (
-          <mesh position={[0, 0.72, -0.178]} rotation={[0, Math.PI, 0]} material={numberMat}>
-            <planeGeometry args={[0.24, 0.24]} />
+          <mesh position={[0, 0.555, -(torsoR(0.555) * 0.92 + 0.006)]} rotation={[0, Math.PI, 0]} material={numberMat}>
+            <planeGeometry args={[0.2, 0.2]} />
           </mesh>
         )}
         {!simple && look.outfit === 'club' && (
           <>
             {[-1, 1].map((s) => (
-              <mesh key={s} position={[s * 0.16, 0.72, 0.14]} rotation={[0, s * 0.6, 0]} material={whiteMat}>
-                <boxGeometry args={[0.05, 0.3, 0.01]} />
+              <mesh key={s} position={[s * 0.145, 0.56, 0.1]} rotation={[0, s * 0.62, 0]} material={whiteMat}>
+                <boxGeometry args={[0.046, 0.24, 0.012]} />
               </mesh>
             ))}
           </>
