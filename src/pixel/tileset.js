@@ -94,6 +94,22 @@ function tGrass(g, t, x, y) {
   const r0 = ramp(p.grass[Math.floor(hash2(x, y, 1) * p.grass.length)])
   P(g, 0, 0, TILE, TILE, r0.base)
 
+  // 볕에 마른 황록 얼룩 — 타일 경계에 딱 맞지 않게, 칸을 넘나들며 자연스럽게 퍼진다
+  if (p.grassAlt) {
+    const cell = hash2(x >> 1, y >> 1, 900)
+    if (cell > 0.66) {
+      const alt = ramp(p.grassAlt[Math.floor(hash2(x >> 1, y >> 1, 901) * p.grassAlt.length)])
+      for (let i = 0; i < 5; i++) {
+        const bx = Math.floor(hash2(x, y, 910 + i) * 40) - 8
+        const by = Math.floor(hash2(x, y, 920 + i) * 40) - 8
+        const bw = 10 + Math.floor(hash2(x, y, 930 + i) * 16)
+        const bh = 8 + Math.floor(hash2(x, y, 940 + i) * 14)
+        P(g, bx, by, bw, bh, alt.base)
+        P(g, bx, by, bw, 2, alt.hi)
+      }
+    }
+  }
+
   // 아주 옅은 명암 얼룩 — 평평해 보이지 않을 만큼만
   for (let i = 0; i < 2; i++) {
     const bx = Math.floor(hash2(x, y, 20 + i) * 22)
@@ -810,6 +826,144 @@ function oScoreboard(g) {
   P(g, 68, 49, 8, 14, ramp('#4a5060').base)
 }
 
+// ── 자연 소품 — 빈 땅을 없애는 것들 ─────────────────────────────────────────────
+function oLog(g, t, seed) {
+  // 2x1 — 쓰러진 통나무
+  const bark = ramp('#7b5230')
+  const cut = ramp('#c9a06a')
+  contactShadow(g, 32, 30, 28, 5, 0.32)
+  P(g, 2, 10, 60, 18, bark.base)
+  P(g, 2, 10, 60, 4, bark.hi)
+  P(g, 2, 24, 60, 4, bark.lo2)
+  for (let i = 0; i < 9; i++) {
+    P(g, 6 + i * 6, 13, 2, 12, bark.lo)
+    P(g, 7 + i * 6, 15, 1, 8, bark.hi)
+  }
+  // 잘린 단면
+  P(g, 0, 9, 10, 20, cut.base)
+  P(g, 0, 9, 10, 3, cut.hi2)
+  P(g, 2, 14, 6, 10, cut.lo)
+  P(g, 3, 16, 4, 6, cut.base)
+  P(g, 4, 18, 2, 2, cut.lo2)
+  // 이끼
+  for (let i = 0; i < 5; i++) P(g, 14 + i * 9, 11 + (i % 2) * 3, 5, 3, '#5b9c42')
+}
+
+function oStump(g, t, seed) {
+  const bark = ramp('#6b4626')
+  const cut = ramp('#c9a06a')
+  contactShadow(g, 16, 29, 13, 4, 0.3)
+  P(g, 4, 12, 24, 16, bark.base)
+  P(g, 4, 12, 5, 16, bark.hi)
+  P(g, 22, 12, 6, 16, bark.lo2)
+  P(g, 3, 9, 26, 8, cut.base)
+  P(g, 3, 9, 26, 3, cut.hi2)
+  P(g, 8, 11, 16, 4, cut.lo)
+  P(g, 11, 12, 10, 2, cut.base)
+  P(g, 14, 12, 4, 1, cut.lo2)
+  for (let i = 0; i < 4; i++) P(g, 6 + i * 6, 18, 2, 8, bark.lo2)
+  P(g, 2, 24, 6, 4, '#5b9c42')
+  P(g, 24, 22, 6, 4, '#4e8b39')
+}
+
+function oWeed(g, t, seed) {
+  const r = ramp(t.ground.grassDark)
+  const hi = ramp(t.ground.grass[0])
+  contactShadow(g, 16, 29, 9, 3, 0.24)
+  for (let i = 0; i < 7; i++) {
+    const bx = 5 + i * 3
+    const h = 10 + Math.floor(hash2(seed, i, 1) * 14)
+    const lean = Math.floor(hash2(seed, i, 2) * 3) - 1
+    P(g, bx, 28 - h, 2, h, i % 2 ? r.base : hi.lo)
+    P(g, bx + lean, 28 - h, 1, Math.floor(h * 0.6), hi.base)
+  }
+  P(g, 6, 24, 20, 4, r.lo2)
+}
+
+function oReeds(g, t, seed) {
+  const r = ramp('#7ea83c')
+  contactShadow(g, 16, 30, 10, 3, 0.22)
+  for (let i = 0; i < 5; i++) {
+    const bx = 6 + i * 5
+    const h = 16 + Math.floor(hash2(seed, i, 3) * 12)
+    P(g, bx, 30 - h, 2, h, r.base)
+    P(g, bx, 30 - h, 1, h, r.hi)
+    P(g, bx - 1, 30 - h - 5, 4, 6, '#a8894a') // 이삭
+    P(g, bx - 1, 30 - h - 5, 2, 3, '#c8a868')
+  }
+}
+
+function oAutumnBush(g, t, seed) {
+  const cols = t.ground.leafAutumn || ['#d8a52c', '#c86a24', '#b8402c']
+  const c = ramp(cols[seed % cols.length])
+  contactShadow(g, 16, 29, 13, 4, 0.3)
+  // 작은 잎 뭉치를 여러 개 겹쳐 삐죽삐죽한 실루엣을 만든다
+  const clumps = [[16, 20, 11], [10, 17, 8], [22, 17, 8], [16, 12, 8], [12, 23, 6], [21, 23, 6]]
+  clumps.forEach(([cx, cy, rr], i) => blob(g, cx, cy + 1, rr, c.lo2))
+  clumps.forEach(([cx, cy, rr], i) => blob(g, cx, cy, rr - 1, i < 3 ? c.base : c.lo))
+  blob(g, 12, 12, 5, c.hi)
+  blob(g, 20, 14, 4, c.hi)
+  blob(g, 11, 10, 3, c.hi2)
+  // 잎 알갱이 — 가장자리를 들쭉날쭉하게
+  for (let i = 0; i < 34; i++) {
+    const a = hash2(seed, i, 2) * Math.PI * 2
+    const rr = 8 + hash2(seed, i, 3) * 7
+    const px = 16 + Math.cos(a) * rr
+    const py = 17 + Math.sin(a) * rr * 0.92
+    const v = hash2(seed, i, 4)
+    P(g, px, py, 2, 2, v > 0.7 ? c.hi2 : v > 0.4 ? c.hi : c.lo2)
+  }
+  // 드러난 잔가지
+  P(g, 14, 25, 2, 5, '#6e5232')
+  P(g, 17, 26, 2, 4, '#6e5232')
+}
+
+function oBarrel(g, t, seed) {
+  const w = ramp('#a3703c')
+  const band = ramp('#6b6f78')
+  contactShadow(g, 16, 30, 12, 4, 0.3)
+  P(g, 5, 6, 22, 24, w.base)
+  P(g, 5, 6, 6, 24, w.hi)
+  P(g, 22, 6, 5, 24, w.lo2)
+  for (let i = 0; i < 4; i++) P(g, 8 + i * 5, 8, 1, 20, w.lo)
+  P(g, 4, 11, 24, 3, band.base)
+  P(g, 4, 22, 24, 3, band.base)
+  P(g, 4, 11, 24, 1, band.hi2)
+  P(g, 4, 4, 22, 5, w.hi2)
+  P(g, 6, 5, 18, 3, w.hi)
+}
+
+function oCrate(g, t, seed) {
+  const w = ramp('#b9834b')
+  contactShadow(g, 16, 30, 12, 4, 0.3)
+  P(g, 4, 10, 24, 20, w.base)
+  P(g, 4, 10, 24, 3, w.hi2)
+  P(g, 4, 10, 3, 20, w.hi)
+  P(g, 25, 10, 3, 20, w.lo2)
+  P(g, 4, 27, 24, 3, w.lo2)
+  P(g, 4, 18, 24, 2, w.lo)
+  for (let i = 0; i < 20; i++) P(g, 6 + i, 10 + i, 2, 2, w.lo)
+  P(g, 4, 10, 24, 1, w.hi2)
+}
+
+function oWoodpile(g, t, seed) {
+  const bark = ramp('#7b5230')
+  const cut = ramp('#c9a06a')
+  contactShadow(g, 32, 32, 28, 5, 0.32)
+  for (let row = 0; row < 2; row++) {
+    for (let i = 0; i < 5 - row; i++) {
+      const x = 4 + i * 11 + row * 5
+      const y = 20 - row * 10
+      P(g, x, y, 10, 10, cut.base)
+      P(g, x, y, 10, 3, cut.hi2)
+      P(g, x + 2, y + 3, 6, 5, cut.lo)
+      P(g, x + 3, y + 4, 4, 3, cut.base)
+      P(g, x, y, 1, 10, bark.lo2)
+      P(g, x + 9, y, 1, 10, bark.lo2)
+    }
+  }
+}
+
 // ── 마을이 자라면 생기는 것들 ────────────────────────────────────────────────────
 function oFlag(g, t) {
   const a = ramp(t.ground.accent)
@@ -918,25 +1072,59 @@ function oCourt(g, t) {
 // 지붕 경사 · 처마 그림자 · 정면 벽 · 측면 벽 · 기초 석재까지 한 장에 담는다
 // -----------------------------------------------------------------------------------
 
-/** 지붕 기와 */
-function roofSlope(g, x, y, w, h, color) {
+/**
+ * 박공지붕 — 3/4 톱다운의 핵심.
+ *
+ * 「45도 위에서 본 것처럼, 지붕과 정면 벽을 거의 같은 비율로」 보여 주는 투영이다.
+ * 그래서 지붕은 납작한 가로 띠가 아니라, 가운데 용마루에서 좌우로 흘러내리는
+ * 사다리꼴(또는 A자) 이어야 한다. 빛은 항상 왼쪽 위에서 들어온다.
+ *
+ * @param aframe true 면 통나무집처럼 뾰족한 A자 지붕
+ */
+function gableRoof(g, W, H, color, aframe) {
   const r = ramp(color)
-  P(g, x, y, w, h, r.base)
-  // 위에서 아래로 갈수록 어두워지는 경사감
-  const bands = Math.floor(h / 7)
-  for (let i = 0; i < bands; i++) {
-    const by = y + i * 7
-    const t = i / Math.max(1, bands - 1)
-    P(g, x, by, w, 7, i === 0 ? r.hi2 : t < 0.4 ? r.hi : t < 0.75 ? r.base : r.lo)
-    // 기와 줄
-    P(g, x, by + 6, w, 1, r.lo2)
-    for (let sx = x + (i % 2 ? 5 : 0); sx < x + w; sx += 10) {
-      P(g, sx, by, 1, 6, r.lo2)
-      P(g, sx + 1, by, 1, 6, i < 2 ? r.hi2 : r.hi)
+  const ridgeHalf = aframe ? 3 : Math.round(W * 0.2)
+  const edgeAt = (y) => {
+    const t = Math.min(1, y / (H - 1))
+    const half = ridgeHalf + (W / 2 - ridgeHalf) * t
+    return [Math.round(W / 2 - half), Math.round(W / 2 + half)]
+  }
+
+  for (let y = 0; y < H; y++) {
+    const [lx, rx] = edgeAt(y)
+    const t = y / (H - 1)
+    // 아래로 갈수록 어두워진다 (경사가 눕는다)
+    const band = t < 0.18 ? r.hi2 : t < 0.42 ? r.hi : t < 0.72 ? r.base : r.lo
+    P(g, lx, y, rx - lx, 1, band)
+    // 왼쪽에서 들어오는 빛
+    P(g, lx, y, Math.max(2, Math.round((rx - lx) * 0.22)), 1, t < 0.42 ? r.hi2 : r.hi)
+    // 오른쪽 그늘
+    P(g, rx - Math.max(2, Math.round((rx - lx) * 0.14)), y, Math.max(2, Math.round((rx - lx) * 0.14)), 1, r.lo2)
+    // 경사면 가장자리 선
+    P(g, lx, y, 2, 1, r.deep)
+    P(g, rx - 2, y, 2, 1, r.deep)
+  }
+
+  // 기와 — 경사를 따라 층층이
+  for (let row = 8; row < H - 2; row += 8) {
+    const [lx, rx] = edgeAt(row)
+    P(g, lx + 2, row, rx - lx - 4, 2, r.lo2)
+    P(g, lx + 2, row + 2, rx - lx - 4, 1, r.hi)
+    for (let sx = lx + 4 + ((row / 8) % 2 ? 6 : 0); sx < rx - 6; sx += 12) {
+      P(g, sx, row - 5, 1, 5, r.lo)
     }
   }
-  P(g, x, y, w, 2, r.hi2)           // 용마루 빛
-  P(g, x, y + h - 3, w, 3, r.deep)  // 처마 끝
+
+  // 용마루
+  const [rl, rr] = edgeAt(0)
+  P(g, rl - 2, 0, rr - rl + 4, 5, r.hi2)
+  P(g, rl - 2, 4, rr - rl + 4, 2, r.lo)
+  P(g, rl - 2, 0, rr - rl + 4, 1, '#ffffff44')
+
+  // 처마 — 벽보다 튀어나오고 그 아래로 그늘이 진다
+  P(g, 0, H - 6, W, 4, r.lo2)
+  P(g, 0, H - 6, W, 1, r.hi)
+  P(g, 0, H - 2, W, 2, r.deep)
 }
 
 /**
@@ -947,69 +1135,89 @@ function makeBuilding(g, t, o) {
   const W = o.w * TILE
   const H = o.h * TILE
   const wall = ramp(o.wallC)
-  const roofH = Math.round(H * 0.40)
-  const wallTop = roofH - 8
+  // 3/4 톱다운 — 지붕과 벽을 거의 반반으로 나눈다
+  const roofH = Math.round(H * 0.5)
+  const wallTop = roofH - 6
 
   // 접지 그림자
-  contactShadow(g, W / 2, H - 4, W * 0.46, 9, 0.36)
+  contactShadow(g, W / 2, H - 4, W * 0.46, 10, 0.38)
 
   // ── 벽 ──
   P(g, 6, wallTop, W - 12, H - wallTop - 6, wall.base)
-  // 세로 사이딩
-  for (let x = 6; x < W - 6; x += 8) {
-    P(g, x, wallTop, 1, H - wallTop - 6, wall.lo)
-    P(g, x + 1, wallTop, 1, H - wallTop - 6, wall.hi)
+  if (o.logs) {
+    // 통나무집 — 가로로 쌓인 통나무 결
+    for (let y = wallTop; y < H - 6; y += 11) {
+      P(g, 6, y, W - 12, 11, wall.base)
+      P(g, 6, y, W - 12, 3, wall.hi)
+      P(g, 6, y + 9, W - 12, 2, wall.lo2)
+      for (let x = 10; x < W - 12; x += 26) P(g, x, y + 4, 12, 2, wall.lo)
+      // 통나무 끝(모서리에 툭 튀어나온 부분)
+      P(g, 2, y + 1, 6, 9, wall.lo)
+      P(g, 2, y + 1, 6, 3, wall.hi)
+      P(g, W - 8, y + 1, 6, 9, wall.lo2)
+    }
+  } else {
+    // 세로 사이딩
+    for (let x = 6; x < W - 6; x += 8) {
+      P(g, x, wallTop, 1, H - wallTop - 6, wall.lo)
+      P(g, x + 1, wallTop, 1, H - wallTop - 6, wall.hi)
+    }
   }
-  // 좌우 모서리 (입체감)
-  P(g, 6, wallTop, 8, H - wallTop - 6, wall.hi)
-  P(g, W - 16, wallTop, 10, H - wallTop - 6, wall.lo)
+  // 좌우 모서리 — 왼쪽에서 빛, 오른쪽이 그늘 (입체감)
+  P(g, 6, wallTop, 7, H - wallTop - 6, wall.hi)
+  P(g, W - 15, wallTop, 9, H - wallTop - 6, wall.lo)
   P(g, W - 8, wallTop, 2, H - wallTop - 6, wall.lo2)
-  // 처마 밑 그늘
-  P(g, 6, wallTop, W - 12, 10, 'rgba(16,20,34,.3)')
-  P(g, 6, wallTop + 10, W - 12, 5, 'rgba(16,20,34,.13)')
+  // 처마 밑 그늘 — 지붕이 벽에 드리우는 그림자
+  P(g, 6, wallTop, W - 12, 12, 'rgba(16,20,34,.34)')
+  P(g, 6, wallTop + 12, W - 12, 6, 'rgba(16,20,34,.15)')
+
   // 기초 석재
   const stone = ramp('#9a9488')
-  P(g, 4, H - 16, W - 8, 12, stone.base)
-  P(g, 4, H - 16, W - 8, 3, stone.hi)
-  for (let x = 4; x < W - 8; x += 14) {
-    P(g, x, H - 16, 1, 12, stone.lo2)
-    P(g, x + 7, H - 10, 1, 6, stone.lo2)
+  P(g, 4, H - 18, W - 8, 14, stone.base)
+  P(g, 4, H - 18, W - 8, 3, stone.hi)
+  for (let x = 4; x < W - 8; x += 15) {
+    P(g, x, H - 18, 1, 14, stone.lo2)
+    P(g, x + 7, H - 11, 1, 7, stone.lo2)
+    P(g, x + 2, H - 16, 6, 3, stone.hi2)
   }
   P(g, 4, H - 6, W - 8, 3, stone.deep)
 
-  // ── 지붕 ──
-  roofSlope(g, 0, 4, W, roofH, o.roofC)
-  const rr = ramp(o.roofC)
-  P(g, 0, 0, W, 5, rr.hi2)            // 용마루 캡
-  P(g, 0, 3, W, 2, rr.lo)
-  P(g, 0, roofH + 4, W, 3, rr.deep)   // 처마 판
-  P(g, 0, roofH + 6, W, 2, 'rgba(16,20,34,.35)')
+  // ── 지붕 (박공) ──
+  gableRoof(g, W, roofH, o.roofC, o.aframe)
 
-  // ── 간판 ──
-  const sw = Math.min(W - 40, 92)
-  const sx = Math.round((W - sw) / 2)
-  const sy = wallTop + 16
-  const sr = ramp(o.roofC)
-  P(g, sx - 4, sy - 4, sw + 8, 44, sr.deep)
-  P(g, sx - 2, sy - 2, sw + 4, 40, sr.lo2)
-  P(g, sx, sy, sw, 36, '#f6f2e4')
-  P(g, sx, sy, sw, 3, '#ffffff')
-  P(g, sx, sy + 33, sw, 3, '#d8d2c0')
-  emblem(g, sx + Math.floor(sw / 2) - 16, sy + 2, o.sign)
-  P(g, sx - 4, sy + 40, sw + 8, 4, 'rgba(16,20,34,.28)')
-
-  // ── 창문 ──
-  const wy = sy + 52
-  if (wy + 30 < H - 60) {
-    window9(g, 18, wy, 30, 28)
-    window9(g, W - 48, wy, 30, 28)
+  // 처마에 걸린 전구줄
+  if (o.lights) {
+    const ly = roofH + 2
+    for (let x = 10; x < W - 10; x += 14) {
+      P(g, x, ly + (x % 28 ? 2 : 0), 12, 1, '#5a5348')
+      P(g, x + 5, ly + 2, 3, 4, ['#ffe066', '#ff9ec4', '#8ef08a'][(x / 14) % 3 | 0])
+      dot(g, x + 5, ly + 2, '#ffffff')
+    }
   }
+
+  // ── 간판 (처마 바로 아래, 벽 위쪽) ──
+  const sw = Math.min(W - 44, 96)
+  const sx = Math.round((W - sw) / 2)
+  const sy = wallTop + 14
+  const sh = 34
+  const sr = ramp(o.roofC)
+  P(g, sx - 4, sy - 4, sw + 8, sh + 8, sr.deep)
+  P(g, sx - 2, sy - 2, sw + 4, sh + 4, sr.lo2)
+  P(g, sx, sy, sw, sh, '#f6f2e4')
+  P(g, sx, sy, sw, 3, '#ffffff')
+  P(g, sx, sy + sh - 3, sw, 3, '#d8d2c0')
+  emblem(g, sx + Math.floor(sw / 2) - 16, sy + 1, o.sign)
+  P(g, sx - 4, sy + sh + 4, sw + 8, 4, 'rgba(16,20,34,.3)')
 
   // ── 자동문 ──
   const dcx = ((o.doorX ?? Math.floor(o.w / 2)) + 0.5) * TILE
   const dw = 44
   const dx = Math.round(dcx - dw / 2)
-  const dTop = H - 66
+  const dTop = H - 60
+
+  // ── 창문 — 문 양옆 ──
+  if (dx - 40 > 8) window9(g, dx - 44, dTop + 6, 30, 26)
+  if (dx + dw + 44 < W - 8) window9(g, dx + dw + 14, dTop + 6, 30, 26)
   P(g, dx - 4, dTop - 4, dw + 8, 56, '#232838')
   P(g, dx - 2, dTop - 2, dw + 4, 52, '#33384a')
   // 상단 표시등
@@ -1118,25 +1326,36 @@ export const OBJECTS = {
   sakura: { w: 2, h: 3, solidRows: 0, draw: oSakura },
   fountain: { w: 2, h: 2, solidRows: 0, draw: oFountain },
 
+  // 자연 소품 — 빈 땅을 채우는 것들
+  log: { w: 2, h: 1, solidRows: 1, draw: oLog },
+  stump: { w: 1, h: 1, solidRows: 1, draw: oStump },
+  weed: { w: 1, h: 1, solidRows: 0, draw: oWeed },
+  reeds: { w: 1, h: 1, solidRows: 0, draw: oReeds },
+  autumnBush: { w: 1, h: 1, solidRows: 1, draw: oAutumnBush },
+  barrel: { w: 1, h: 1, solidRows: 1, draw: oBarrel },
+  crate: { w: 1, h: 1, solidRows: 1, draw: oCrate },
+  woodpile: { w: 2, h: 1, solidRows: 1, draw: oWoodpile, drawH: 34 },
+
   martBuilding: {
     w: 6, h: 5, solidRows: 5, door: [3, 4],
     draw: (g, t) => makeBuilding(g, t, { w: 6, h: 5, roofC: '#2f6fc0', wallC: '#e8eef6', sign: 'shuttle', doorX: 3 }),
   },
   centerBuilding: {
     w: 6, h: 5, solidRows: 5, door: [3, 4],
-    draw: (g, t) => makeBuilding(g, t, { w: 6, h: 5, roofC: '#f06888', wallC: '#fbf2ea', sign: 'heal', doorX: 3 }),
+    draw: (g, t) => makeBuilding(g, t, { w: 6, h: 5, roofC: '#f06888', wallC: '#fbf2ea', sign: 'heal', doorX: 3, lights: true }),
   },
   gymBuilding: {
     w: 7, h: 6, solidRows: 6, door: [3, 5],
     draw: (g, t) => makeBuilding(g, t, { w: 7, h: 6, roofC: '#3c4674', wallC: '#dfe4f0', sign: 'racket', doorX: 3 }),
   },
+  // 내 집만 통나무집 A자 지붕 — 레퍼런스의 그 오두막
   homeBuilding: {
     w: 5, h: 5, solidRows: 5, door: [2, 4],
-    draw: (g, t) => makeBuilding(g, t, { w: 5, h: 5, roofC: '#c07048', wallC: '#f0e0c4', sign: 'home', doorX: 2 }),
+    draw: (g, t) => makeBuilding(g, t, { w: 5, h: 5, roofC: '#5a6470', wallC: '#b98a52', sign: 'home', doorX: 2, aframe: true, logs: true, lights: true }),
   },
   arcadeBuilding: {
     w: 5, h: 5, solidRows: 5, door: [2, 4],
-    draw: (g, t) => makeBuilding(g, t, { w: 5, h: 5, roofC: '#8850d8', wallC: '#efe6fb', sign: 'star', doorX: 2 }),
+    draw: (g, t) => makeBuilding(g, t, { w: 5, h: 5, roofC: '#8850d8', wallC: '#efe6fb', sign: 'star', doorX: 2, lights: true }),
   },
 }
 
@@ -1158,6 +1377,119 @@ export function objectSprite(kind, theme, variant = 0) {
   objCache.set(key, c)
   return c
 }
+
+// -----------------------------------------------------------------------------------
+// 바닥 잡동사니 — 스타듀밸리 밀도의 비밀
+//
+// 빈 잔디를 그냥 두면 아무리 잘 그려도 허전해 보인다. 그래서 굽는 단계에서
+// 잡초·잔돌·떨어진 꽃잎·버섯·잔가지를 타일마다 흩뿌린다. (한 번만 굽고 재사용)
+// -----------------------------------------------------------------------------------
+const PETALS = ['#ff7ba8', '#ffe066', '#ffffff', '#a88cff', '#ff9e5c', '#7ad0ff']
+
+const CLUTTER = [
+  // 잡초 다발
+  (g, ox, oy, t, s) => {
+    const r = ramp(t.ground.grassDark)
+    const hi = ramp(t.ground.grass[2] || t.ground.grass[0])
+    for (let i = 0; i < 5; i++) {
+      const bx = ox + 8 + i * 3
+      const h = 5 + Math.floor(hash2(s, i, 1) * 6)
+      P(g, bx, oy + 22 - h, 1, h, i % 2 ? r.base : hi.base)
+      dot(g, bx, oy + 22 - h, hi.hi)
+    }
+  },
+  // 잔돌
+  (g, ox, oy, t, s) => {
+    for (let i = 0; i < 3; i++) {
+      const bx = ox + 5 + Math.floor(hash2(s, i, 2) * 20)
+      const by = oy + 6 + Math.floor(hash2(s, i, 3) * 20)
+      const sz = 2 + Math.floor(hash2(s, i, 4) * 2)
+      P(g, bx, by, sz, sz, '#9c9482')
+      P(g, bx, by, sz - 1, 1, '#c0b8a4')
+      P(g, bx, by + sz, sz, 1, 'rgba(16,20,34,.22)')
+    }
+  },
+  // 떨어진 꽃잎 (스타듀밸리 특유의 알록달록한 점들)
+  (g, ox, oy, t, s) => {
+    for (let i = 0; i < 6; i++) {
+      const bx = ox + 2 + Math.floor(hash2(s, i, 5) * 28)
+      const by = oy + 2 + Math.floor(hash2(s, i, 6) * 28)
+      P(g, bx, by, 2, 2, PETALS[Math.floor(hash2(s, i, 7) * PETALS.length)])
+    }
+  },
+  // 버섯
+  (g, ox, oy, t, s) => {
+    const bx = ox + 8 + Math.floor(hash2(s, 0, 8) * 14)
+    const by = oy + 12 + Math.floor(hash2(s, 0, 9) * 10)
+    P(g, bx + 1, by + 4, 3, 5, '#e8dcc0')
+    P(g, bx, by, 6, 5, hash2(s, 0, 10) > 0.5 ? '#d0402c' : '#b0682c')
+    P(g, bx + 1, by, 3, 2, '#ff8a6c')
+    dot(g, bx + 3, by + 2, '#ffffff')
+    P(g, bx, by + 8, 6, 1, 'rgba(16,20,34,.24)')
+  },
+  // 잔가지 · 마른 잎
+  (g, ox, oy, t, s) => {
+    const bx = ox + 5 + Math.floor(hash2(s, 0, 11) * 18)
+    const by = oy + 8 + Math.floor(hash2(s, 0, 12) * 16)
+    P(g, bx, by, 9, 2, '#8a6a44')
+    P(g, bx + 3, by - 3, 2, 4, '#8a6a44')
+    P(g, bx + 6, by + 2, 3, 2, '#6e5232')
+    P(g, bx - 3, by + 3, 4, 3, '#c08a3c')
+  },
+  // 클로버 — 잔디보다 아주 살짝만 밝게
+  (g, ox, oy, t, s) => {
+    const c = ramp(t.ground.grassDark)
+    for (let i = 0; i < 4; i++) {
+      const bx = ox + 6 + Math.floor(hash2(s, i, 13) * 20)
+      const by = oy + 6 + Math.floor(hash2(s, i, 14) * 20)
+      P(g, bx, by, 2, 2, c.hi2)
+      P(g, bx + 2, by, 2, 2, c.hi)
+      P(g, bx, by + 2, 2, 2, c.base)
+    }
+  },
+]
+
+/** 포장 바닥용 잡동사니 — 갈라진 틈, 틈에서 자란 잡초, 떨어진 낙엽 */
+const PAVE_CLUTTER = [
+  (g, ox, oy, t, s) => {
+    // 갈라진 틈
+    let x = ox + 4 + Math.floor(hash2(s, 0, 20) * 16)
+    let y = oy + 4
+    for (let i = 0; i < 7; i++) {
+      P(g, x, y, 2, 3, 'rgba(16,20,34,.28)')
+      x += hash2(s, i, 21) > 0.5 ? 1 : -1
+      y += 3
+    }
+  },
+  (g, ox, oy, t, s) => {
+    // 틈에서 자란 잡초
+    const c = ramp(t.ground.grassDark)
+    const bx = ox + 6 + Math.floor(hash2(s, 0, 22) * 18)
+    for (let i = 0; i < 4; i++) {
+      const h = 5 + Math.floor(hash2(s, i, 23) * 5)
+      P(g, bx + i * 2, oy + 20 - h, 1, h, i % 2 ? c.base : c.hi)
+    }
+    P(g, bx, oy + 19, 8, 2, 'rgba(16,20,34,.2)')
+  },
+  (g, ox, oy, t, s) => {
+    // 떨어진 낙엽
+    for (let i = 0; i < 3; i++) {
+      const bx = ox + 3 + Math.floor(hash2(s, i, 24) * 24)
+      const by = oy + 3 + Math.floor(hash2(s, i, 25) * 24)
+      const c = ['#c8873c', '#b0602c', '#d8a52c'][Math.floor(hash2(s, i, 26) * 3)]
+      P(g, bx, by, 4, 2, c)
+      P(g, bx + 1, by - 1, 2, 1, c)
+      P(g, bx, by + 2, 4, 1, 'rgba(16,20,34,.2)')
+    }
+  },
+  (g, ox, oy, t, s) => {
+    // 물 자국 · 얼룩
+    const bx = ox + 4 + Math.floor(hash2(s, 0, 27) * 14)
+    const by = oy + 6 + Math.floor(hash2(s, 0, 28) * 14)
+    P(g, bx, by, 12, 8, 'rgba(16,20,34,.09)')
+    P(g, bx + 2, by + 2, 8, 4, 'rgba(16,20,34,.07)')
+  },
+]
 
 // 잔디가 길 위로 자라 나오는 경계 처리
 const GRASSY = new Set(['.', ',', '"'])
@@ -1221,6 +1553,23 @@ export function bakeGround(rows, theme, opts = {}) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (HARD.has(rows[y][x])) drawFringe(g, rows, theme, x, y)
+      }
+    }
+    // 잡동사니 — 잔디·흙 위에 흩뿌려 빈 땅을 없앤다
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const ch = rows[y][x]
+        const seed = x * 131 + y * 977
+        if (ch === '_') {
+          if (hash2(x, y, 502) > 0.4) continue
+          const p2 = Math.floor(hash2(x, y, 503) * PAVE_CLUTTER.length)
+          PAVE_CLUTTER[p2](g, x * TILE, y * TILE, theme, seed)
+          continue
+        }
+        if (ch !== '.' && ch !== ',' && ch !== '=' && ch !== 's') continue
+        if (hash2(x, y, 500) > 0.52) continue
+        const pick = Math.floor(hash2(x, y, 501) * CLUTTER.length)
+        CLUTTER[pick](g, x * TILE, y * TILE, theme, seed)
       }
     }
     // 벽 아래로 떨어지는 그늘 (실내 입체감)

@@ -131,6 +131,42 @@ function buildTown() {
       { kind: 'bush', x: 13, y: 26 }, { kind: 'bush', x: 26, y: 26 },
       { kind: 'bush', x: 3, y: 24 }, { kind: 'bush', x: 36, y: 24 },
       { kind: 'rock', x: 12, y: 29 }, { kind: 'rock', x: 34, y: 30 },
+      // ── 빈 땅을 채우는 소품들 (스타듀밸리처럼 어디를 봐도 볼거리가 있게) ──
+      { kind: 'log', x: 3, y: 8 }, { kind: 'stump', x: 6, y: 6 },
+      { kind: 'woodpile', x: 9, y: 4 }, { kind: 'crate', x: 12, y: 6 },
+      { kind: 'barrel', x: 13, y: 7 }, { kind: 'stump', x: 35, y: 6 },
+      { kind: 'log', x: 33, y: 4 }, { kind: 'autumnBush', x: 36, y: 8, variant: 0 },
+      { kind: 'autumnBush', x: 3, y: 5, variant: 1 },
+      // 왼쪽 들판
+      { kind: 'weed', x: 4, y: 14 }, { kind: 'weed', x: 7, y: 13 },
+      { kind: 'weed', x: 10, y: 15 }, { kind: 'weed', x: 5, y: 19 },
+      { kind: 'weed', x: 9, y: 21 }, { kind: 'weed', x: 3, y: 22 },
+      { kind: 'autumnBush', x: 6, y: 17, variant: 2 },
+      { kind: 'autumnBush', x: 11, y: 19, variant: 0 },
+      { kind: 'stump', x: 8, y: 16 }, { kind: 'log', x: 3, y: 18 },
+      { kind: 'tree', x: 10, y: 23 },
+      // 오른쪽 들판
+      { kind: 'weed', x: 29, y: 14 }, { kind: 'weed', x: 33, y: 15 },
+      { kind: 'weed', x: 36, y: 19 }, { kind: 'weed', x: 30, y: 22 },
+      { kind: 'autumnBush', x: 34, y: 13, variant: 1 },
+      { kind: 'autumnBush', x: 31, y: 20, variant: 2 },
+      { kind: 'stump', x: 36, y: 14 }, { kind: 'crate', x: 33, y: 21 },
+      { kind: 'barrel', x: 34, y: 22 }, { kind: 'tree', x: 29, y: 24 },
+      // 연못가 갈대
+      { kind: 'reeds', x: 3, y: 26 }, { kind: 'reeds', x: 5, y: 26 },
+      { kind: 'reeds', x: 9, y: 26 }, { kind: 'reeds', x: 12, y: 28 },
+      { kind: 'reeds', x: 2, y: 30 }, { kind: 'rock', x: 6, y: 32 },
+      // 아래쪽
+      { kind: 'weed', x: 15, y: 28 }, { kind: 'weed', x: 17, y: 31 },
+      { kind: 'weed', x: 23, y: 29 }, { kind: 'weed', x: 34, y: 27 },
+      { kind: 'log', x: 15, y: 32 }, { kind: 'stump', x: 24, y: 31 },
+      { kind: 'autumnBush', x: 13, y: 31, variant: 1 },
+      { kind: 'autumnBush', x: 35, y: 31, variant: 0 },
+      { kind: 'woodpile', x: 32, y: 25 },
+      // 광장 가장자리 화분
+      { kind: 'plant', x: 13, y: 14 }, { kind: 'plant', x: 27, y: 14 },
+      { kind: 'plant', x: 13, y: 22 }, { kind: 'plant', x: 27, y: 22 },
+      { kind: 'crate', x: 24, y: 24 }, { kind: 'barrel', x: 16, y: 24 },
     ],
     warps: [
       { x: 19, y: 9, to: 'gym', tx: 10, ty: 25, dir: 1 },

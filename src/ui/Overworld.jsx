@@ -10,7 +10,7 @@ import { TILE } from '../pixel/tileset.js'
 import { useGame } from '../game/store.js'
 
 // 짧은 쪽에 대략 몇 칸을 보여 줄지 — 작을수록 확대돼 보인다
-const TILES_ON_SHORT_SIDE = 11
+const TILES_ON_SHORT_SIDE = 9
 
 export default function Overworld() {
   const ref = useRef(null)
