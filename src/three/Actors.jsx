@@ -86,6 +86,7 @@ export default function Actors() {
   const courtCount = useGame((s) => s.courtCount)
   const history = useGame((s) => s.history)
   const selectPlayer = useGame((s) => s.selectPlayer)
+  const roam = useGame((s) => s.roam)
 
   const layout = useMemo(() => courtLayout(courtCount), [courtCount])
   const list = order.map((id) => players[id]).filter(Boolean)
@@ -126,6 +127,11 @@ export default function Actors() {
           const i = restIndex[p.id] ?? 0
           target = [-13.5 + (i % 4) * 1.6, 19.5 + Math.floor(i / 4) * 1.8]
           facing = Math.PI * 0.85
+        } else if (p.isMe && roam) {
+          // 내가 잔디밭을 탭해 직접 찍은 자리 (코트 밖만 가능)
+          target = roam
+          facing = Math.PI
+          anim = celebrateIds.has(p.id) ? 'cheer' : 'idle'
         } else {
           const i = waitIndex[p.id] ?? 0
           target = waitPosition(i)

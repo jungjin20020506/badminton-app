@@ -34,7 +34,22 @@ function isleRadius(x, z) {
   return ISLAND_R + Math.sin(a * 3) * 2.2 + Math.sin(a * 5 + 1.7) * 1.3
 }
 
-function Terrain({ flatRadius = 30 }) {
+function Terrain({ flatRadius = 30, onGround }) {
+  // 탭(짧게 누르기)만 이동으로 친다 — 카메라를 돌리려고 드래그한 건 무시.
+  const down = useRef(null)
+  const start = (e) => {
+    down.current = { x: e.clientX, y: e.clientY, t: performance.now() }
+  }
+  const end = (e) => {
+    const d = down.current
+    down.current = null
+    if (!d || !onGround) return
+    if (performance.now() - d.t > 600) return
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) return
+    e.stopPropagation()
+    onGround(e.point.x, e.point.z)
+  }
+
   const tex = useMemo(() => repeat(grassTexture(), 26, 26), [])
   const geo = useMemo(() => {
     const g = new THREE.PlaneGeometry(GROUND, GROUND, 140, 140)
@@ -64,7 +79,7 @@ function Terrain({ flatRadius = 30 }) {
   }, [flatRadius])
 
   return (
-    <mesh geometry={geo} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh geometry={geo} rotation={[-Math.PI / 2, 0, 0]} receiveShadow onPointerDown={start} onPointerUp={end}>
       <meshStandardMaterial map={tex} roughness={0.98} metalness={0} />
     </mesh>
   )
@@ -976,7 +991,7 @@ function Decor({ item, night }) {
 }
 
 // -----------------------------------------------------------------------------------
-export default function Village({ owned = {}, courtRows = 1, night = false, quality = 'mid', courtBoxes = [], villageLv = 1, trophyCount = 0 }) {
+export default function Village({ owned = {}, courtRows = 1, night = false, quality = 'mid', courtBoxes = [], villageLv = 1, trophyCount = 0, onGround }) {
   const soil = useMemo(() => repeat(soilTexture(), 2, 8), [])
   const backZ = -(12 + courtRows * 13)
 
@@ -989,7 +1004,7 @@ export default function Village({ owned = {}, courtRows = 1, night = false, qual
 
   return (
     <group>
-      <Terrain flatRadius={Math.max(30, 18 + courtRows * 13)} />
+      <Terrain flatRadius={Math.max(30, 18 + courtRows * 13)} onGround={onGround} />
       <Beach />
       <Ocean night={night} />
       <FarIslands night={night} />

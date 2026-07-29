@@ -268,6 +268,7 @@ export default function Scene() {
   const timeOfDay = useGame((s) => s.timeOfDay)
   const selectPlayer = useGame((s) => s.selectPlayer)
   const villageLv = useGame((s) => villageLevel(s).lv)
+  const walkTo = useGame((s) => s.walkTo)
   const trophyCount = useGame((s) => Object.keys(s.achievements).length)
   const initial = useMemo(() => cameraForCourts(courtCount), [])
   const rows = Math.ceil(courtCount / 3)
@@ -301,7 +302,7 @@ export default function Scene() {
       <Suspense fallback={null}>
         <Lights quality={quality} />
         <Clouds night={night} />
-        <Village owned={owned} courtRows={rows} night={night} quality={quality} courtBoxes={courtBoxes} villageLv={villageLv} trophyCount={trophyCount} />
+        <Village owned={owned} courtRows={rows} night={night} quality={quality} courtBoxes={courtBoxes} villageLv={villageLv} trophyCount={trophyCount} onGround={walkTo} />
         <Courts />
         <Actors />
         <Clock />

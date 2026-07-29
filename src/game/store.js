@@ -10,7 +10,7 @@ import {
   ROSTER_SEED, LEVEL_POWER,
 } from './constants.js'
 import { pickBestCombo, bestLevelSplit } from './matching.js'
-import { courtLayout, MAX_COURTS } from './layout.js'
+import { courtLayout, MAX_COURTS, clampRoam } from './layout.js'
 import {
   pickDailyPartner, PARTNER_BONUS, welcomeLetter, daySummaryLetter,
   trophyLetter, newTrophies,
@@ -209,6 +209,9 @@ export const useGame = create((set, get) => ({
   history: [],
   toasts: [],
   selectedPlayer: null,
+  // 잔디밭을 탭해서 직접 걸어간 지점 [x, z]. null 이면 대기석에 선다.
+  // 코트 안은 여기에 들어올 수 없다 — 코트는 경기가 배정됐을 때만 입장한다.
+  roam: null,
   panel: null, // 'roster' | 'shop' | 'me' | 'quests' | 'settings' | 'record'
   focusCourt: null,
   cameraFollow: false,
@@ -454,6 +457,24 @@ export const useGame = create((set, get) => ({
   setPanel: (panel) => set((s) => ({ panel: s.panel === panel ? null : panel })),
   selectPlayer: (id) => set({ selectedPlayer: id }),
   setFocusCourt: (id) => set({ focusCourt: id }),
+
+  /**
+   * 잔디밭을 탭했을 때 — 내 캐릭터를 그 자리로 걸어가게 한다.
+   * 코트 안은 경기가 배정됐을 때만 들어갈 수 있으므로 여기서 막는다.
+   */
+  walkTo: (x, z) => {
+    const s = get()
+    const me = s.players.me
+    if (!me) return
+    if (me.status === 'walking' || me.status === 'oncourt') {
+      return s.toast('경기 중에는 코트를 벗어날 수 없어요.', 'warn')
+    }
+    const spot = clampRoam(x, z, s.courtCount)
+    if (!spot) return s.toast('코트는 경기가 시작됐을 때만 들어갈 수 있어요 🏸', 'warn')
+    set({ roam: spot })
+  },
+  /** 대기석으로 돌아간다 */
+  clearRoam: () => set({ roam: null }),
 
   // --- 매칭 -------------------------------------------------------------------------
   waitingPlayers: () => {

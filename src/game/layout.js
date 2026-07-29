@@ -58,6 +58,33 @@ export function waitPosition(index) {
 /** 마을 입구 (새 선수가 등장하는 곳) */
 export const GATE = [0, 22]
 
+/** 걸어 다닐 수 있는 잔디밭 반경 — 이보다 밖은 바다·언덕이라 못 나간다 */
+export const ROAM_R = 27
+
+/**
+ * 코트 안(라인 + 여유)인지.
+ * 코트는 경기가 배정됐을 때만 들어갈 수 있으므로, 직접 걸어가는 이동은 여기서 막는다.
+ */
+export function insideCourt(x, z, count, margin = 1.0) {
+  const hw = COURT_WID / 2 + margin
+  const hl = COURT_LEN / 2 + margin
+  return courtLayout(count).some((c) => Math.abs(x - c.x) < hw && Math.abs(z - c.z) < hl)
+}
+
+/**
+ * 탭한 지점을 실제로 설 수 있는 지점으로 다듬는다.
+ * 코트 안이면 null (이동 불가), 마을 밖이면 가장자리로 당겨 준다.
+ */
+export function clampRoam(x, z, count) {
+  const d = Math.hypot(x, z)
+  if (d > ROAM_R) {
+    x = (x / d) * ROAM_R
+    z = (z / d) * ROAM_R
+  }
+  if (insideCourt(x, z, count)) return null
+  return [x, z]
+}
+
 /** 코트 개수에 맞춘 카메라 기본 위치 */
 export function cameraForCourts(count) {
   const rows = Math.ceil(Math.min(MAX_COURTS, Math.max(1, count)) / 3)
