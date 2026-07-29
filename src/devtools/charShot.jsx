@@ -153,6 +153,28 @@ export async function shootCreatorSheet(looks, name = 'creator.png', yaws = [0, 
   return save(name, c.toDataURL('image/png'))
 }
 
+/** 동작(애니메이션)을 시간대별로 여러 컷 찍어 한 장에 모은다 */
+export async function shootMotion(anim = 'play', name = 'motion.png', shots = 6) {
+  const W = 260
+  const H = 340
+  const look = { ...defaultLook('남'), hair: 'short', top: '#3b82f6' }
+  const c = document.createElement('canvas')
+  c.width = W * shots
+  c.height = H
+  const g = c.getContext('2d')
+  for (let i = 0; i < shots; i++) {
+    // 프레임 수를 달리해 애니메이션의 서로 다른 순간을 잡는다
+    const url = await shoot({
+      look, gender: '남', anim, width: W, height: H,
+      frames: 6 + i * 7, camera: [1.6, 1.0, 2.6], target: [0, 0.72, 0],
+    })
+    const img = new Image()
+    await new Promise((r) => { img.onload = r; img.src = url })
+    g.drawImage(img, i * W, 0, W, H)
+  }
+  return save(name, c.toDataURL('image/png'))
+}
+
 /** WebGL 컨텍스트는 브라우저당 개수 제한이 있어서 반드시 놓아줘야 한다 */
 function disposeRoot(root) {
   try {
