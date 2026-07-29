@@ -12,6 +12,9 @@ import { grassTexture, soilTexture, woodTexture, roofTexture, leafBump, repeat }
 import { windMaterial, charMaterial } from './materials.js'
 
 const GROUND = 110
+/** 잔디 섬 반지름 — 이 바깥은 백사장, 더 바깥은 바다 */
+const ISLAND_R = 44
+const SEA_Y = -1.35
 
 /** 결정적 난수 (매번 같은 마을이 나오도록) */
 function rng(seed) {
@@ -25,10 +28,16 @@ function rng(seed) {
 // -----------------------------------------------------------------------------------
 // 지형 — 가운데는 평평하고 바깥으로 갈수록 완만한 언덕
 // -----------------------------------------------------------------------------------
+/** 해안선이 물결치도록 — 방위각에 따라 섬 반지름을 조금씩 흔든다. 정원(正圓)이면 인공적으로 보인다 */
+function isleRadius(x, z) {
+  const a = Math.atan2(z, x)
+  return ISLAND_R + Math.sin(a * 3) * 2.2 + Math.sin(a * 5 + 1.7) * 1.3
+}
+
 function Terrain({ flatRadius = 30 }) {
   const tex = useMemo(() => repeat(grassTexture(), 26, 26), [])
   const geo = useMemo(() => {
-    const g = new THREE.PlaneGeometry(GROUND, GROUND, 96, 96)
+    const g = new THREE.PlaneGeometry(GROUND, GROUND, 140, 140)
     const pos = g.attributes.position
     const r = rng(7)
     const seeds = Array.from({ length: 10 }, () => [r() * 2 - 1, r() * 2 - 1, r()])
@@ -36,12 +45,19 @@ function Terrain({ flatRadius = 30 }) {
       const x = pos.getX(i)
       const y = pos.getY(i)
       const d = Math.hypot(x, y)
+      const R0 = isleRadius(x, y)
       const falloff = THREE.MathUtils.clamp((d - flatRadius) / 22, 0, 1)
       let h = 0
       seeds.forEach(([sx, sy, sa], k) => {
         h += Math.sin(x * (0.05 + sa * 0.05) + sx * 6) * Math.cos(y * (0.045 + sa * 0.05) + sy * 6) * (1.1 + k * 0.06)
       })
-      pos.setZ(i, h * 0.42 * falloff * falloff)
+      // 해변은 평평해야 백사장 링이 지형을 뚫지 않는다 — 물가로 갈수록 언덕을 눌러 없앤다
+      const coastFlat = 1 - THREE.MathUtils.clamp((d - (R0 - 7)) / 7, 0, 1)
+      let zz = h * 0.42 * falloff * falloff * coastFlat
+      // 섬 밖 — 물속으로 떨어진다
+      const shore = THREE.MathUtils.clamp((d - R0) / 8, 0, 1)
+      zz -= shore * shore * 11
+      pos.setZ(i, zz)
     }
     g.computeVertexNormals()
     return g
@@ -51,6 +67,126 @@ function Terrain({ flatRadius = 30 }) {
     <mesh geometry={geo} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <meshStandardMaterial map={tex} roughness={0.98} metalness={0} />
     </mesh>
+  )
+}
+
+// -----------------------------------------------------------------------------------
+// 바다 · 백사장 · 수평선의 먼 섬
+// -----------------------------------------------------------------------------------
+function Beach() {
+  // 잔디와 물 사이 모래띠. 해안선이 물결치므로 링도 같은 함수로 찌그러뜨린다
+  const geo = useMemo(() => {
+    // inner≠outer여야 한다. inner==outer면 RingGeometry의 uv가 0으로 나눠져 NaN이 되고 아무것도 안 그려진다
+    const g = new THREE.RingGeometry(1, 2, 180, 4)
+    const pos = g.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i)
+      const y = pos.getY(i)
+      const a = Math.atan2(y, x)
+      const t = THREE.MathUtils.clamp(Math.hypot(x, y) - 1, 0, 1) // 0=안쪽 1=바깥쪽
+      const R0 = ISLAND_R + Math.sin(a * 3) * 2.2 + Math.sin(a * 5 + 1.7) * 1.3
+      const rr = R0 - 4.5 + t * 8
+      pos.setXY(i, Math.cos(a) * rr, Math.sin(a) * rr)
+      // 바깥쪽 끝은 물속으로 내려가야 지형과 어긋나지 않는다
+      pos.setZ(i, -Math.pow(THREE.MathUtils.clamp((rr - R0) / 3.5, 0, 1), 2) * 2.2)
+    }
+    g.computeVertexNormals()
+    return g
+  }, [])
+  return (
+    <mesh geometry={geo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]} receiveShadow>
+      <meshStandardMaterial color="#efe0b6" roughness={1} metalness={0} />
+    </mesh>
+  )
+}
+
+function Ocean({ night }) {
+  const deep = useRef()
+  // 잔물결 — 판 전체를 아주 느리게 위아래로 흔들어 '살아있는 물'로 보이게
+  useFrame((s) => {
+    if (deep.current) deep.current.position.y = SEA_Y + Math.sin(s.clock.elapsedTime * 0.5) * 0.045
+  })
+  return (
+    <group>
+      <mesh ref={deep} rotation={[-Math.PI / 2, 0, 0]} position={[0, SEA_Y, 0]}>
+        <circleGeometry args={[420, 64]} />
+        <meshStandardMaterial
+          color={night ? '#16305c' : '#2f8fd0'}
+          roughness={0.16}
+          metalness={0.45}
+          envMapIntensity={1.4}
+        />
+      </mesh>
+      {/* 얕은 물 — 해변 바로 앞의 밝은 청록. 이게 있어야 물 깊이가 읽힌다 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, SEA_Y + 0.5, 0]}>
+        <circleGeometry args={[ISLAND_R + 7.5, 96]} />
+        <meshStandardMaterial
+          color={night ? '#2a5f8f' : '#7fd8dc'}
+          roughness={0.2}
+          metalness={0.3}
+          transparent
+          opacity={0.72}
+        />
+      </mesh>
+    </group>
+  )
+}
+
+function FarIslands({ night }) {
+  const isles = useMemo(() => {
+    const r = rng(313)
+    // fog가 62~132라 100 밖에 두면 형체 없이 하얗게 씻겨 '유령 언덕'이 된다. 62~88 사이에 둔다
+    return [
+      [-0.85, 68], [0.4, 80], [1.85, 64], [2.95, 86], [4.25, 72], [5.4, 78],
+    ].map(([a, d]) => ({
+      p: [Math.cos(a) * d, 0, Math.sin(a) * d],
+      s: 6 + r() * 7,
+      h: 0.4 + r() * 0.35,
+      trees: 2 + Math.floor(r() * 3),
+      seed: r(),
+    }))
+  }, [])
+  // fog에 섞여도 실루엣이 남도록 잔디보다 진한 초록을 쓴다
+  const land = night ? '#25384f' : '#4c8b45'
+  return (
+    <group>
+      {isles.map((it, i) => (
+        <group key={i} position={it.p}>
+          {/* 돔 하나면 매끈한 반구라 인공적이다 — 크기 다른 언덕 셋을 겹쳐 실루엣을 흐트러뜨린다 */}
+          {[[0, 0, 1, 1], [0.55, 0.3, 0.6, 0.72], [-0.5, -0.35, 0.52, 0.6]].map(([ox, oz, ss, hh], k) => (
+            <mesh
+              key={k}
+              position={[ox * it.s, SEA_Y + 0.2, oz * it.s]}
+              scale={[it.s * ss, it.s * it.h * hh, it.s * ss]}
+            >
+              <sphereGeometry args={[1, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+              <meshStandardMaterial color={land} roughness={1} />
+            </mesh>
+          ))}
+          {/* 물가 모래 */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, SEA_Y + 0.24, 0]}>
+            <circleGeometry args={[it.s * 1.2, 24]} />
+            <meshStandardMaterial color={night ? '#3a4356' : '#dfcb9a'} roughness={1} />
+          </mesh>
+          {[...Array(it.trees)].map((_, k) => {
+            const a = (k / it.trees) * Math.PI * 2 + it.seed * 3
+            const rr = it.s * 0.45
+            return (
+              <group key={k} position={[Math.cos(a) * rr, SEA_Y + it.s * it.h * 0.55, Math.sin(a) * rr]}>
+                <mesh scale={[0.5, 2.4, 0.5]} position={[0, 1.2, 0]}>
+                  <cylinderGeometry args={[0.3, 0.42, 1, 6]} />
+                  <meshStandardMaterial color={night ? '#1c2839' : '#70502f'} roughness={1} />
+                </mesh>
+                <mesh position={[0, 3.0, 0]} scale={[1, 0.8, 1]}>
+                  <sphereGeometry args={[1.9, 10, 8]} />
+                  <meshStandardMaterial color={night ? '#1b2c3d' : '#3f8340'} roughness={1} />
+                </mesh>
+              </group>
+            )
+          })}
+        </group>
+      ))}
+    </group>
   )
 }
 
@@ -75,6 +211,7 @@ function GrassTufts({ count = 1400, keepOut = [] }) {
         const z = cz0 + Math.sin(a) * rad
         if (keepOut.some(([cx, cz, w, d]) => Math.abs(x - cx) < w && Math.abs(z - cz) < d)) continue
         if (Math.abs(x) < 3 && z > 8) continue // 입구 길
+        if (Math.hypot(x, z) > isleRadius(x, z) - 4.5) continue // 백사장·바다 위에 잔디가 뜨면 안 된다
         out.push({ p: [x, 0, z], s: 0.7 + r() * 0.6, ry: r() * Math.PI, c: r() })
       }
     }
@@ -110,6 +247,7 @@ function Flowers({ count = 220, keepOut = [] }) {
       const x = (r() - 0.5) * 80
       const z = (r() - 0.5) * 80
       if (keepOut.some(([cx, cz, w, d]) => Math.abs(x - cx) < w && Math.abs(z - cz) < d)) continue
+      if (Math.hypot(x, z) > isleRadius(x, z) - 5) continue // 백사장 위에 꽃이 피면 안 된다
       out.push({ x, z, c: colors[Math.floor(r() * colors.length)], s: 0.8 + r() * 0.5 })
     }
     return out
@@ -140,6 +278,7 @@ function Rocks({ count = 40, keepOut = [] }) {
       const x = (r() - 0.5) * 88
       const z = (r() - 0.5) * 88
       if (keepOut.some(([cx, cz, w, d]) => Math.abs(x - cx) < w + 1 && Math.abs(z - cz) < d + 1)) continue
+      if (Math.hypot(x, z) > isleRadius(x, z) - 2) continue // 물 위에 돌이 떠 있으면 안 된다
       out.push({ x, z, s: 0.25 + r() * 0.5, ry: r() * 6, rx: r() })
     }
     return out
@@ -851,6 +990,9 @@ export default function Village({ owned = {}, courtRows = 1, night = false, qual
   return (
     <group>
       <Terrain flatRadius={Math.max(30, 18 + courtRows * 13)} />
+      <Beach />
+      <Ocean night={night} />
+      <FarIslands night={night} />
 
       {/* 입구 길 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 18]} receiveShadow>
