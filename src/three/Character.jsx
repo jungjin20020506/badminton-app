@@ -896,25 +896,30 @@ export default function Character({
     if (eyeL.current) eyeL.current.scale.y = shut ? 0.08 : 1
     if (eyeR.current) eyeR.current.scale.y = shut ? 0.08 : 1
 
-    if (anim === 'walk') {
-      const w = t * 8.6
+    body.current.rotation.x = 0 // 달리기 기울기는 아래에서만 켠다
+    if (anim === 'walk' || anim === 'run') {
+      // 달리기는 더 빠르고 보폭이 크며, 동물의 숲처럼 상체를 앞으로 기울인다
+      const dash = anim === 'run'
+      const k = dash ? 1.42 : 1
+      const w = t * (dash ? 12.6 : 8.6)
       const s = Math.sin(w)
-      if (legL.current) legL.current.rotation.x = s * 0.66
-      if (legR.current) legR.current.rotation.x = -s * 0.66
+      if (legL.current) legL.current.rotation.x = s * 0.66 * k
+      if (legR.current) legR.current.rotation.x = -s * 0.66 * k
       // 무릎은 뒤로 갈 때만 접힌다
-      if (calfL.current) calfL.current.rotation.x = Math.max(0, -s) * 0.85
-      if (calfR.current) calfR.current.rotation.x = Math.max(0, s) * 0.85
-      if (armL.current) armL.current.rotation.x = -s * 0.52
-      if (armR.current) armR.current.rotation.x = s * 0.26 - 0.16
+      if (calfL.current) calfL.current.rotation.x = Math.max(0, -s) * 0.85 * k
+      if (calfR.current) calfR.current.rotation.x = Math.max(0, s) * 0.85 * k
+      if (armL.current) armL.current.rotation.x = -s * 0.52 * k
+      if (armR.current) armR.current.rotation.x = s * 0.26 * k - 0.16
       if (foreL.current) foreL.current.rotation.x = -0.25 - Math.max(0, s) * 0.4
       if (foreR.current) foreR.current.rotation.x = -0.3
-      body.current.position.y = Math.abs(Math.sin(w)) * 0.05
-      body.current.rotation.z = Math.sin(w) * 0.035
-      body.current.rotation.y = Math.sin(w) * 0.07
+      body.current.position.y = Math.abs(s) * (dash ? 0.085 : 0.05)
+      body.current.rotation.z = s * 0.035
+      body.current.rotation.y = s * 0.07
+      body.current.rotation.x = dash ? 0.17 : 0
       if (head.current) {
         head.current.rotation.y = 0
-        head.current.rotation.z = -Math.sin(w) * 0.05
-        head.current.rotation.x = 0
+        head.current.rotation.z = -s * 0.05
+        head.current.rotation.x = dash ? -0.14 : 0
       }
     } else if (anim === 'play') {
       const w = t * 3.3

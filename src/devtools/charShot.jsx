@@ -285,6 +285,85 @@ export async function shootVillage(name = 'village.png', { width = 1000, height 
   return save(name, url)
 }
 
+/**
+ * 조작 확인용 — 스틱을 실제로 기울인 채 프레임을 돌려서
+ * 내 캐릭터가 그 방향으로 걸어/뛰어가는지 위치와 그림으로 확인한다.
+ *   await m.shootDrive('drive.png', { dir: [0, -1], mag: 1, seconds: 1.6 })
+ */
+export async function shootDrive(name = 'drive.png', { dir = [0, -1], mag = 1, seconds = 1.5, width = 760, height = 500 } = {}) {
+  const [{ useGame }, Village, Court, Actors, layout, controls] = await Promise.all([
+    import('../game/store.js'),
+    import('../three/Village.jsx').then((m) => m.default),
+    import('../three/Court.jsx').then((m) => m.default),
+    import('../three/Actors.jsx').then((m) => m.default),
+    import('../game/layout.js'),
+    import('../game/controls.js'),
+  ])
+
+  const s = useGame.getState()
+  if (Object.keys(s.players).length < 6) s.addRandomPlayers(10)
+  useGame.setState({ screen: 'village' })
+  const courts = layout.courtLayout(useGame.getState().courtCount)
+
+  function Stage2() {
+    const owned = useGame((st) => st.owned)
+    const cs = useGame((st) => st.courts)
+    return (
+      <>
+        <color attach="background" args={['#bfe6f7']} />
+        <hemisphereLight args={['#dff0ff', '#5d8a4a', 1.1]} />
+        <directionalLight position={[26, 34, 18]} intensity={2.5} color="#fff4dc" castShadow shadow-mapSize={[2048, 2048]}
+          shadow-camera-left={-34} shadow-camera-right={34} shadow-camera-top={34} shadow-camera-bottom={-34} shadow-camera-far={140} />
+        <directionalLight position={[-20, 16, -18]} intensity={0.5} color="#cfe4ff" />
+        <Village owned={owned} courtRows={1} night={false} quality="high"
+          courtBoxes={courts.map((c) => [c.x, c.z, layout.COURT_WID / 2 + 1.6, layout.COURT_LEN / 2 + 1.6])} />
+        {courts.map((c) => (<Court key={c.id} court={cs[c.id]} x={c.x} z={c.z} skinId="green" speed={1} />))}
+        <Actors />
+      </>
+    )
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const root = createRoot(canvas)
+  root.configure({
+    size: { width, height, top: 0, left: 0 },
+    frameloop: 'never', dpr: 1.5, shadows: true,
+    gl: { antialias: true, preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.06 },
+    // 카메라는 캐릭터에서 충분히 떨어뜨린다 (가까우면 "화면 위쪽" 방향이 불안정해진다)
+    camera: { position: [0, 15, 42], fov: 40, near: 0.5, far: 300 },
+    onCreated: (st) => { st.camera.lookAt(0, 1, 8); st.camera.updateProjectionMatrix() },
+  })
+  root.render(<Stage2 />)
+  await new Promise((r) => setTimeout(r, 400))
+
+  // 먼저 선수들이 자리를 잡게 한다
+  for (let i = 0; i < 90; i++) {
+    advance(performance.now(), true)
+    await new Promise((r) => setTimeout(r, 8))
+  }
+  const from = { x: +controls.myPos.x.toFixed(2), z: +controls.myPos.z.toFixed(2) }
+
+  // 스틱을 기울인 채 실제 시간을 흘려보낸다
+  controls.setStick(dir[0], dir[1], mag)
+  const t0 = performance.now()
+  let run = false
+  while (performance.now() - t0 < seconds * 1000) {
+    advance(performance.now(), true)
+    run = controls.myPos.run
+    await new Promise((r) => setTimeout(r, 12))
+  }
+  const to = { x: +controls.myPos.x.toFixed(2), z: +controls.myPos.z.toFixed(2) }
+  controls.clearStick()
+  for (let i = 0; i < 8; i++) { advance(performance.now(), true); await new Promise((r) => setTimeout(r, 12)) }
+
+  const url = canvas.toDataURL('image/png')
+  disposeRoot(root)
+  await save(name, url)
+  return { from, to, moved: +Math.hypot(to.x - from.x, to.z - from.z).toFixed(2), run, roam: useGame.getState().roam }
+}
+
 /** 얼굴 클로즈업 */
 export async function shootFace(name = 'character-face.png') {
   const looks = [

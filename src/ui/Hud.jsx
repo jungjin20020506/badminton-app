@@ -6,6 +6,7 @@ import { useGame } from '../game/store.js'
 import { cameraApi } from '../three/Scene.jsx'
 import { expToNext, LEVEL_COLOR, CHATTER, TITLES } from '../game/constants.js'
 import { pickDailyPartner } from '../game/social.js'
+import Controls from './Controls.jsx'
 
 const pad = (n) => String(n).padStart(2, '0')
 export const clockText = (t) => {
@@ -275,6 +276,8 @@ export default function Hud() {
           </button>
         ))}
       </div>
+
+      <Controls />
 
       <Toasts />
       <Dialogue />

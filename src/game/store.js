@@ -473,6 +473,8 @@ export const useGame = create((set, get) => ({
     if (!spot) return s.toast('코트는 경기가 시작됐을 때만 들어갈 수 있어요 🏸', 'warn')
     set({ roam: spot })
   },
+  /** 자유 이동(스틱/방향키)으로 멈춰 선 자리를 기억한다 — 스틱을 놓을 때만 부른다 */
+  setRoamPos: (x, z) => set({ roam: [x, z] }),
   /** 대기석으로 돌아간다 */
   clearRoam: () => set({ roam: null }),
 

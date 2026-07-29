@@ -12,6 +12,7 @@ import Village from './Village.jsx'
 import Court from './Court.jsx'
 import Actors from './Actors.jsx'
 import { useGame, gameTick } from '../game/store.js'
+import { myPos } from '../game/controls.js'
 import { courtLayout, slotPosition, waitPosition, cameraForCourts, COURT_LEN, COURT_WID } from '../game/layout.js'
 import { villageLevel } from '../game/social.js'
 
@@ -199,13 +200,20 @@ function CameraRig() {
   const targetRef = useRef(new THREE.Vector3(0, 1, 2))
 
   useFrame((_, dt) => {
-    if (!follow || !cameraApi.controls) return
+    if (!cameraApi.controls) return
+    // 동물의 숲처럼, 내가 직접 움직이는 동안에는 설정과 상관없이 카메라가 따라온다
+    const driving = myPos.ready && myPos.moving
+    if (!follow && !driving) return
     const me = players.me
     if (!me) return
     let pos
-    if (me.courtId != null && me.slot != null) {
+    if (driving) {
+      pos = [myPos.x, myPos.z]
+    } else if (me.courtId != null && me.slot != null) {
       const l = courtLayout(courtCount)[me.courtId]
       if (l) pos = slotPosition(l, me.slot)
+    } else if (myPos.ready) {
+      pos = [myPos.x, myPos.z]
     }
     if (!pos) {
       const waiting = order.map((id) => players[id]).filter((p) => p && p.status === 'waiting')
@@ -214,7 +222,8 @@ function CameraRig() {
     }
     targetRef.current.set(pos[0], 1.1, pos[1])
     const c = cameraApi.controls
-    c.target.lerp(targetRef.current, Math.min(1, dt * 2.6))
+    // 따라잡는 속도: 움직일 땐 빠르게, 멈추면 천천히 (카메라가 튀지 않는다)
+    c.target.lerp(targetRef.current, Math.min(1, dt * (driving ? 4.2 : 2.6)))
     c.update()
   })
   return null

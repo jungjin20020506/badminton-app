@@ -22,6 +22,29 @@ function Line({ x = 0, z = 0, w, h }) {
   )
 }
 
+/** 모서리가 둥근 판 — 잔디에 딱딱한 직사각형이 박히지 않도록 (동물의 숲풍) */
+function roundedPad(w, h, r) {
+  const s = new THREE.Shape()
+  const x = -w / 2
+  const y = -h / 2
+  s.moveTo(x + r, y)
+  s.lineTo(x + w - r, y)
+  s.quadraticCurveTo(x + w, y, x + w, y + r)
+  s.lineTo(x + w, y + h - r)
+  s.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  s.lineTo(x + r, y + h)
+  s.quadraticCurveTo(x, y + h, x, y + h - r)
+  s.lineTo(x, y + r)
+  s.quadraticCurveTo(x, y, x + r, y)
+  return new THREE.ShapeGeometry(s, 10)
+}
+
+const PAD_W = COURT_WID + 1.6 // 6.4 — 코트 사이 간격(7.2)보다 좁게 둬서 판이 서로 붙지 않는다
+const PAD_L = COURT_LEN + 1.6
+const TRIM_W = PAD_W + 0.5
+const TRIM_L = PAD_L + 0.5
+const TRIM_COLOR = '#e7d9ac' // 코트를 감싸는 모랫길
+
 let netTex = null
 function getNetTexture() {
   if (netTex) return netTex
@@ -87,6 +110,8 @@ function CourtTimer({ startTime }) {
 export default function Court({ court, x, z, skinId, speed = 1, onClick, focused }) {
   const skin = COURT_SKINS.find((s) => s.id === skinId) || COURT_SKINS[0]
   const tex = useMemo(() => getNetTexture(), [])
+  const padGeo = useMemo(() => roundedPad(PAD_W, PAD_L, 1.0), [])
+  const trimGeo = useMemo(() => roundedPad(TRIM_W, TRIM_L, 1.25), [])
   const playing = court.status === 'playing'
 
   const shortService = 1.5
@@ -95,9 +120,12 @@ export default function Court({ court, x, z, skinId, speed = 1, onClick, focused
 
   return (
     <group position={[x, 0, z]}>
+      {/* 잔디 → 코트 사이를 잇는 모랫길 테두리 */}
+      <mesh geometry={trimGeo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>
+        <meshStandardMaterial color={TRIM_COLOR} roughness={1} />
+      </mesh>
       {/* 코트 바닥 + 여백 */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} receiveShadow onClick={onClick}>
-        <planeGeometry args={[COURT_WID + 2.4, COURT_LEN + 2.2]} />
+      <mesh geometry={padGeo} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]} receiveShadow onClick={onClick}>
         <meshStandardMaterial color={skin.floor} roughness={0.95} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.022, 0]} receiveShadow>
@@ -144,10 +172,10 @@ export default function Court({ court, x, z, skinId, speed = 1, onClick, focused
       {/* 셔틀콕 */}
       {playing && <Shuttle speed={speed} />}
 
-      {/* 코트 번호 표시 */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, L + 0.75]}>
-        <circleGeometry args={[0.55, 20]} />
-        <meshStandardMaterial color={focused ? '#ffd166' : '#ffffff'} transparent opacity={0.55} />
+      {/* 코트 번호 자리 표시 — 바닥에 그린 링 (예전엔 회색 물웅덩이처럼 보였다) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, L + 0.55]}>
+        <ringGeometry args={[0.34, 0.5, 24]} />
+        <meshStandardMaterial color={focused ? '#ffd166' : '#f4f7fb'} roughness={0.8} transparent opacity={0.9} />
       </mesh>
 
       {/* 전광판 */}

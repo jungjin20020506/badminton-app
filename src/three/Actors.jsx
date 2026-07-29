@@ -2,24 +2,33 @@
 // Actor — 선수 한 명의 "움직임". 목표 지점으로 걸어가고, 도착하면 스토어에 알린다.
 // (대기석 → 코트 → 경기 → 대기석 복귀 흐름이 여기서 눈에 보이게 된다)
 // ===================================================================================
-import { useRef, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useRef, useMemo, useEffect } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import Character from './Character.jsx'
 import { useGame } from '../game/store.js'
-import { courtLayout, slotPosition, slotFacing, waitPosition, GATE } from '../game/layout.js'
+import { courtLayout, slotPosition, slotFacing, waitPosition, GATE, clampRoam } from '../game/layout.js'
+import { readInput, myPos, registerActor, unregisterActor } from '../game/controls.js'
 
 const SPEED = 3.1
+const WALK_SPEED = 2.0 // 살짝 기울였을 때
+const RUN_SPEED = 4.4 // 끝까지 기울였을 때 (동물의 숲 달리기)
 
-function Actor({ player, target, facing, anim, simple, showTag, onClick }) {
+function Actor({ player, target, facing, anim, simple, showTag, freeMove, onClick }) {
   const g = useRef()
   const arrived = useRef(false)
   const started = useRef(false)
   const cur = useMemo(() => new THREE.Vector3(GATE[0] + (Math.random() - 0.5) * 3, 0, GATE[1] + Math.random() * 3), [])
   const seed = useMemo(() => Math.floor(Math.random() * 100), [])
   const moving = useRef(false)
+  const running = useRef(false)
+  const camera = useThree((s) => s.camera)
+  const courtCount = useGame((s) => s.courtCount)
+  const setRoam = useGame((s) => s.setRoamPos)
 
   const arrive = useGame((s) => s.arrive)
+
+  useEffect(() => () => unregisterActor(player.id), [player.id])
 
   useFrame((_, dt) => {
     if (!g.current) return
@@ -27,6 +36,59 @@ function Actor({ player, target, facing, anim, simple, showTag, onClick }) {
       g.current.position.copy(cur)
       started.current = true
     }
+
+    // --- 동물의 숲식 자유 이동: 스틱/방향키를 기울인 방향으로 계속 걷는다 -------------
+    if (freeMove) {
+      const inp = readInput()
+      if (inp.mag > 0.02) {
+        // 화면(카메라) 기준 방향 → 월드 방향
+        // 카메라가 보는 앞쪽(화면 위쪽) 방향
+        const yaw = Math.atan2(g.current.position.x - camera.position.x, g.current.position.z - camera.position.z)
+        const cos = Math.cos(yaw)
+        const sin = Math.sin(yaw)
+        const wx = inp.x * cos - inp.z * sin
+        const wz = -inp.x * sin - inp.z * cos
+        // 살짝 기울이면 느린 걸음, 끝까지 기울이면 달리기 (동물의 숲과 같은 감각)
+        const run = inp.mag > 0.62
+        const speed = run ? RUN_SPEED : WALK_SPEED * (0.62 + 0.38 * (Math.min(inp.mag, 0.62) / 0.62))
+        const nx = g.current.position.x + wx * speed * Math.min(dt, 0.05)
+        const nz = g.current.position.z + wz * speed * Math.min(dt, 0.05)
+        const spot = clampRoam(nx, nz, courtCount)
+        if (spot) {
+          g.current.position.x = spot[0]
+          g.current.position.z = spot[1]
+        } else {
+          // 코트 벽에 부딪히면 미끄러지듯 옆으로 (막혀서 멈춰 서는 느낌이 덜하다)
+          const sx = clampRoam(nx, g.current.position.z, courtCount)
+          const sz = clampRoam(g.current.position.x, nz, courtCount)
+          if (sx) g.current.position.x = sx[0]
+          else if (sz) g.current.position.z = sz[1]
+        }
+        const want = Math.atan2(wx, wz)
+        const cr = g.current.rotation.y
+        const diff = ((want - cr + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+        g.current.rotation.y = cr + diff * Math.min(1, dt * 12)
+        moving.current = true
+        running.current = run
+        myPos.moving = true
+        myPos.run = run
+        myPos.x = g.current.position.x
+        myPos.z = g.current.position.z
+        myPos.ready = true
+        registerActor(player.id, myPos.x, myPos.z)
+        return
+      }
+      if (moving.current) {
+        // 멈춘 자리를 기억해 둔다 (패널을 열었다 닫아도 그 자리에 서 있도록)
+        moving.current = false
+        running.current = false
+        myPos.moving = false
+        setRoam(g.current.position.x, g.current.position.z)
+      }
+      // 입력이 없으면 아래의 평소 로직(목표 지점으로 걷기)을 그대로 쓴다.
+      // 처음 마을에 들어올 때 입구에서 대기석까지 걸어오는 연출이 유지된다.
+    }
+
     const tx = target[0]
     const tz = target[1]
     const dx = tx - g.current.position.x
@@ -54,9 +116,16 @@ function Actor({ player, target, facing, anim, simple, showTag, onClick }) {
         if (player.status === 'walking') arrive(player.id)
       }
     }
+    registerActor(player.id, g.current.position.x, g.current.position.z)
+    if (player.isMe) {
+      myPos.x = g.current.position.x
+      myPos.z = g.current.position.z
+      myPos.ready = true
+      myPos.moving = moving.current
+    }
   })
 
-  const finalAnim = moving.current ? 'walk' : anim
+  const finalAnim = moving.current ? (running.current ? 'run' : 'walk') : anim
 
   return (
     <group ref={g}>
@@ -140,6 +209,8 @@ export default function Actors() {
         }
 
         const onCourt = p.status === 'oncourt' || p.status === 'walking'
+        // 내 캐릭터는 코트에 배정되지 않은 동안 스틱/방향키로 직접 조작한다
+        const freeMove = p.isMe && !onCourt && p.status !== 'resting'
         return (
           <Actor
             key={p.id}
@@ -147,6 +218,7 @@ export default function Actors() {
             target={target}
             facing={facing}
             anim={anim}
+            freeMove={freeMove}
             simple={simpleMode && !p.isMe && !onCourt}
             showTag={!simpleMode || p.isMe || onCourt}
             onClick={selectPlayer}

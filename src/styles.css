@@ -194,6 +194,47 @@ input, select, textarea { font-family: var(--font); font-size: 16px; } /* 16px �
 .fab:active { transform: translateY(5px); box-shadow: 0 0 0 var(--sun-dark); }
 
 /* --------------------------------------------------------------------------------
+   조작 — 왼쪽 아날로그 스틱 / 오른쪽 Ⓐ 버튼 (동물의 숲 방식)
+   -------------------------------------------------------------------------------- */
+.stick {
+  position: absolute; left: 14px; bottom: calc(var(--nav-h) + var(--safe-b) + 14px);
+  width: 124px; height: 124px; z-index: 28;
+  display: grid; place-items: center; touch-action: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 253, 243, .58), rgba(255, 248, 226, .3));
+  border: 4px solid rgba(120, 96, 58, .32);
+  box-shadow: 0 5px 14px var(--shadow), inset 0 3px 10px rgba(255, 255, 255, .5);
+  transition: opacity .16s ease-out;
+  opacity: .74;
+}
+.stick.on { opacity: 1; }
+.stick-ring {
+  position: absolute; width: 62px; height: 62px; border-radius: 50%;
+  border: 3px dashed rgba(120, 96, 58, .26);
+}
+.stick-knob {
+  width: 60px; height: 60px; border-radius: 50%;
+  background: linear-gradient(#fffdf3, #f3dfae);
+  border: 4px solid var(--line-dark);
+  box-shadow: 0 4px 0 var(--line-dark), 0 6px 14px var(--shadow);
+  pointer-events: none;
+}
+
+.a-btn {
+  position: absolute; right: 16px; bottom: calc(var(--nav-h) + var(--safe-b) + 78px);
+  z-index: 29; min-width: 74px; min-height: 74px; padding: 0 8px;
+  border-radius: 50%;
+  background: linear-gradient(#c7f0b6, var(--leaf)); border: 4px solid var(--leaf-dark);
+  box-shadow: 0 5px 0 var(--leaf-dark), 0 10px 20px var(--shadow); color: #22421c;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  animation: a-pop .22s ease-out;
+}
+.a-btn b { font-size: 24px; line-height: 1; }
+.a-btn span { font-size: 10px; max-width: 66px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.a-btn:active { transform: translateY(5px); box-shadow: 0 0 0 var(--leaf-dark); }
+@keyframes a-pop { from { transform: scale(.6); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+
+/* --------------------------------------------------------------------------------
    바텀시트 패널
    -------------------------------------------------------------------------------- */
 .sheet-back {
