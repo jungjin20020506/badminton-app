@@ -84,17 +84,24 @@ export function NameTag({ name, level, isMe, y = 2.1 }) {
 let stringTex = null
 function getStringTexture() {
   if (stringTex) return stringTex
+  const S = 256
   const c = document.createElement('canvas')
-  c.width = c.height = 128
+  c.width = c.height = S
   const g = c.getContext('2d')
-  g.clearRect(0, 0, 128, 128)
-  g.strokeStyle = 'rgba(255,255,255,0.95)'
-  g.lineWidth = 2.4
-  for (let i = 8; i < 128; i += 10) {
-    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 128); g.stroke()
-    g.beginPath(); g.moveTo(0, i); g.lineTo(128, i); g.stroke()
+  g.clearRect(0, 0, S, S)
+  // 줄 하나를 어두운 테두리 + 밝은 심지 2겹으로 그린다.
+  // 재질 color 는 곱해지므로, 어두운 테두리는 어떤 줄 색을 골라도 남아
+  // 작게 축소돼도 격자가 흰 덩어리로 뭉치지 않는다.
+  const line = (x1, y1, x2, y2) => { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke() }
+  const pass = (color, w) => {
+    g.strokeStyle = color
+    g.lineWidth = w
+    for (let i = 16; i < S; i += 22) { line(i, 0, i, S); line(0, i, S, i) }
   }
+  pass('rgba(52,56,68,0.85)', 5.2)   // 어두운 테두리
+  pass('rgba(255,255,255,1)', 2.2)   // 밝은 심지
   stringTex = new THREE.CanvasTexture(c)
+  stringTex.anisotropy = 4
   return stringTex
 }
 
@@ -138,6 +145,18 @@ export function Racket({ racket = {}, simple = false }) {
       <mesh position={[0, 0.095, 0]} material={gripMat} castShadow>
         <cylinderGeometry args={[0.037, 0.043, 0.2, 12]} />
       </mesh>
+      {/* 그립 무늬 — GRIP_WRAPS 3종. 지금까지 값만 저장되고 그려지지 않았다. */}
+      {wrap === 'spiral' &&
+        [0, 1, 2, 3, 4].map(i => (
+          <mesh key={i} position={[0, 0.03 + i * 0.037, 0]} rotation={[Math.PI / 2 - 0.22, 0, 0]} material={wrapMat}>
+            <torusGeometry args={[0.0405 - i * 0.0013, 0.0055, 6, 14]} />
+          </mesh>
+        ))}
+      {wrap === 'twotone' && (
+        <mesh position={[0, 0.145, 0]} material={wrapMat}>
+          <cylinderGeometry args={[0.0378, 0.0398, 0.09, 12]} />
+        </mesh>
+      )}
       {/* 그립 끝 마감 */}
       <mesh position={[0, -0.008, 0]} material={frameMat}>
         <cylinderGeometry args={[0.045, 0.042, 0.022, 12]} />
@@ -150,14 +169,15 @@ export function Racket({ racket = {}, simple = false }) {
       <mesh position={[0, 0.335, 0]} material={frameMat}>
         <sphereGeometry args={[0.026, 10, 8]} />
       </mesh>
-      {/* 프레임 */}
-      <mesh position={[0, headY, 0]} scale={[1, 1.2, 1]} material={frameMat} castShadow>
-        <torusGeometry args={[headR, 0.015, 10, 34]} />
+      {/* 프레임 — 모델별 굵기(tube)·분할수(seg)·세로비(ratio)를 실제로 반영한다.
+          seg 가 작을수록 각진 헤드(아이소메트릭), tube 가 굵을수록 묵직해 보인다. */}
+      <mesh position={[0, headY, 0]} scale={[1, ratio, 1]} material={frameMat} castShadow>
+        <torusGeometry args={[headR, tube, 10, seg]} />
       </mesh>
       {/* 스트링 */}
       {!simple && (
-        <mesh position={[0, headY, 0]} scale={[1, 1.2, 1]} material={stringMat}>
-          <circleGeometry args={[headR - 0.005, 26]} />
+        <mesh position={[0, headY, 0]} scale={[1, ratio, 1]} material={stringMat}>
+          <circleGeometry args={[headR - tube * 0.5, Math.max(seg, 20)]} />
         </mesh>
       )}
     </group>
