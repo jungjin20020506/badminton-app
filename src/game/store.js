@@ -15,6 +15,7 @@ import {
   pickDailyPartner, PARTNER_BONUS, welcomeLetter, daySummaryLetter,
   trophyLetter, newTrophies, chapterLetter,
 } from './social.js'
+import { rallyCoins, rallyAffinity } from './rally.js'
 
 const SAVE_KEY = 'shuttle-village-save-v1'
 
@@ -204,6 +205,7 @@ function saveState(s) {
       isAdmin: s.isAdmin,
       mail: s.mail.slice(0, 40),
       bestLift: s.bestLift,
+      bestRally: s.bestRally,
       onlineCode: s.online?.code || '',
       scheduledMatches: s.scheduledMatches,
       autoMatches: s.autoMatches,
@@ -269,6 +271,7 @@ export const useGame = create((set, get) => ({
   showCheckIn: false,
   mail: [],
   bestLift: 0,
+  bestRally: 0,
   // 콕스타 연동 상태
   auth: null, // { uid, email, profile, needsProfile, superAdmin }
   online: { status: 'off', roomId: null, roomName: '', isAdmin: false, code: '' },
@@ -343,6 +346,7 @@ export const useGame = create((set, get) => ({
       isAdmin: data.isAdmin !== false,
       mail: data.mail || [],
       bestLift: data.bestLift || 0,
+      bestRally: data.bestRally || 0,
       scheduledMatches: data.scheduledMatches || {},
       autoMatches: data.autoMatches || [],
       online: { status: 'off', code: data.onlineCode || '' },
@@ -862,6 +866,47 @@ export const useGame = create((set, get) => ({
     get().checkTrophies()
     saveState(get())
     return reward
+  },
+
+  // --- 미니게임 (셔틀 랠리) — 리프팅과 같은 하루 300코인 지갑을 쓴다 -------------------
+  /**
+   * 마을 주민과 랠리를 이어 간 만큼 보상을 준다.
+   * 승패가 아니라 「같이 몇 번 주고받았는가」라서, 친밀도도 같이 오른다.
+   * 다만 친밀도는 **하루에 한 사람당 한 번만** — 한 사람만 붙잡고 돌리면 의미가 없으니까.
+   */
+  addRallyReward: (rally, perfect, partnerId) => {
+    const s = get()
+    const CAP = 300
+    const remain = Math.max(0, CAP - (s.today.miniCoins || 0))
+    const reward = Math.min(remain, rallyCoins(rally, perfect))
+
+    const done = s.today.rallyFriends || []
+    const up = partnerId && !done.includes(partnerId) ? rallyAffinity(rally) : 0
+    const players = { ...s.players }
+    if (up > 0 && players[partnerId]) {
+      players[partnerId] = { ...players[partnerId], affinity: Math.min(100, players[partnerId].affinity + up) }
+    }
+
+    set({
+      players,
+      coins: s.coins + reward,
+      bestRally: Math.max(s.bestRally || 0, rally),
+      today: {
+        ...s.today,
+        miniCoins: (s.today.miniCoins || 0) + reward,
+        rallyFriends: up > 0 ? [...done, partnerId] : done,
+      },
+      career: { ...s.career, earned: s.career.earned + reward },
+    })
+
+    const name = s.players[partnerId]?.name
+    if (reward > 0) get().toast(`🏸 ${rally}회 랠리! +${reward}🪙`, 'good')
+    else get().toast(`🏸 ${rally}회 랠리! (오늘 미니게임 보상 한도 도달)`, 'warn')
+    if (up > 0) setTimeout(() => get().toast(`💛 ${name} 님과 친해졌다 (+${up})`, 'good'), 700)
+
+    get().checkTrophies()
+    saveState(get())
+    return { coins: reward, affinity: up }
   },
 
   /** 출석 체크 — 연속 출석일수록 보상이 커진다 (매일 들어오게 만드는 장치) */

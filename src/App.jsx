@@ -5,6 +5,7 @@ import Panels from './ui/Panels.jsx'
 import CharacterCreator from './ui/CharacterCreator.jsx'
 import InstallPrompt from './ui/InstallPrompt.jsx'
 import MiniGame from './ui/MiniGame.jsx'
+import RallyGame from './ui/RallyGame.jsx'
 import ShareCard from './ui/ShareCard.jsx'
 import Login from './ui/Login.jsx'
 import WorldMap from './ui/WorldMap.jsx'
@@ -49,6 +50,7 @@ export default function App() {
       <Panels />
       {panel === 'closet' && <CharacterCreator mode="edit" onClose={() => setPanel('closet')} />}
       {panel === 'minigame' && <MiniGame onClose={() => setPanel('minigame')} />}
+      {panel === 'rally' && <RallyGame onClose={() => setPanel('rally')} />}
       {panel === 'share' && <ShareCard onClose={() => setPanel('share')} />}
       {(panel === 'login' || auth?.needsProfile) && <Login onClose={() => setPanel('login')} />}
       <InstallPrompt />

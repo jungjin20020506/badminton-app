@@ -406,6 +406,7 @@ const SCRIPTS = {
         choices: [
           { label: '셔틀콕 뽑기 (300🪙)', close: true, run: () => openPanel('gacha') },
           { label: '리프팅 미니게임', close: true, run: () => openPanel('minigame') },
+          { label: '셔틀 랠리 (주민과 함께)', close: true, run: () => openPanel('rally') },
           { label: '구경만 할게요', then: [{ say: '천천히 보세요~ 기계는 도망 안 갑니다!' }] },
         ],
       },
@@ -423,16 +424,21 @@ const SCRIPTS = {
     },
   ],
 
-  liftMachine: () => [
-    { say: '「셔틀 리프팅 챌린지」 기계다.' },
-    {
-      ask: '도전할까?',
-      choices: [
-        { label: '도전한다', close: true, run: () => openPanel('minigame') },
-        { label: '그만둔다', then: [{ say: '자신 없을 땐 물러서는 것도 용기다.' }] },
-      ],
-    },
-  ],
+  liftMachine: () => {
+    const r = S().bestRally || 0
+    return [
+      { say: '「셔틀 리프팅 챌린지」 기계다.' },
+      { say: r ? `옆에 랠리 기록판도 붙어 있다 — 내 최고는 ${r}회.` : '옆에 「둘이서 랠리」 안내문도 붙어 있다.' },
+      {
+        ask: '무엇을 할까?',
+        choices: [
+          { label: '리프팅에 도전한다', close: true, run: () => openPanel('minigame') },
+          { label: '주민과 랠리를 친다', close: true, run: () => openPanel('rally') },
+          { label: '그만둔다', then: [{ say: '자신 없을 땐 물러서는 것도 용기다.' }] },
+        ],
+      },
+    ]
+  },
 
   // ── 간판 · 소품 ──────────────────────────────────────────────────────────────
   sign_town: () => [{ say: '「셔틀타운 — 배드민턴을 사랑하는 사람들의 마을」' }, { say: '작은 글씨: 코트에서 뛰기 전에 꼭 몸을 푸세요!' }],

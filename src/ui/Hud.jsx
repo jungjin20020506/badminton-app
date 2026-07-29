@@ -211,6 +211,7 @@ function StartMenu({ open, onClose }) {
       ? { icon: '🏸', label: '경기방', hint: online.roomName || '대진표', run: () => setPanel('match') }
       : { icon: '📡', label: '경기방 찾기', hint: '입장하기', run: () => setPanel('rooms') },
     { icon: '📋', label: '대진표', hint: '코트 · 대기', run: () => setPanel('match') },
+    { icon: '🎮', label: '놀거리', hint: '기다리는 동안', run: () => setPanel('play') },
     { icon: '📖', label: '선수 도감', hint: '만난 사람 모으기', run: () => setPanel('dex') },
     { icon: '👥', label: '선수 명단', hint: '마을 주민', run: () => setPanel('roster') },
     { icon: '⭐', label: '트레이너 카드', hint: `Lv.${me.lv}`, badge: me.statPoints, run: () => setPanel('me') },

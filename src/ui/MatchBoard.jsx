@@ -12,7 +12,7 @@
 //   · START 는 4명 다 차야 활성 → 빈 코트가 여러 개면 코트 선택
 //   · FINISH 는 확인 후 종료
 // ===================================================================================
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useGame } from '../game/store.js'
 import { LEVEL_COLOR, LEVEL_ORDER } from '../game/constants.js'
 import { bestLevelSplit, pickBestCombo } from '../game/matching.js'
@@ -111,8 +111,10 @@ export default function MatchBoard() {
   const inRoom = online.status === 'room'
   const isAdmin = inRoom ? online.isAdmin : true
 
-  // 1초마다 타이머 갱신
-  useMemo(() => {
+  // 1초마다 타이머 갱신.
+  // useMemo 로 걸면 정리 함수를 아무도 안 불러 줘서, 대진표를 열 때마다
+  // 인터벌이 하나씩 쌓인 채 앱이 꺼질 때까지 계속 돈다. useEffect 여야 한다.
+  useEffect(() => {
     const id = setInterval(() => force((n) => n + 1), 1000)
     return () => clearInterval(id)
   }, [])

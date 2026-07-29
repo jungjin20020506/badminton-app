@@ -670,36 +670,42 @@ function SettingsPanel() {
 }
 
 // -----------------------------------------------------------------------------------
-// ☰ 더보기
+// 🎮 놀거리 — 코트를 기다리는 동안 할 것들을 한곳에 모아 둔다.
+//
+// 미니게임과 뽑기는 지금까지 마을 구석의 NPC에게 말을 걸어야만 열렸다.
+// 정작 제일 필요한 순간(벤치에 앉아 순번을 기다릴 때)에 못 찾으면 소용이 없어서
+// 메뉴에서 바로 들어올 수 있게 꺼내 놓았다.
 // -----------------------------------------------------------------------------------
-function MorePanel() {
+function PlayPanel() {
   const setPanel = useGame((s) => s.setPanel)
-  const today = useGame((s) => s.today)
-  const quests = useGame((s) => s.quests)
-  const mailUnread = useGame((s) => s.mail.filter((m) => !m.read || (!m.claimed && m.coins > 0)).length)
-  const ready = DAILY_QUESTS.filter((q) => (today[q.track] || 0) >= q.target && !quests[q.id]?.claimed).length
+  const bestLift = useGame((s) => s.bestLift || 0)
+  const bestRally = useGame((s) => s.bestRally || 0)
+  const miniCoins = useGame((s) => s.today.miniCoins || 0)
+  const coins = useGame((s) => s.coins)
+
   const ITEMS = [
-    ['quests', '📜', '오늘의 할 일', ready],
-    ['mail', '💌', '우편함', mailUnread],
-    ['gacha', '🎁', '셔틀콕 뽑기'],
-    ['minigame', '🪶', '셔틀 리프팅'],
-    ['share', '📸', '스토리 공유'],
-    ['trophy', '🏆', '트로피룸'],
-    ['rank', '🥇', '마을 랭킹'],
-    ['record', '📖', '경기 기록'],
-    ['closet', '✨', '옷장'],
-    ['settings', '⚙️', '설정'],
+    ['rally', '🏸', '셔틀 랠리', bestRally ? `최고 ${bestRally}회` : '주민과 함께!'],
+    ['minigame', '🪶', '셔틀 리프팅', bestLift ? `최고 ${bestLift}개` : '혼자서 톡톡'],
+    ['gacha', '🎁', '셔틀콕 뽑기', '1회 300🪙'],
+    ['share', '📸', '사진 찍기', '자랑하기'],
   ]
+
   return (
-    <div className="opt-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-      {ITEMS.map(([k, icon, label, badge]) => (
-        <button key={k} className="opt" style={{ minHeight: 84 }} onClick={() => setPanel(k)}>
-          <div style={{ fontSize: 26 }}>{icon}</div>
-          {label}
-          {badge > 0 && <span className="price" style={{ color: 'var(--rose-dark)' }}>받을 보상 {badge}개!</span>}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="muted">
+        코트를 기다리는 동안 놀 거리야. 미니게임 보상은 <b>하루 300🪙까지</b> —
+        지금까지 {miniCoins}🪙 받았어. (보유 {coins.toLocaleString()}🪙)
+      </div>
+      <div className="opt-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 12 }}>
+        {ITEMS.map(([k, icon, label, hint]) => (
+          <button key={k} className="opt" style={{ minHeight: 96 }} onClick={() => setPanel(k)}>
+            <div style={{ fontSize: 30 }}>{icon}</div>
+            {label}
+            <span className="price">{hint}</span>
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -895,14 +901,14 @@ function GachaPanel() {
 export default function Panels() {
   const panel = useGame((s) => s.panel)
   const setPanel = useGame((s) => s.setPanel)
-  if (!panel || panel === 'closet' || panel === 'minigame' || panel === 'share' || panel === 'login') return null
+  if (!panel || panel === 'closet' || panel === 'minigame' || panel === 'rally' || panel === 'share' || panel === 'login') return null
 
   const TITLE = {
     roster: '👥 마을 주민',
     match: '🏸 경기 운영',
     shop: '🛍️ 셔틀마트',
     me: '⭐ 내 정보',
-    more: '☰ 더보기',
+    play: '🎮 놀거리',
     quests: '📜 오늘의 할 일',
     mail: '💌 우편함',
     trophy: '🏆 트로피룸',
@@ -920,7 +926,7 @@ export default function Panels() {
       {panel === 'match' && <MatchBoard />}
       {panel === 'shop' && <ShopPanel />}
       {panel === 'me' && <MePanel />}
-      {panel === 'more' && <MorePanel />}
+      {panel === 'play' && <PlayPanel />}
       {panel === 'quests' && <QuestPanel />}
       {panel === 'mail' && <MailPanel />}
       {panel === 'trophy' && <TrophyPanel />}

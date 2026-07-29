@@ -192,6 +192,8 @@ export const TROPHIES = [
   { id: 't_gacha10', label: '뽑기 중독', icon: '🎁', desc: '셔틀콕 뽑기를 10번 돌렸다.', coins: 200, cond: (s) => (s.gachaPulls || 0) >= 10 },
   { id: 't_village3', label: '마을 가꾸기', icon: '🌸', desc: '마을 발전도 3단계 달성.', coins: 300, cond: (s) => villageLevel(s).lv >= 3 },
   { id: 't_lift20', label: '리프팅 장인', icon: '🪶', desc: '셔틀 리프팅 20개 달성.', coins: 250, cond: (s) => (s.bestLift || 0) >= 20 },
+  { id: 't_rally15', label: '랠리 파트너', icon: '🏸', desc: '마을 주민과 15회 랠리를 이어 갔다.', coins: 250, cond: (s) => (s.bestRally || 0) >= 15 },
+  { id: 't_rally40', label: '끝나지 않는 랠리', icon: '🌪️', desc: '40회 랠리! 팔이 저릴 때까지 주고받았다.', coins: 500, cond: (s) => (s.bestRally || 0) >= 40 },
 ]
 
 /** 새로 달성한 트로피 목록을 돌려준다 */

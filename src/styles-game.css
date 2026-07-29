@@ -204,3 +204,96 @@
   .world { max-width: 520px; left: 50%; transform: translateX(-50%); }
   .village-card-pop { max-width: 500px; left: 50%; transform: translateX(-50%); }
 }
+
+/* --------------------------------------------------------------------------------
+   미니게임 — 셔틀 랠리
+   위쪽이 상대, 아래쪽이 나. 그 사이를 셔틀콕이 오간다.
+   -------------------------------------------------------------------------------- */
+.rally-overlay { align-items: stretch; }
+.rally-court {
+  position: absolute; inset: 0; overflow: hidden; touch-action: none;
+  background:
+    radial-gradient(120% 70% at 50% 6%, rgba(255,255,255,.28), transparent 60%),
+    linear-gradient(#1d6fa8 0%, #2a86c0 26%, #3f9b58 26.2%, #2f7c45 100%);
+}
+/* 코트 라인 — 원근이 있는 것처럼 위가 좁다 */
+.rally-court .rc-line {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  border: 3px solid rgba(255,255,255,.6); border-radius: 2px;
+}
+.rc-line-far { top: 26%; width: 46%; height: 22%; }
+.rc-line-near { top: 50%; width: 78%; height: 30%; }
+.rc-net {
+  position: absolute; left: 50%; top: 48%; transform: translate(-50%,-50%);
+  width: 82%; height: 34px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,255,255,.75) 0 2px, transparent 2px 8px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.75) 0 2px, transparent 2px 8px);
+  border-top: 5px solid #fff; border-bottom: 3px solid rgba(255,255,255,.5);
+}
+
+.rc-side { position: absolute; left: 50%; transform: translateX(-50%); text-align: center; }
+.rc-side img {
+  width: 62px; height: 62px; border-radius: 14px;
+  border: 3px solid var(--pk-frame); background: #fff; display: block; margin: 0 auto;
+  box-shadow: 0 4px 0 rgba(0,0,0,.25);
+}
+.rc-side b {
+  display: inline-block; margin-top: 5px; font-size: 12px; color: #fff;
+  background: rgba(15,25,45,.55); padding: 2px 9px; border-radius: 999px;
+}
+.rc-side.far { top: 15%; }
+.rc-side.far img { width: 48px; height: 48px; }
+.rc-side.near { bottom: 9%; }
+
+.rc-bird {
+  position: absolute; left: 50%; top: 20%;
+  width: 44px; height: 44px; font-size: 34px; line-height: 44px; text-align: center;
+  will-change: transform, left, top; pointer-events: none;
+  filter: drop-shadow(0 3px 3px rgba(0,0,0,.35));
+}
+
+.rc-hud {
+  position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); left: 0; right: 0;
+  text-align: center; pointer-events: none; font-family: var(--font); color: #fff;
+}
+.rc-count { font-size: 58px; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.2); }
+.rc-lives { font-size: 17px; letter-spacing: 3px; margin-top: 4px; }
+.rc-sub { font-size: 12px; opacity: .9; margin-top: 3px; }
+
+.rc-flash {
+  position: absolute; left: 50%; top: 62%; transform: translate(-50%,-50%);
+  font-family: var(--font); font-size: 30px; pointer-events: none;
+  text-shadow: 0 3px 0 rgba(0,0,0,.28); animation: rcPop .5s ease-out forwards;
+}
+.rc-flash.perfect { color: #ffe27a; }
+.rc-flash.good { color: #b8f5c0; }
+.rc-flash.miss { color: #ffb1b1; }
+@keyframes rcPop {
+  0% { transform: translate(-50%,-50%) scale(.6); opacity: 0 }
+  25% { transform: translate(-50%,-50%) scale(1.12); opacity: 1 }
+  100% { transform: translate(-50%,-90%) scale(1); opacity: 0 }
+}
+
+.rally-pick { max-height: 86vh; overflow-y: auto; }
+.rally-cands { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.rally-cand {
+  position: relative; padding: 6px 3px 7px; border-radius: 12px;
+  border: 3px solid var(--line); background: var(--paper-2);
+  box-shadow: 0 3px 0 rgba(181,144,90,.4); text-align: center;
+}
+.rally-cand:active { transform: translateY(2px); box-shadow: none; }
+.rally-cand img { width: 38px; height: 38px; border-radius: 10px; display: block; margin: 0 auto; }
+.rally-cand .rc-nm {
+  display: block; margin-top: 3px; font-size: 11px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rally-cand .rc-lv {
+  position: absolute; left: 4px; top: 4px; color: #fff; font-size: 9px;
+  padding: 1px 4px; border-radius: 999px;
+}
+.rally-cand .rc-done { position: absolute; right: 3px; top: 3px; font-size: 11px; }
+
+@media (min-width: 900px) {
+  .rally-court { left: 50%; transform: translateX(-50%); width: 560px; }
+}
