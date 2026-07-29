@@ -4,6 +4,7 @@ import App from './App.jsx'
 import './styles.css'
 import './styles-game.css'
 import './styles-match.css'
+import './styles-pixel.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />)
 

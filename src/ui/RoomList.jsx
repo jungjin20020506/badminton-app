@@ -2,9 +2,13 @@
 // 콕스타 경기방 목록 — 콕스타에서 만든 방이 그대로 보이고, 그대로 입장한다.
 // ===================================================================================
 import { useEffect, useState } from 'react'
-import { useGame } from '../game/store.js'
+import { useGame, TUTORIAL } from '../game/store.js'
 import { cockstar } from '../net/cockstar.js'
-import { LEVEL_COLOR } from '../game/constants.js'
+
+/** 입장에 성공하면 곧바로 대진표를 펼쳐 준다 — 여기가 이 게임의 목적지다 */
+function afterEnter() {
+  useGame.setState({ panel: 'match', tutorial: TUTORIAL.done })
+}
 
 export default function RoomList({ onClose }) {
   const auth = useGame((s) => s.auth)
@@ -36,7 +40,7 @@ export default function RoomList({ onClose }) {
       toast(`🏸 「${room.name}」 경기방에 입장했어!`, 'good')
       setPwFor(null)
       setPw('')
-      onClose()
+      afterEnter()
     } catch (e) {
       toast(e.message || '입장하지 못했어요.', 'warn')
     } finally {
@@ -52,7 +56,7 @@ export default function RoomList({ onClose }) {
       const room = { id, ...form, adminUid: auth.uid, password: form.password }
       await cockstar.enterRoom(room, form.password)
       toast('경기방을 만들었어! 🎉', 'good')
-      onClose()
+      afterEnter()
     } catch (e) {
       toast(e.message || '만들지 못했어요.', 'warn')
     } finally {
@@ -66,9 +70,22 @@ export default function RoomList({ onClose }) {
 
   if (!auth) {
     return (
-      <div className="muted">
-        경기방을 쓰려면 먼저 콕스타 계정으로 로그인해야 해.
-      </div>
+      <>
+        <div className="court-mini" style={{ padding: 12 }}>
+          <b>📡 셔틀넷에 연결이 필요해</b>
+          <div className="muted" style={{ marginTop: 6 }}>
+            경기방은 콕스타(COCKSTAR)와 같은 계정을 써.
+            로그인하면 오늘 열린 경기방이 그대로 보이고, 그 방에 바로 들어갈 수 있어.
+          </div>
+        </div>
+        <button className="pk-btn primary wide" style={{ marginTop: 12 }} onClick={() => useGame.setState({ panel: 'login' })}>
+          🔑 로그인하기
+        </button>
+        <div className="muted" style={{ marginTop: 10 }}>
+          아직 계정이 없어도 괜찮아. 로그인 없이도 마을을 돌아다니고,
+          체육관에서 혼자 코트를 돌려 볼 수 있어.
+        </div>
+      </>
     )
   }
 
@@ -78,14 +95,21 @@ export default function RoomList({ onClose }) {
         <div className="court-mini live" style={{ padding: 12 }}>
           <div className="spread">
             <b>🏸 {online.roomName}</b>
-            <span className="ac-chip">{online.isAdmin ? '👑 방 관리자' : '🙋 참가 중'}</span>
+            <span className="pk-chip">{online.isAdmin ? '👑 방 관리자' : '🙋 참가 중'}</span>
           </div>
           <div className="muted" style={{ marginTop: 6 }}>
-            콕스타에서 선수를 코트에 넣으면 여기 3D 마을에서 바로 움직여!
+            콕스타에서 선수를 코트에 넣으면 체육관 코트에도 그 선수가 서 있어!
             {online.isAdmin && ' 관리자니까 여기서도 경기를 시작·종료할 수 있어.'}
           </div>
         </div>
-        <button className="ac-btn rose wide" style={{ marginTop: 12 }} onClick={() => cockstar.leaveRoom()}>
+        <button className="pk-btn primary wide" style={{ marginTop: 12 }} onClick={() => useGame.setState({ panel: 'match' })}>
+          🏸 대진표 보기
+        </button>
+        <div className="muted" style={{ marginTop: 10 }}>
+          대진표를 닫아도 화면 왼쪽 위에 경기방 창이 작게 남아 있어.
+          마을을 돌아다니다가 아무 때나 눌러서 돌아오면 돼.
+        </div>
+        <button className="pk-btn danger wide" style={{ marginTop: 12 }} onClick={() => cockstar.leaveRoom()}>
           🚪 경기방 나가기
         </button>
       </>

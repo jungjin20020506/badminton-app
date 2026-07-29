@@ -1,5 +1,5 @@
-/* 셔틀빌리지 서비스워커 — 홈 화면에 추가한 뒤에도 빠르게 켜지고, 오프라인에서도 열린다. */
-const CACHE = 'shuttle-village-v1'
+/* 셔틀몬스터 서비스워커 — 홈 화면에 추가한 뒤에도 빠르게 켜지고, 오프라인에서도 열린다. */
+const CACHE = 'shuttle-monster-v1'
 const CORE = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png']
 
 self.addEventListener('install', (e) => {

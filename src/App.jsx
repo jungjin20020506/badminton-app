@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import Scene from './three/Scene.jsx'
+import Overworld from './ui/Overworld.jsx'
 import Hud from './ui/Hud.jsx'
 import Panels from './ui/Panels.jsx'
 import CharacterCreator from './ui/CharacterCreator.jsx'
@@ -10,6 +10,7 @@ import Login from './ui/Login.jsx'
 import WorldMap from './ui/WorldMap.jsx'
 import { useGame } from './game/store.js'
 import { cockstar } from './net/cockstar.js'
+import { applyThemeToDom } from './pixel/palette.js'
 
 export default function App() {
   const booted = useGame((s) => s.booted)
@@ -20,11 +21,12 @@ export default function App() {
   const screen = useGame((s) => s.screen)
 
   useEffect(() => {
+    applyThemeToDom('town')
     hydrate()
     cockstar.initAuth().catch(() => {})
   }, [hydrate])
 
-  // 캐릭터가 아직 없으면 먼저 만든다
+  // 트레이너를 아직 안 만들었으면 먼저 만든다
   if (!booted) {
     return (
       <div className="app">
@@ -37,9 +39,7 @@ export default function App() {
     <div className="app">
       {screen === 'village' ? (
         <>
-          <div className="canvas-wrap">
-            <Scene />
-          </div>
+          <Overworld />
           <Hud />
         </>
       ) : (

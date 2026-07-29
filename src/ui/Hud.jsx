@@ -1,22 +1,27 @@
 // ===================================================================================
-// HUD (모바일 세로화면 기준) — 상태바 / 하단 네비 / 카메라 조작 / 말풍선 / 출석
+// 셔틀몬스터 — 화면 위 UI
+//   위쪽   : 지역·시간 / 코인 / 레벨 (작은 창)
+//   아래쪽 : 십자키 · Ⓐ · Ⓑ
+//   START  : 포켓몬식 세로 메뉴
 // ===================================================================================
 import { useEffect, useState } from 'react'
 import { useGame } from '../game/store.js'
-import { cameraApi } from '../three/Scene.jsx'
-import { expToNext, LEVEL_COLOR, CHATTER, TITLES } from '../game/constants.js'
-import { pickDailyPartner } from '../game/social.js'
-import Controls from './Controls.jsx'
+import { expToNext, LEVEL_COLOR, readyQuests } from '../game/constants.js'
+import { world } from '../pixel/engine.js'
+import Pad from './Pad.jsx'
+import TextBox from './TextBox.jsx'
+import { RoomDock, GoalHint, TurnAlarm } from './RoomDock.jsx'
 
-const pad = (n) => String(n).padStart(2, '0')
+const pad2 = (n) => String(n).padStart(2, '0')
 export const clockText = (t) => {
   const h = Math.floor(t)
   const m = Math.floor((t - h) * 60)
   const hh = h % 12 === 0 ? 12 : h % 12
-  return `${h < 12 ? '오전' : '오후'} ${hh}:${pad(m)}`
+  return `${h < 12 ? '오전' : '오후'} ${hh}:${pad2(m)}`
 }
 const timeIcon = (t) => (t < 5.6 || t > 19.4 ? '🌙' : t < 7.2 ? '🌅' : t < 17.4 ? '☀️' : '🌇')
 
+// -----------------------------------------------------------------------------------
 export function Toasts() {
   const toasts = useGame((s) => s.toasts)
   return (
@@ -26,41 +31,9 @@ export function Toasts() {
   )
 }
 
-/** 마을 안내원 코코의 상황별 안내 */
-export function Dialogue() {
-  const [msg, setMsg] = useState(null)
-  const players = useGame((s) => s.players)
-  const courts = useGame((s) => s.courts)
-  const booted = useGame((s) => s.booted)
-  const panel = useGame((s) => s.panel)
-  const waiting = Object.values(players).filter((p) => p.status === 'waiting').length
-  const total = Object.keys(players).length
-  const key = courts.map((c) => c.status).join('')
-
-  useEffect(() => {
-    if (!booted) return
-    let text = null
-    if (total <= 1) text = '아직 마을이 조용하네… 아래 👥 주민에서 친구들을 불러볼까?'
-    else if (waiting >= 4 && courts.every((c) => c.status === 'empty')) text = '대기석에 사람이 모였어! 오른쪽 아래 ⚡ 매칭을 눌러봐.'
-    else if (courts.some((c) => c.status === 'playing')) text = '경기 시작! 코트를 손가락으로 톡 누르면 가까이서 볼 수 있어 🔍'
-    if (!text) return setMsg(null)
-    setMsg(text)
-    const id = setTimeout(() => setMsg(null), 8000)
-    return () => clearTimeout(id)
-  }, [waiting, total, booted, key])
-
-  if (!msg || panel) return null
-  return (
-    <div className="ac-panel dialogue" onClick={() => setMsg(null)}>
-      <div style={{ fontSize: 30 }}>🐥</div>
-      <div style={{ flex: 1 }}>
-        <div className="who">마을 안내원 코코</div>
-        <div className="msg">{msg}</div>
-      </div>
-    </div>
-  )
-}
-
+// -----------------------------------------------------------------------------------
+// 주민 카드 — 명단에서 선수를 눌렀을 때 (필드에서는 대화로 대신한다)
+// -----------------------------------------------------------------------------------
 export function PlayerPopup() {
   const id = useGame((s) => s.selectedPlayer)
   const player = useGame((s) => (id ? s.players[id] : null))
@@ -73,53 +46,45 @@ export function PlayerPopup() {
   if (!player) return null
 
   const hearts = Math.floor(player.affinity / 20)
-  const chat = player.affinity >= 60 ? CHATTER.high : player.affinity >= 25 ? CHATTER.mid : CHATTER.low
-  const line = chat[(player.name.length + player.todayGames) % chat.length]
   const together = history.filter((g) => {
     const ids = [...g.teamA, ...g.teamB]
     return ids.includes(player.id) && ids.includes('me')
   }).length
 
   return (
-    <div className="ac-panel player-pop">
+    <div className="pk-win player-pop">
       <button className="pop-close" onClick={() => selectPlayer(null)}>✕</button>
-      <div className="row" style={{ alignItems: 'flex-start' }}>
-        <div style={{ fontSize: 30 }}>{player.gender === '여' ? '👧' : '👦'}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="row wrap">
-            <b style={{ fontSize: 17 }}>{player.name}</b>
-            <span className="lv-tag" style={{ background: LEVEL_COLOR[player.level] }}>{player.level}</span>
-            {player.isMe && <span className="ac-chip">⭐ 나</span>}
-            {player.status === 'resting' && <span className="ac-chip">💤 휴식</span>}
-          </div>
-          {!player.isMe && (
-            <div className="row" style={{ marginTop: 4 }}>
-              <span>{'💛'.repeat(hearts)}{'🤍'.repeat(Math.max(0, 5 - hearts))}</span>
-              <span className="muted">친밀도 {player.affinity}</span>
-            </div>
-          )}
-          <div style={{ marginTop: 7, fontSize: 15 }}>“{line}”</div>
-          <div className="muted" style={{ marginTop: 4 }}>
-            오늘 {player.todayGames}경기 · {player.todayWins}승
-            {!player.isMe && together > 0 && ` · 나와 ${together}번`}
-          </div>
-        </div>
+      <div className="row wrap">
+        <b style={{ fontSize: 16 }}>{player.name}</b>
+        <span className="lv-tag" style={{ background: LEVEL_COLOR[player.level] }}>{player.level}</span>
+        {player.isMe && <span className="pk-chip">⭐ 나</span>}
+        {player.status === 'resting' && <span className="pk-chip">💤 휴식</span>}
       </div>
-      <div className="row wrap" style={{ marginTop: 11 }}>
+      {!player.isMe && (
+        <div className="row" style={{ marginTop: 6 }}>
+          <span>{'💛'.repeat(hearts)}{'🤍'.repeat(Math.max(0, 5 - hearts))}</span>
+          <span className="muted">친밀도 {player.affinity}</span>
+        </div>
+      )}
+      <div className="muted" style={{ marginTop: 6 }}>
+        오늘 {player.todayGames}경기
+        {!player.isMe && together > 0 && ` · 나와 ${together}번 함께`}
+      </div>
+      <div className="row wrap" style={{ marginTop: 10 }}>
         {player.isMe ? (
           <>
-            <button className="ac-btn sm green" onClick={() => (selectPlayer(null), setPanel('me'))}>⭐ 내 정보</button>
-            <button className="ac-btn sm yellow" onClick={() => (selectPlayer(null), setPanel('closet'))}>✨ 꾸미기</button>
+            <button className="pk-btn sm" onClick={() => (selectPlayer(null), setPanel('me'))}>⭐ 내 정보</button>
+            <button className="pk-btn sm" onClick={() => (selectPlayer(null), setPanel('closet'))}>✨ 꾸미기</button>
           </>
         ) : (
           <>
             {player.status !== 'oncourt' && player.status !== 'walking' && (
-              <button className="ac-btn sm" onClick={() => toggleRest(player.id)}>
+              <button className="pk-btn sm" onClick={() => toggleRest(player.id)}>
                 {player.status === 'resting' ? '🏸 대기석으로' : '💤 잠깐 쉬기'}
               </button>
             )}
             {isAdmin && (
-              <button className="ac-btn sm rose" onClick={() => confirm(`${player.name} 님을 내보낼까요?`) && removePlayer(player.id)}>
+              <button className="pk-btn sm danger" onClick={() => confirm(`${player.name} 님을 내보낼까요?`) && removePlayer(player.id)}>
                 🚪 내보내기
               </button>
             )}
@@ -130,25 +95,25 @@ export function PlayerPopup() {
   )
 }
 
-/** 출석 도장판 — 매일 접속하게 만드는 장치 */
+// -----------------------------------------------------------------------------------
+// 출석 도장판
+// -----------------------------------------------------------------------------------
 export function CheckIn() {
   const show = useGame((s) => s.showCheckIn)
   const streak = useGame((s) => s.streak)
   const checkIn = useGame((s) => s.checkIn)
   const close = useGame((s) => s.closeCheckIn)
   const [result, setResult] = useState(null)
-  // 도장을 찍으면 스토어의 show가 꺼지지만, 보상 화면은 계속 보여준다
   if (!show && !result) return null
 
-  const day = ((streak.count) % 7) + 1
+  const day = (streak.count % 7) + 1
   const rewards = [120, 150, 180, 220, 260, 320, 700]
 
   return (
     <div className="overlay" style={{ zIndex: 70 }}>
-      <div className="ac-panel modal-card">
-        <div style={{ fontSize: 40 }}>📅</div>
-        <h2 style={{ margin: '6px 0 2px', fontSize: 20 }}>출석 도장판</h2>
-        <div className="muted">매일 오면 도장을 찍어줄게. 7일 채우면 큰 선물이 있어!</div>
+      <div className="pk-win modal-card">
+        <div className="pk-title">📅 출석 도장판</div>
+        <div className="muted">매일 오면 도장을 찍어 줄게. 7일 채우면 큰 선물이 있어!</div>
         <div className="stamp-grid">
           {rewards.map((r, i) => (
             <div key={i} className={`stamp ${i + 1 < day ? 'on' : ''} ${i + 1 === day ? 'today' : ''}`}>
@@ -160,127 +125,166 @@ export function CheckIn() {
           {result ? `${result.count}일 연속 출석! 🪙${result.coins} + EXP 40 받았어!` : `오늘 보상: 🪙${rewards[day - 1]} + EXP 40`}
         </div>
         {result ? (
-          <button className="ac-btn green wide" style={{ marginTop: 12 }} onClick={() => { setResult(null); close() }}>마을로 가기!</button>
+          <button className="pk-btn wide" style={{ marginTop: 12 }} onClick={() => { setResult(null); close() }}>고마워!</button>
         ) : (
-          <button className="ac-btn yellow wide" style={{ marginTop: 12 }} onClick={() => setResult(checkIn())}>도장 찍기 🖐️</button>
+          <button className="pk-btn wide primary" style={{ marginTop: 12 }} onClick={() => setResult(checkIn())}>도장 찍기 🖐️</button>
         )}
       </div>
     </div>
   )
 }
 
-export default function Hud() {
+// -----------------------------------------------------------------------------------
+// 위쪽 상태창
+// -----------------------------------------------------------------------------------
+function TopBar({ onMenu }) {
   const coins = useGame((s) => s.coins)
   const me = useGame((s) => s.me)
-  const meP = useGame((s) => s.players.me)
   const timeOfDay = useGame((s) => s.timeOfDay)
   const day = useGame((s) => s.day)
-  const panel = useGame((s) => s.panel)
-  const setPanel = useGame((s) => s.setPanel)
-  const players = useGame((s) => s.players)
-  const courts = useGame((s) => s.courts)
-  const cameraFollow = useGame((s) => s.cameraFollow)
-  const setSetting = useGame((s) => s.setSetting)
-  const today = useGame((s) => s.today)
-  const quests = useGame((s) => s.quests)
   const streak = useGame((s) => s.streak)
-  const winStreak = useGame((s) => s.winStreak)
-  const autoFill = useGame((s) => s.autoFill)
-  const career = useGame((s) => s.career)
-  const toast = useGame((s) => s.toast)
-  const order = useGame((s) => s.order)
   const online = useGame((s) => s.online)
   const mailUnread = useGame((s) => s.mail.filter((m) => !m.read || (!m.claimed && m.coins > 0)).length)
-  const partner = pickDailyPartner(players, order)
+  const quests = useGame((s) => s.quests)
+  const today = useGame((s) => s.today)
+  const [place, setPlace] = useState('셔틀타운')
 
-  const list = Object.values(players)
-  const waiting = list.filter((p) => p.status === 'waiting').length
-  const playing = courts.filter((c) => c.status === 'playing').length
+  // 지도가 바뀌면 이름표도 바뀐다
+  useEffect(() => {
+    const id = setInterval(() => {
+      const label = world.map?.label
+      if (label) setPlace((p) => (p === label ? p : label))
+    }, 300)
+    return () => clearInterval(id)
+  }, [])
+
   const need = expToNext(me.lv)
-  const titles = TITLES.filter((t) => t.cond({ career, me }))
-  const title = titles[titles.length - 1]
+  const questReady = readyQuests(today, quests).length
+  const badge = questReady + mailUnread
 
-  const questReady = [
-    ['play3', 3, today.games], ['win2', 2, today.wins],
-    ['newpartner', 1, today.newPartners], ['host5', 5, today.matches],
-  ].filter(([id, target, prog]) => prog >= target && !quests[id]?.claimed).length
+  return (
+    <div className="topbar">
+      <div className="pk-win tb-place">
+        <b>{place}</b>
+        <span>{timeIcon(timeOfDay)} {day}일차 {clockText(timeOfDay)}</span>
+      </div>
 
+      <div className="tb-right">
+        <div className="pk-win tb-coin">🪙 {coins.toLocaleString()}</div>
+        <div className="pk-win tb-lv">
+          <b>Lv.{me.lv}</b>
+          <div className="expbar"><i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} /></div>
+        </div>
+        <button className="pk-btn start-btn" onClick={onMenu}>
+          ☰
+          {badge > 0 && <span className="badge">{badge}</span>}
+        </button>
+      </div>
+
+      <div className="tb-badges">
+        <RoomDock />
+        {streak.count > 0 && <div className="pk-chip">🔥 {streak.count}일 연속</div>}
+      </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------------
+// START 메뉴 — 포켓몬의 그 세로 메뉴
+// -----------------------------------------------------------------------------------
+function StartMenu({ open, onClose }) {
+  const setPanel = useGame((s) => s.setPanel)
   const setScreen = useGame((s) => s.setScreen)
-  const NAV = [
-    ['__world', '🗺️', '월드'],
-    ['match', '🏸', '매칭'],
-    ['roster', '👥', '선수'],
-    ['me', '⭐', '나'],
-    ['more', '☰', '더보기', questReady + mailUnread],
+  const me = useGame((s) => s.me)
+  const today = useGame((s) => s.today)
+  const quests = useGame((s) => s.quests)
+  const mailUnread = useGame((s) => s.mail.filter((m) => !m.read || (!m.claimed && m.coins > 0)).length)
+  const [cursor, setCursor] = useState(0)
+
+  const questReady = readyQuests(today, quests).length
+
+  const online = useGame((s) => s.online)
+  const ITEMS = [
+    online?.status === 'room'
+      ? { icon: '🏸', label: '경기방', hint: online.roomName || '대진표', run: () => setPanel('match') }
+      : { icon: '📡', label: '경기방 찾기', hint: '입장하기', run: () => setPanel('rooms') },
+    { icon: '📋', label: '대진표', hint: '코트 · 대기', run: () => setPanel('match') },
+    { icon: '📖', label: '선수 도감', hint: '만난 사람 모으기', run: () => setPanel('dex') },
+    { icon: '👥', label: '선수 명단', hint: '마을 주민', run: () => setPanel('roster') },
+    { icon: '⭐', label: '트레이너 카드', hint: `Lv.${me.lv}`, badge: me.statPoints, run: () => setPanel('me') },
+    { icon: '🎒', label: '가방', hint: '가진 아이템 · 상점', run: () => setPanel('shop') },
+    { icon: '📜', label: '오늘의 미션', badge: questReady, run: () => setPanel('quests') },
+    { icon: '💌', label: '우편함', badge: mailUnread, run: () => setPanel('mail') },
+    { icon: '🏆', label: '트로피', run: () => setPanel('trophy') },
+    { icon: '📖', label: '경기 기록', run: () => setPanel('record') },
+    { icon: '🥇', label: '랭킹', run: () => setPanel('rank') },
+    { icon: '🗺️', label: '전국 지도', run: () => setScreen('world') },
+    { icon: '📸', label: '사진 찍기', run: () => setPanel('share') },
+    { icon: '⚙️', label: '설정', run: () => setPanel('settings') },
   ]
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => {
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); setCursor((c) => (c - 1 + ITEMS.length) % ITEMS.length) }
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') { e.preventDefault(); setCursor((c) => (c + 1) % ITEMS.length) }
+      if (e.code === 'Enter' || e.code === 'KeyZ' || e.code === 'Space') {
+        e.preventDefault()
+        ITEMS[cursor]?.run()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [open, cursor, onClose])
+
+  if (!open) return null
+  return (
+    <div className="menu-layer" onClick={onClose}>
+      <div className="pk-win start-menu" onClick={(e) => e.stopPropagation()}>
+        <div className="menu-head">메뉴</div>
+        <div className="menu-list">
+          {ITEMS.map((it, i) => (
+            <button
+              key={it.label}
+              className={`menu-item ${i === cursor ? 'on' : ''}`}
+              onPointerEnter={() => setCursor(i)}
+              onClick={() => { it.run(); onClose() }}
+            >
+              <i className="mi-cursor">▶</i>
+              <span className="mi-icon">{it.icon}</span>
+              <span className="mi-label">{it.label}</span>
+              {it.hint && <span className="mi-hint">{it.hint}</span>}
+              {it.badge > 0 && <span className="badge">{it.badge}</span>}
+            </button>
+          ))}
+          <button className="menu-item close" onClick={onClose}>
+            <i className="mi-cursor">▶</i>
+            <span className="mi-icon">✕</span>
+            <span className="mi-label">닫기</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------------------------
+export default function Hud() {
+  const [menu, setMenu] = useState(false)
+  const panel = useGame((s) => s.panel)
+  const showCheckIn = useGame((s) => s.showCheckIn)
+  const hidePad = !!panel || showCheckIn
 
   return (
     <>
-      <div className="status-bar">
-        <div className="sb-pill sb-village">
-          <div style={{ fontSize: 22 }}>🏝️</div>
-          <div>
-            <div className="t1">셔틀빌리지</div>
-            <div className="t2">{timeIcon(timeOfDay)} {day}일차 {clockText(timeOfDay)} · 대기{waiting} · 경기{playing}</div>
-          </div>
-        </div>
-        <div className="sb-right">
-          <div className="sb-pill sb-coin">🪙 {coins.toLocaleString()}</div>
-          <div className="sb-pill sb-lv" onClick={() => setPanel('me')}>
-            <div className="lv-badge"><span>Lv</span><b>{me.lv}</b></div>
-            <div>
-              <div className="expbar"><i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} /></div>
-              <div style={{ fontSize: 10, color: 'var(--ink-2)', marginTop: 2 }}>
-                {me.statPoints > 0 ? `스탯 +${me.statPoints}` : `${me.exp}/${need}`}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="top-badges">
-        {online.status === 'room' && (
-          <div className="mini-badge hot" onClick={() => setPanel('rooms')}>
-            🏸 「{online.roomName}」 {online.isAdmin ? '관리자' : '참가 중'}
-          </div>
-        )}
-        {streak.count > 0 && <div className="mini-badge">🔥 {streak.count}일 연속 출석</div>}
-        {winStreak >= 2 && <div className="mini-badge hot">⚡ {winStreak}연승 중!</div>}
-        {partner && !today.partnerPlayed && (
-          <div className="mini-badge" onClick={() => setPanel('quests')}>💞 오늘의 파트너: {partner.name}</div>
-        )}
-        {title && <div className="mini-badge">{title.label}</div>}
-      </div>
-
-      <div className="side-tools">
-        <button className="tool-btn" onClick={() => cameraApi.zoom(0.75)}>➕</button>
-        <button className="tool-btn" onClick={() => cameraApi.zoom(1.32)}>➖</button>
-        <button className={`tool-btn ${cameraFollow ? 'on' : ''}`} onClick={() => setSetting({ cameraFollow: !cameraFollow })}>🎯</button>
-        <button className="tool-btn" onClick={() => { setSetting({ cameraFollow: false, focusCourt: null }); cameraApi.moveTo(0, 2, 30) }}>🗺️</button>
-        <button className="tool-btn" onClick={() => setPanel('share')}>📸</button>
-      </div>
-
-      {!panel && online.status !== 'room' && (
-        <button className="fab" onClick={() => autoFill(false)}>⚡ 매칭</button>
-      )}
-
-      <div className="nav-bar">
-        {NAV.map(([key, icon, label, badge]) => (
-          <button
-            key={key}
-            className={`nav-btn ${panel === key ? 'on' : ''}`}
-            onClick={() => (key === '__world' ? setScreen('world') : setPanel(key))}
-          >
-            <i>{icon}</i>{label}
-            {badge > 0 && <span className="badge">{badge}</span>}
-          </button>
-        ))}
-      </div>
-
-      <Controls />
-
+      {!panel && <TopBar onMenu={() => setMenu((v) => !v)} />}
+      <StartMenu open={menu} onClose={() => setMenu(false)} />
+      {!hidePad && <Pad onMenu={() => setMenu((v) => !v)} />}
+      <GoalHint />
+      <TurnAlarm />
+      <TextBox />
       <Toasts />
-      <Dialogue />
       <PlayerPopup />
       <CheckIn />
     </>

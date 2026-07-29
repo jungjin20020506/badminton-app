@@ -6,17 +6,30 @@ import { create } from 'zustand'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
   OUTFIT_STYLES, RACKET_MODELS, RACKET_COLORS, ACCESSORIES,
-  DECORS, COURT_SKINS, DAILY_QUESTS, TITLES, expToNext,
-  ROSTER_SEED, LEVEL_POWER, BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
+  DECORS, COURT_SKINS, DAILY_QUESTS, TITLES, expToNext, chapterOf,
+  ROSTER_SEED, BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
 } from './constants.js'
-import { pickBestCombo, bestLevelSplit } from './matching.js'
-import { courtLayout, MAX_COURTS, clampRoam } from './layout.js'
+import { pickBestCombo } from './matching.js'
+import { MAX_COURTS } from './layout.js'
 import {
   pickDailyPartner, PARTNER_BONUS, welcomeLetter, daySummaryLetter,
-  trophyLetter, newTrophies,
+  trophyLetter, newTrophies, chapterLetter,
 } from './social.js'
 
 const SAVE_KEY = 'shuttle-village-save-v1'
+
+/**
+ * 오프닝 이야기의 진행 단계.
+ * 포켓몬처럼 「집에서 눈을 뜬다 → 누군가 데리러 온다 → 체육관까지 간다 →
+ * 경기방에 들어간다」 까지가 한 줄기다. 경기방 입장이 이 게임의 목적지다.
+ */
+export const TUTORIAL = {
+  wake: 0,     // 내 방에서 눈을 떴다
+  toTown: 1,   // 마을로 나가야 한다
+  toGym: 2,    // 코코를 만났다 — 체육관으로 가야 한다
+  toRoom: 3,   // 관장을 만났다 — 경기방을 골라야 한다
+  done: 9,     // 경기방에 들어갔다
+}
 
 // -----------------------------------------------------------------------------------
 // 유틸
@@ -95,7 +108,6 @@ function makePlayer({ name, gender = '남', level = 'C조', isMe = false, look }
     slot: null,
     waitSince: Date.now(),
     todayGames: 0,
-    todayWins: 0,
     affinity: 0, // 나와의 친밀도 0~100
     mood: Math.floor(Math.random() * 4),
     joinedAt: Date.now(),
@@ -130,12 +142,11 @@ function saveState(s) {
       booted: s.booted,
       players: Object.values(s.players).map((p) => ({
         id: p.id, name: p.name, gender: p.gender, level: p.level, isMe: p.isMe,
-        look: p.look, affinity: p.affinity, todayGames: p.todayGames, todayWins: p.todayWins,
+        look: p.look, affinity: p.affinity, todayGames: p.todayGames,
         status: p.status === 'resting' ? 'resting' : 'waiting',
       })),
       order: s.order,
       courtCount: s.courtCount,
-      targetScore: s.targetScore,
       gameSpeed: s.gameSpeed,
       sensitivity: s.sensitivity,
       autoMatch: s.autoMatch,
@@ -152,8 +163,6 @@ function saveState(s) {
       day: s.day,
       graphics: s.graphics,
       streak: s.streak,
-      winStreak: s.winStreak,
-      bestWinStreak: s.bestWinStreak,
       gachaPulls: s.gachaPulls,
       achievements: s.achievements,
       seasonName: s.seasonName,
@@ -163,6 +172,7 @@ function saveState(s) {
       onlineCode: s.online?.code || '',
       scheduledMatches: s.scheduledMatches,
       autoMatches: s.autoMatches,
+      tutorial: s.tutorial,
     }
     localStorage.setItem(SAVE_KEY, JSON.stringify(data))
   } catch (e) {
@@ -189,7 +199,6 @@ export const useGame = create((set, get) => ({
   order: [],
   courts: [emptyCourt(0), emptyCourt(1)],
   courtCount: 2,
-  targetScore: 11,
   gameSpeed: 2,
   sensitivity: 'normal',
   autoMatch: true,
@@ -205,16 +214,13 @@ export const useGame = create((set, get) => ({
     stats: { power: 5, technique: 5, speed: 5, stamina: 5, sense: 5 },
     title: 'rookie',
   },
-  career: { games: 0, wins: 0, partners: 0, earned: 0, matchesHosted: 0 },
-  today: { date: todayKey(), games: 0, wins: 0, matches: 0, newPartners: 0 },
+  career: { games: 0, partners: 0, earned: 0, matchesHosted: 0 },
+  today: { date: todayKey(), games: 0, matches: 0, newPartners: 0, talks: 0 },
   quests: {},
   metPartners: {},
   history: [],
   toasts: [],
   selectedPlayer: null,
-  // 잔디밭을 탭해서 직접 걸어간 지점 [x, z]. null 이면 대기석에 선다.
-  // 코트 안은 여기에 들어올 수 없다 — 코트는 경기가 배정됐을 때만 입장한다.
-  roam: null,
   panel: null, // 'roster' | 'shop' | 'me' | 'quests' | 'settings' | 'record'
   focusCourt: null,
   cameraFollow: false,
@@ -223,8 +229,6 @@ export const useGame = create((set, get) => ({
   notice: '',
   graphics: 'mid', // low | mid | high
   streak: { lastDate: null, count: 0 },
-  winStreak: 0,
-  bestWinStreak: 0,
   gachaPulls: 0,
   achievements: {},
   showCheckIn: false,
@@ -239,6 +243,14 @@ export const useGame = create((set, get) => ({
   autoMatches: [],
   numScheduled: 4,
   roomInfo: null, // 입장한 경기방 정보
+  tutorial: TUTORIAL.wake,
+
+  /** 오프닝 이야기 단계를 옮긴다 */
+  setTutorial: (step) => {
+    if (get().tutorial === step) return
+    set({ tutorial: step })
+    saveState(get())
+  },
 
   /** 경기 예정/자동매칭 저장. 경기방에 있으면 방 문서에도 반영해 모두가 같이 본다 */
   setMatchQueues: ({ scheduledMatches, autoMatches }) => {
@@ -250,7 +262,7 @@ export const useGame = create((set, get) => ({
     if (s.online?.status === 'room') globalThis.__svSaveQueues?.(patch)
     else saveState(s)
   },
-  screen: 'world', // world(전국 지도) | village(3D 마을)
+  screen: 'village', // village(2D 필드) | world(전국 지도)
   setScreen: (screen) => set({ screen, panel: null }),
 
   // ---------------------------------------------------------------------------------
@@ -264,7 +276,6 @@ export const useGame = create((set, get) => ({
         id: p.id,
         affinity: p.affinity || 0,
         todayGames: p.todayGames || 0,
-        todayWins: p.todayWins || 0,
         status: p.status === 'resting' ? 'resting' : 'waiting',
       }
     })
@@ -275,7 +286,6 @@ export const useGame = create((set, get) => ({
       order: (data.order || Object.keys(players)).filter((id) => players[id]),
       courts: Array.from({ length: count }, (_, i) => emptyCourt(i)),
       courtCount: count,
-      targetScore: data.targetScore || 11,
       gameSpeed: data.gameSpeed || 2,
       sensitivity: data.sensitivity || 'normal',
       autoMatch: data.autoMatch !== false,
@@ -292,8 +302,6 @@ export const useGame = create((set, get) => ({
       day: data.day || 1,
       graphics: data.graphics || 'mid',
       streak: data.streak || { lastDate: null, count: 0 },
-      winStreak: data.winStreak || 0,
-      bestWinStreak: data.bestWinStreak || 0,
       gachaPulls: data.gachaPulls || 0,
       achievements: data.achievements || {},
       seasonName: data.seasonName || '',
@@ -303,6 +311,8 @@ export const useGame = create((set, get) => ({
       scheduledMatches: data.scheduledMatches || {},
       autoMatches: data.autoMatches || [],
       online: { status: 'off', code: data.onlineCode || '' },
+      // 이미 하던 사람에게 튜토리얼을 다시 강요하지 않는다
+      tutorial: data.tutorial ?? (data.booted ? TUTORIAL.done : TUTORIAL.wake),
     }
     // 출석 체크 — 하루 한 번 보상, 연속 출석이면 더 많이
     const tk = todayKey()
@@ -310,12 +320,11 @@ export const useGame = create((set, get) => ({
     // 날짜가 바뀌었으면 오늘 기록·퀘스트 초기화 (+ 어제 소식 편지)
     if (state.today.date !== todayKey()) {
       state.mail = [daySummaryLetter(state.day, state.today), ...state.mail].slice(0, 40)
-      state.today = { date: todayKey(), games: 0, wins: 0, matches: 0, newPartners: 0 }
+      state.today = { date: todayKey(), games: 0, matches: 0, newPartners: 0, talks: 0 }
       state.quests = {}
       state.day = state.day + 1
       Object.values(state.players).forEach((p) => {
         p.todayGames = 0
-        p.todayWins = 0
       })
     }
     set(state)
@@ -329,7 +338,7 @@ export const useGame = create((set, get) => ({
       order: [...s.order.filter((i) => i !== 'me'), 'me'],
       mail: [welcomeLetter(name), ...s.mail].slice(0, 40),
     }))
-    get().toast(`${name} 님, 셔틀빌리지에 오신 걸 환영해요! 🏸`, 'good')
+    get().toast(`${name} 트레이너, 셔틀타운에 온 걸 환영해! 🏸`, 'good')
     saveState(get())
   },
 
@@ -461,26 +470,6 @@ export const useGame = create((set, get) => ({
   selectPlayer: (id) => set({ selectedPlayer: id }),
   setFocusCourt: (id) => set({ focusCourt: id }),
 
-  /**
-   * 잔디밭을 탭했을 때 — 내 캐릭터를 그 자리로 걸어가게 한다.
-   * 코트 안은 경기가 배정됐을 때만 들어갈 수 있으므로 여기서 막는다.
-   */
-  walkTo: (x, z) => {
-    const s = get()
-    const me = s.players.me
-    if (!me) return
-    if (me.status === 'walking' || me.status === 'oncourt') {
-      return s.toast('경기 중에는 코트를 벗어날 수 없어요.', 'warn')
-    }
-    const spot = clampRoam(x, z, s.courtCount)
-    if (!spot) return s.toast('코트는 경기가 시작됐을 때만 들어갈 수 있어요 🏸', 'warn')
-    set({ roam: spot })
-  },
-  /** 자유 이동(스틱/방향키)으로 멈춰 선 자리를 기억한다 — 스틱을 놓을 때만 부른다 */
-  setRoamPos: (x, z) => set({ roam: [x, z] }),
-  /** 대기석으로 돌아간다 */
-  clearRoam: () => set({ roam: null }),
-
   // --- 매칭 -------------------------------------------------------------------------
   waitingPlayers: () => {
     const s = get()
@@ -577,54 +566,20 @@ export const useGame = create((set, get) => ({
   },
 
   // --- 경기 진행 --------------------------------------------------------------------
-  awardPoint: (courtId) => {
-    const s = get()
-    const c = s.courts[courtId]
-    if (!c || c.status !== 'playing') return
-    const teamA = [c.players[0], c.players[1]].map((id) => s.players[id]).filter(Boolean)
-    const teamB = [c.players[2], c.players[3]].map((id) => s.players[id]).filter(Boolean)
-    if (teamA.length < 2 || teamB.length < 2) return
-
-    const strength = (team) =>
-      team.reduce((acc, p) => {
-        let v = LEVEL_POWER[p.level] ?? 0.66
-        if (p.isMe) {
-          const st = s.me.stats
-          const bonus = RACKET_MODELS.find((m) => m.id === p.look.racket.model)?.bonus || {}
-          const total =
-            st.power + st.technique + st.speed + st.stamina + st.sense +
-            Object.values(bonus).reduce((a, b) => a + b, 0)
-          v += (total - 25) * 0.012
-        }
-        return acc + v
-      }, 0)
-
-    const sa = strength(teamA)
-    const sb = strength(teamB)
-    const pA = 0.5 + (sa - sb) * 0.5 * 0.85 // 실력차가 커도 뒤집힐 여지를 남긴다
-    const aWins = Math.random() < Math.max(0.12, Math.min(0.88, pA))
-    const score = [...c.score]
-    score[aWins ? 0 : 1] += 1
-
-    const courts = [...s.courts]
-    courts[courtId] = { ...c, score }
-    set({ courts })
-
-    if (Math.max(score[0], score[1]) >= s.targetScore) {
-      get().finishMatch(courtId)
-    }
-  },
-
+  // 승패는 기록하지 않는다.
+  // 실제 클럽에서는 관리자가 매 경기 결과를 일일이 물어보고 눌러야 하는데,
+  // 그건 현실적으로 불가능하다. 그래서 이 게임의 성장은 「이겼는가」가 아니라
+  // 「얼마나 뛰었고, 누구와 뛰었는가」로만 굴러간다.
   finishMatch: (courtId) => {
     const s = get()
     const c = s.courts[courtId]
     if (!c || c.status !== 'playing') return
-    const winner = c.score[0] > c.score[1] ? 0 : 1
-    const ids = c.players
+
+    const ids = c.players.filter(Boolean)
+    const teamA = [c.players[0], c.players[1]]
+    const teamB = [c.players[2], c.players[3]]
     const players = { ...s.players }
-    const teamA = [ids[0], ids[1]]
-    const teamB = [ids[2], ids[3]]
-    const winners = winner === 0 ? teamA : teamB
+    const duration = c.startedAt ? Date.now() - c.startedAt : 0
 
     ids.forEach((id) => {
       const p = players[id]
@@ -636,38 +591,29 @@ export const useGame = create((set, get) => ({
         slot: null,
         waitSince: Date.now(),
         todayGames: p.todayGames + 1,
-        todayWins: p.todayWins + (winners.includes(id) ? 1 : 0),
       }
     })
 
-    // 보상 계산
+    // --- 보상 : 참여한 만큼 ---
     const meInMatch = ids.includes('me')
-    const meWon = winners.includes('me')
     let coins = 0
     let exp = 0
     const career = { ...s.career }
     const today = { ...s.today }
     const metPartners = { ...s.metPartners }
+    const newFaces = []
     today.matches += 1
     career.matchesHosted += 1
 
-    let winStreak = s.winStreak
-    let bestWinStreak = s.bestWinStreak
     if (meInMatch) {
-      winStreak = meWon ? winStreak + 1 : 0
-      bestWinStreak = Math.max(bestWinStreak, winStreak)
-      coins += meWon ? 120 : 70
-      exp += meWon ? 85 : 45
-      // 연승 보너스 — 이길수록 눈덩이처럼 커진다
-      if (winStreak >= 2) {
-        const bonus = Math.min(400, (winStreak - 1) * 60)
-        coins += bonus
-        setTimeout(() => get().toast(`🔥 ${winStreak}연승! 보너스 +${bonus}🪙`, 'good'), 700)
-      }
+      coins += 110
+      exp += 70
+      // 오래 뛴 경기일수록 조금 더 (10분 넘으면 최대 +60)
+      const longBonus = Math.min(60, Math.floor(duration / 60000) * 8)
+      coins += longBonus
       career.games += 1
-      if (meWon) career.wins += 1
       today.games += 1
-      if (meWon) today.wins += 1
+
       const myTeam = teamA.includes('me') ? teamA : teamB
       // 오늘의 추천 파트너와 한 팀으로 뛰면 코인 2배
       const partner = pickDailyPartner(s.players, s.order)
@@ -676,19 +622,25 @@ export const useGame = create((set, get) => ({
         today.partnerPlayed = true
         setTimeout(() => get().toast(`💞 오늘의 파트너 ${partner.name}와 함께! 코인 2배`, 'good'), 400)
       }
+
       ids.filter((id) => id !== 'me').forEach((id) => {
         const p = players[id]
         if (!p) return
         const isPartner = myTeam.includes(id)
-        const gain = isPartner ? 9 : 5
-        players[id] = { ...p, affinity: Math.min(100, p.affinity + gain) }
-        if (!metPartners[id]) {
-          metPartners[id] = true
+        players[id] = { ...p, affinity: Math.min(100, p.affinity + (isPartner ? 9 : 5)) }
+        const prev = metPartners[id]
+        if (!prev) {
+          // 도감에 새로 오르는 사람
+          metPartners[id] = { at: Date.now(), games: 1 }
           career.partners += 1
           today.newPartners += 1
+          newFaces.push(p.name)
+        } else {
+          metPartners[id] = { at: prev.at || Date.now(), games: (prev.games || 0) + 1 }
         }
       })
     } else {
+      // 내가 안 뛴 경기도 「마을에서 열린 경기」로 조금 쳐준다
       coins += 35
       exp += 15
     }
@@ -711,9 +663,8 @@ export const useGame = create((set, get) => ({
       courtId,
       teamA,
       teamB,
-      names: ids.map((id) => s.players[id]?.name || '?'),
-      score: c.score,
-      winner,
+      names: c.players.map((id) => s.players[id]?.name || '?'),
+      duration,
     }
 
     const courts = [...s.courts]
@@ -721,17 +672,28 @@ export const useGame = create((set, get) => ({
 
     set({
       players, courts, coins: s.coins + coins, me, career, today, metPartners,
-      winStreak, bestWinStreak,
       history: [record, ...s.history].slice(0, 120),
     })
 
-    const nameA = `${s.players[teamA[0]]?.name}·${s.players[teamA[1]]?.name}`
-    const nameB = `${s.players[teamB[0]]?.name}·${s.players[teamB[1]]?.name}`
+    const mins = Math.max(1, Math.round(duration / 60000))
     get().toast(
-      `${courtId + 1}번 코트 종료 — ${winner === 0 ? nameA : nameB} 승! (${c.score[0]}:${c.score[1]}) +${coins}🪙`,
-      meInMatch && meWon ? 'good' : 'info'
+      `${courtId + 1}번 코트 경기 종료 (${mins}분) +${coins}🪙`,
+      meInMatch ? 'good' : 'info'
+    )
+    newFaces.forEach((n, i) =>
+      setTimeout(() => get().toast(`📖 도감 등록 — ${n} 님과 처음 만났다!`, 'good'), 900 + i * 900)
     )
     if (leveled) get().toast(`🎉 레벨 업! Lv.${me.lv} — 스탯 포인트 ${leveled * 3} 획득`, 'good')
+
+    // 새로운 장(章)이 열렸으면 소식지가 온다
+    const beforeCh = chapterOf(s.career.games).n
+    const afterCh = chapterOf(career.games).n
+    if (afterCh > beforeCh) {
+      const ch = chapterOf(career.games)
+      set({ mail: [chapterLetter(ch), ...get().mail].slice(0, 40) })
+      setTimeout(() => get().toast(`📘 ${ch.n}장 「${ch.label}」 — 마을이 달라졌어!`, 'good'), 1400)
+    }
+
     get().checkTrophies()
 
     // 잠시 결과를 보여준 뒤 코트를 비운다
@@ -951,9 +913,9 @@ export const useGame = create((set, get) => ({
     set((s) => {
       const players = { ...s.players }
       Object.values(players).forEach((p) => {
-        players[p.id] = { ...p, todayGames: 0, todayWins: 0 }
+        players[p.id] = { ...p, todayGames: 0 }
       })
-      return { players, history: [], today: { date: todayKey(), games: 0, wins: 0, matches: 0, newPartners: 0 } }
+      return { players, history: [], today: { date: todayKey(), games: 0, matches: 0, newPartners: 0, talks: 0 } }
     })
     get().toast('오늘 기록을 정리했어.', 'good')
     saveState(get())
@@ -976,31 +938,17 @@ export const useGame = create((set, get) => ({
 }))
 
 // -----------------------------------------------------------------------------------
-// 게임 루프 — 진행 중인 코트의 랠리를 시간에 따라 진행시킨다.
-// 매 프레임 스토어를 건드리지 않도록 타이머는 모듈 안에 두고, 득점 순간에만 액션 호출.
+// 게임 루프 — 시계와 자동 매칭만 돌린다.
+// 경기 점수는 저절로 올라가지 않는다: [경기 종료]를 누를 때까지 시간이 흐르고,
+// 종료 순간 finishMatch 가 실력 기반으로 최종 점수를 정한다.
 // -----------------------------------------------------------------------------------
-const rally = {}
 let clockAcc = 0
 
 export function gameTick(dt) {
   const s = useGame.getState()
   if (!s.booted) return
   // 콕스타 경기방에 들어가 있으면 경기 진행은 콕스타(방 관리자)가 정한다.
-  // 여기서는 받아서 3D로 보여주기만 하므로 자체 시뮬레이션을 멈춘다.
   if (s.online?.status === 'room') return
-
-  s.courts.forEach((c) => {
-    if (c.status !== 'playing') {
-      delete rally[c.id]
-      return
-    }
-    if (rally[c.id] == null) rally[c.id] = 2.4 / s.gameSpeed
-    rally[c.id] -= dt
-    if (rally[c.id] <= 0) {
-      rally[c.id] = (1.6 + Math.random() * 2.2) / s.gameSpeed
-      s.awardPoint(c.id)
-    }
-  })
 
   // 시간 흐름 (게임 내 1시간 ≈ 실제 12초)
   clockAcc += dt
@@ -1022,12 +970,6 @@ export function gameTick(dt) {
   }
 }
 let autoAcc = 0
-
-/** 랠리 진행률 (셔틀콕 애니메이션용) — 0~1 */
-export function rallyPhase(courtId) {
-  const t = rally[courtId]
-  return t == null ? 0 : t
-}
 
 // 개발 모드에서만 콘솔 디버깅용으로 스토어를 노출한다
 if (import.meta.env.DEV) globalThis.__svStore = useGame

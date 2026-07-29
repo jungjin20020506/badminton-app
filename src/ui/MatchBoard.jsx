@@ -16,6 +16,7 @@ import { useState, useMemo } from 'react'
 import { useGame } from '../game/store.js'
 import { LEVEL_COLOR, LEVEL_ORDER } from '../game/constants.js'
 import { bestLevelSplit, pickBestCombo } from '../game/matching.js'
+import { myTurn, turnText } from '../game/queue.js'
 import { cockstar } from '../net/cockstar.js'
 import { avatarUrl } from './avatar.js'
 
@@ -82,6 +83,7 @@ export default function MatchBoard() {
   const setCourtCount = useGame((s) => s.setCourtCount)
   const assign = useGame((s) => s.assign)
   const clearCourt = useGame((s) => s.clearCourt)
+  const finishMatch = useGame((s) => s.finishMatch)
   const toggleRest = useGame((s) => s.toggleRest)
   const removePlayer = useGame((s) => s.removePlayer)
   const toast = useGame((s) => s.toast)
@@ -234,9 +236,11 @@ export default function MatchBoard() {
   }
 
   // ── 경기 종료 ──
+  // 진행 중이면 참여 기록·보상을 남기고, 아직 시작 전이면 그냥 배정을 푼다 (승패는 남기지 않는다)
   const finish = async (c) => {
     if (!confirm(`${c.id + 1}번 코트 경기를 종료할까요?`)) return
     if (inRoom) await run(() => cockstar.endCourt(c.id))
+    else if (c.status === 'playing') finishMatch(c.id)
     else clearCourt(c.id)
   }
 
@@ -277,8 +281,25 @@ export default function MatchBoard() {
     )
   }
 
+  const turn = myTurn(useGame.getState())
+  const turnCls = turn.state === 'playing' ? 'now' : (turn.state === 'next' || turn.state === 'queued') ? 'soon' : ''
+
   return (
     <div className="mboard">
+      {/* 내 순번 — 기다리는 사람이 제일 궁금해하는 것 */}
+      <div className={`turn-card ${turnCls}`}>
+        <span className="tk-icon">
+          {turn.state === 'playing' ? '🔥' : turn.state === 'next' ? '⏰' : turn.state === 'resting' ? '💤' : '⏳'}
+        </span>
+        <span className="tk-body">
+          <b>{turnText(turn)}</b>
+          <em>
+            {turn.avg ? `최근 경기 평균 ${turn.avg}분` : '아직 평균을 잴 기록이 없어'}
+            {turn.waitingCount != null && ` · 대기 ${turn.waitingCount}명`}
+          </em>
+        </span>
+      </div>
+
       {/* 상단 탭 — 원본의 하단 네비 2탭 구조 */}
       <div className="mb-tabs">
         <button className={tab === 'plan' ? 'on' : ''} onClick={() => setTab('plan')}>
@@ -388,7 +409,7 @@ export default function MatchBoard() {
                     <b>{c.id + 1}번 코트</b>
                     {busy ? (
                       <span className="ct2-time">
-                        {c.remote ? fmtDur(c.startTime) : `${c.score?.[0] ?? 0} : ${c.score?.[1] ?? 0}`}
+                        ⏱ {fmtDur(c.remote ? c.startTime : c.startedAt)}
                       </span>
                     ) : (
                       <span className="muted">대기 중</span>

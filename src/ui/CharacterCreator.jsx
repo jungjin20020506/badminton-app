@@ -1,10 +1,9 @@
 // ===================================================================================
-// 캐릭터 만들기 / 꾸미기 — 머리·얼굴·의상·라켓을 실시간 3D 미리보기로 고른다.
+// 셔틀몬스터 — 트레이너 만들기 / 꾸미기
+// 도트 캐릭터를 크게 확대해서 보여 준다. 사방으로 돌려 보고 걷는 모습도 볼 수 있다.
 // ===================================================================================
 import { useState, useRef, useEffect } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import Character from '../three/Character.jsx'
+import { drawBig } from '../pixel/sprites.js'
 import { useGame, defaultLook } from '../game/store.js'
 import {
   SKIN_TONES, HAIR_STYLES, HAIR_COLORS, EYE_STYLES, CLOTH_COLORS,
@@ -12,42 +11,47 @@ import {
   BOTTOM_STYLES, SHOE_STYLES, GRIP_WRAPS,
 } from '../game/constants.js'
 
-function Turntable({ look, gender, spin }) {
-  const g = useRef()
-  useFrame((s, dt) => {
-    if (g.current && spin) g.current.rotation.y += dt * 0.55
-  })
-  return (
-    <group ref={g} position={[0, -0.68, 0]}>
-      <Character look={look} gender={gender} anim="idle" seed={7} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-        <circleGeometry args={[1.1, 28]} />
-        <meshStandardMaterial color="#8fd67f" roughness={1} />
-      </mesh>
-    </group>
-  )
-}
+const DIR_LABEL = ['정면', '뒤', '왼쪽', '오른쪽']
 
 function Preview({ look, gender }) {
-  const [spin, setSpin] = useState(true)
+  const ref = useRef(null)
+  const [dir, setDir] = useState(0)
+  const [walk, setWalk] = useState(true)
+
+  useEffect(() => {
+    const cv = ref.current
+    if (!cv) return
+    const g = cv.getContext('2d')
+    let raf = 0
+    let t = 0
+    let last = performance.now()
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop)
+      t += (now - last) / 1000
+      last = now
+      const frame = walk ? [1, 0, 3, 0][Math.floor(t * 5) % 4] : 0
+      g.imageSmoothingEnabled = false
+      g.clearRect(0, 0, cv.width, cv.height)
+      // 발밑 잔디판
+      g.fillStyle = '#5cc45c'
+      g.fillRect(0, cv.height - 26, cv.width, 26)
+      g.fillStyle = '#4fb352'
+      for (let i = 0; i < cv.width; i += 9) g.fillRect(i + (i % 18 ? 3 : 0), cv.height - 20, 3, 3)
+      const scale = Math.floor(cv.height / 30)
+      drawBig(g, look, gender, dir, frame, Math.round((cv.width - 16 * scale) / 2), cv.height - 24 * scale - 12, scale)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [look, gender, dir, walk])
+
   return (
-    <div className="preview" onPointerDown={() => setSpin(false)}>
-      <Canvas camera={{ position: [0, 0.25, 2.35], fov: 36 }} dpr={[1, 1.6]} shadows>
-        <hemisphereLight args={['#fff6e8', '#7aa86a', 1.1]} />
-        <directionalLight position={[2.5, 5, 3.5]} intensity={2.1} color="#fff2d9" castShadow shadow-mapSize={[1024, 1024]} />
-        <directionalLight position={[-3, 2.5, -3]} intensity={0.7} color="#cfe6ff" />
-        <Turntable look={look} gender={gender} spin={spin} />
-        <OrbitControls
-          enablePan={false}
-          minDistance={1.4}
-          maxDistance={5}
-          maxPolarAngle={Math.PI * 0.56}
-          minPolarAngle={0.5}
-          target={[0, 0.08, 0]}
-        />
-      </Canvas>
-      <div style={{ position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: '#5b6b4a' }}>
-        끌어서 돌려보기 · 휠로 확대
+    <div className="cc-preview">
+      <canvas ref={ref} width={160} height={190} className="cc-canvas" />
+      <div className="cc-preview-tools">
+        <button className="pk-btn sm" onClick={() => setDir((d) => (d + 1) % 4)}>🔄 {DIR_LABEL[dir]}</button>
+        <button className={`pk-btn sm ${walk ? 'primary' : ''}`} onClick={() => setWalk((v) => !v)}>
+          {walk ? '🚶 걷는 중' : '🧍 서 있기'}
+        </button>
       </div>
     </div>
   )
@@ -69,7 +73,7 @@ function Swatches({ colors, value, onPick }) {
   )
 }
 
-function Options({ items, value, onPick, owned, coins, onBuy }) {
+function Options({ items, value, onPick, owned, onBuy }) {
   return (
     <div className="opt-grid">
       {items.map((it) => {
@@ -96,7 +100,6 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
   const setLook = useGame((s) => s.setLook)
   const setPlayerInfo = useGame((s) => s.setPlayerInfo)
   const owned = useGame((s) => s.owned)
-  const coins = useGame((s) => s.coins)
   const buy = useGame((s) => s.buy)
 
   const [tab, setTab] = useState('basic')
@@ -110,24 +113,25 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
   }, [mode, me])
 
   const patch = (p) => {
-    const next = { ...look, ...p }
-    setLookState(next)
+    setLookState((prev) => ({ ...prev, ...p }))
     if (mode === 'edit') setLook('me', p)
   }
   const patchRacket = (p) => {
-    const next = { ...look, racket: { ...look.racket, ...p } }
-    setLookState(next)
-    if (mode === 'edit') setLook('me', { racket: next.racket })
+    setLookState((prev) => {
+      const next = { ...prev, racket: { ...prev.racket, ...p } }
+      if (mode === 'edit') setLook('me', { racket: next.racket })
+      return next
+    })
   }
 
   const pickGender = (g) => {
     setGender(g)
     if (mode === 'edit') setPlayerInfo('me', { gender: g })
-    if (mode === 'create') patch({ hair: g === '여' ? 'ponytail' : 'short' })
+    if (mode === 'create') patch({ hair: g === '여' ? 'ponytail' : 'short', bottomStyle: g === '여' ? 'skirt' : 'shorts' })
   }
 
   const start = () => {
-    if (!name.trim()) return alert('이름을 알려줘! 마을 주민들이 부를 이름이야 😊')
+    if (!name.trim()) return alert('이름을 알려 줘! 마을 사람들이 부를 이름이야 😊')
     createMe({ name: name.trim(), gender, level, look })
   }
 
@@ -141,17 +145,17 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
 
   return (
     <div className="overlay">
-      <div className="ac-panel creator">
+      <div className="pk-win creator">
         <Preview look={look} gender={gender} />
 
         <div className="controls">
-          <div className="ac-title">
-            {mode === 'create' ? '🏝️ 셔틀빌리지에 온 걸 환영해!' : '✨ 내 모습 꾸미기'}
+          <div className="pk-title">
+            {mode === 'create' ? '🏸 셔틀몬스터의 세계에 온 걸 환영해!' : '✨ 내 모습 꾸미기'}
           </div>
           {mode === 'create' && (
-            <div className="muted" style={{ marginTop: -6, marginBottom: 10 }}>
-              여기는 배드민턴을 사랑하는 사람들이 모여 사는 마을이야.<br />
-              먼저 네 모습부터 정해볼까?
+            <div className="muted" style={{ marginTop: -4, marginBottom: 10 }}>
+              여기는 배드민턴 트레이너들이 모여 사는 셔틀타운이야.<br />
+              먼저 네 모습부터 정해 볼까?
             </div>
           )}
 
@@ -168,7 +172,7 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
               <>
                 <div className="sect">이름</div>
                 <input
-                  className="ac-input"
+                  className="pk-input"
                   placeholder="마을에서 불릴 이름"
                   value={name}
                   maxLength={10}
@@ -178,7 +182,7 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                 <div className="sect">성별</div>
                 <div className="row">
                   {['남', '여'].map((g) => (
-                    <button key={g} className={`ac-btn ${gender === g ? 'green' : ''}`} onClick={() => pickGender(g)}>
+                    <button key={g} className={`pk-btn ${gender === g ? 'primary' : ''}`} onClick={() => pickGender(g)}>
                       {g === '남' ? '👦 남자' : '👧 여자'}
                     </button>
                   ))}
@@ -188,7 +192,7 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                   {LEVELS.map((l) => (
                     <button
                       key={l}
-                      className={`ac-btn sm ${level === l ? 'green' : ''}`}
+                      className={`pk-btn sm ${level === l ? 'primary' : ''}`}
                       onClick={() => {
                         setLevel(l)
                         if (mode === 'edit') setPlayerInfo('me', { level: l })
@@ -202,13 +206,6 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
                 <div className="muted" style={{ marginTop: 8 }}>
                   급수는 자동 매칭에서 팀 밸런스를 맞출 때 쓰여. 나중에 언제든 바꿀 수 있어!
                 </div>
-                <div className="sect">키</div>
-                <input
-                  type="range" min="0.88" max="1.12" step="0.01"
-                  value={look.height ?? 1}
-                  onChange={(e) => patch({ height: Number(e.target.value) })}
-                  style={{ width: '100%' }}
-                />
               </>
             )}
 
@@ -324,11 +321,11 @@ export default function CharacterCreator({ mode = 'create', onClose }) {
 
           <div className="row" style={{ marginTop: 12 }}>
             {mode === 'create' ? (
-              <button className="ac-btn green wide" onClick={start}>
-                🌱 이 모습으로 마을 생활 시작!
+              <button className="pk-btn primary wide" onClick={start}>
+                🌱 이 모습으로 모험 시작!
               </button>
             ) : (
-              <button className="ac-btn green wide" onClick={onClose}>
+              <button className="pk-btn primary wide" onClick={onClose}>
                 ✅ 다 꾸몄어!
               </button>
             )}

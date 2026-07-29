@@ -1,7 +1,7 @@
 {
-  "name": "셔틀빌리지 — 배드민턴 마을",
-  "short_name": "셔틀빌리지",
-  "description": "동물의 숲 감성의 3D 배드민턴 클럽 게임. 내 캐릭터를 꾸미고, 마을 코트에서 자동 매칭으로 경기를 돌리세요.",
+  "name": "셔틀몬스터 — 도트 배드민턴 RPG",
+  "short_name": "셔틀몬스터",
+  "description": "포켓몬스터 감성의 2D 도트 배드민턴 RPG. 셔틀타운을 걸어 다니며 주민과 대화하고, 상점에서 장비를 사고, 체육관에서 경기를 잡으세요.",
   "lang": "ko",
   "dir": "ltr",
   "start_url": "/?source=pwa",
@@ -9,8 +9,8 @@
   "display": "standalone",
   "display_override": ["standalone", "fullscreen", "minimal-ui"],
   "orientation": "portrait",
-  "background_color": "#7ec8e8",
-  "theme_color": "#7cc576",
+  "background_color": "#0b0f1a",
+  "theme_color": "#2a3550",
   "categories": ["games", "sports", "social"],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
@@ -18,7 +18,7 @@
     { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "바로 매칭 돌리기", "short_name": "매칭", "url": "/?go=match", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "출석 체크", "short_name": "출석", "url": "/?go=checkin", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+    { "name": "체육관으로", "short_name": "체육관", "url": "/?go=match", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "셔틀센터에서 쉬기", "short_name": "출석", "url": "/?go=checkin", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

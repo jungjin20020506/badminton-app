@@ -1,0 +1,71 @@
+/* ===================================================================================
+   셔틀몬스터 — 마감 스킨 (가장 마지막에 읽는다)
+   예전 화면(매칭보드·전국지도·경기방)이 쓰던 둥근 모서리와 파스텔 그러데이션을
+   포켓몬식 「각진 창 + 단색」으로 통일한다. 색은 지역 테마(--pk-*)를 따라간다.
+   =================================================================================== */
+
+/* 모서리 각지게 */
+.pcard2, .pslot, .mb-stat, .mb-tabs button, .ct-card, .ct-slots-ghost span,
+.reason, .mb-action, .sel-faces img, .sel-faces .ghost,
+.floating-rooms, .room-row, .korea, .world-search .ac-input,
+.msec, .mp, .mrow, .mrow-no, .mrow-start, .ct2, .ct2-finish, .court-pick,
+.mp img, .pcard2 .face, .village-card-pop {
+  border-radius: 4px !important;
+}
+.msec-cnt, .msec-badge, .mp-g, .pcard2 em, .pslot-txt span, .pips-num { border-radius: 3px !important; }
+.mp-no, .mp-x, .pcard2 .check { border-radius: 3px !important; }
+
+/* 단색으로 — 그러데이션 제거 */
+.mb-tabs button, .msec, .ct-card, .ct2, .mrow, .pcard2, .pslot, .mp {
+  background: #fff;
+  border-color: var(--pk-frame);
+  box-shadow: 0 3px 0 var(--pk-face-lo);
+}
+.mrow, .mrow-no, .mrow-start { background: var(--pk-face); border-color: var(--pk-frame); }
+.mb-tabs button.on, .mrow-start.on, .msec-badge.on {
+  background: var(--pk-accent) !important;
+  color: #fff !important;
+  border-color: var(--pk-frame) !important;
+  box-shadow: 0 3px 0 var(--pk-accent-lo) !important;
+}
+.mp.sel, .pcard2.sel {
+  background: var(--pk-accent) !important;
+  color: #fff !important;
+  border-color: var(--pk-frame) !important;
+  box-shadow: 0 3px 0 var(--pk-accent-lo) !important;
+  transform: translateY(-2px);
+}
+.mp.sel .mp-g, .mp.sel .mp-w, .pcard2.sel .wait { color: #fff !important; }
+.mp.me, .ct-card.live, .ct2.live, .pcard.me { background: #fff5d0 !important; }
+.ct-card.filling { background: #e6f1ff !important; }
+.ct2-finish {
+  background: #e0526e !important; color: #fff !important;
+  border-color: var(--pk-frame) !important; box-shadow: 0 3px 0 #97253c !important;
+}
+.mp-no, .pcard2 .check { background: var(--pk-accent) !important; }
+.mp-g { background: var(--pk-face-lo) !important; }
+.pips i { border-radius: 2px; background: var(--pk-face-lo); border-color: var(--pk-frame); }
+.pips i.on { background: var(--pk-accent); border-color: var(--pk-frame); }
+
+/* 전국 지도 */
+.world { background: linear-gradient(var(--pk-sky), var(--pk-face)); }
+.wh-title { font-size: 20px; color: var(--pk-text); }
+.wh-sub { color: var(--pk-text-lo); }
+.korea { border: 4px solid var(--pk-frame) !important; box-shadow: 0 5px 0 var(--pk-frame-lo) !important; }
+.world-back {
+  background: var(--pk-accent) !important; color: #fff !important;
+  border: 3px solid var(--pk-frame) !important; border-radius: 5px !important;
+  box-shadow: 0 4px 0 var(--pk-accent-lo) !important;
+}
+.floating-rooms, .village-card-pop { background: var(--pk-face); border-color: var(--pk-frame); }
+
+/* 경기방 목록 */
+.room-row { background: #fff; border-color: var(--pk-frame); box-shadow: 0 3px 0 var(--pk-face-lo); }
+.rr-main em, .rr-go { color: var(--pk-text-lo); }
+
+/* 균형 표시 */
+.balance .net-line { background: repeating-linear-gradient(90deg, var(--pk-frame) 0 4px, transparent 4px 8px); opacity: .4; }
+.mdiv { background: repeating-linear-gradient(90deg, var(--pk-frame) 0 4px, transparent 4px 8px); opacity: .35; }
+
+/* 픽셀 폰트에서 숫자가 흔들리지 않도록 */
+.ct2-time, .ct-score, .mb-stat b { font-variant-numeric: tabular-nums; }

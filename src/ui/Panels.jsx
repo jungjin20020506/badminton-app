@@ -2,18 +2,20 @@
 // 게임 패널 모음 — 주민 / 경기 / 상점 / 나 / 할일 / 기록 / 설정
 // 콕스타(기존 매칭 앱)의 운영 기능을 동물의 숲 톤으로 옮겨 담았다.
 // ===================================================================================
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useGame } from '../game/store.js'
 import {
   LEVELS, LEVEL_COLOR, SENSITIVITIES, STAT_KEYS, DAILY_QUESTS, TITLES,
   HAIR_STYLES, EYE_STYLES, OUTFIT_STYLES, ACCESSORIES, RACKET_MODELS,
-  DECORS, COURT_SKINS, expToNext,
+  DECORS, COURT_SKINS, expToNext, BADGES, chapterOf,
 } from '../game/constants.js'
 import { MAX_COURTS } from '../game/layout.js'
 import { clockText } from './Hud.jsx'
-import { villageLevel, VILLAGE_LEVELS, TROPHIES, pickDailyPartner } from '../game/social.js'
+import { villageLevel, VILLAGE_LEVELS, TROPHIES, pickDailyPartner, pickRival, dexList, todayBoard } from '../game/social.js'
+import { drawBig } from '../pixel/sprites.js'
 import { cockstar } from '../net/cockstar.js'
 import MatchBoard from './MatchBoard.jsx'
+import RoomList from './RoomList.jsx'
 
 const ago = (ts) => {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -125,7 +127,7 @@ function RosterPanel() {
                   ? `🏸 ${p.courtId + 1}번 코트`
                   : p.status === 'resting'
                   ? '💤 휴식 중'
-                  : `⏳ ${ago(p.waitSince)} 대기`} · 오늘 {p.todayGames}경기 {p.todayWins}승
+                  : `⏳ ${ago(p.waitSince)} 대기`} · 오늘 {p.todayGames}경기
                 {!p.isMe && p.affinity > 0 && ` · 💛${Math.floor(p.affinity / 20)}`}
               </div>
             </div>
@@ -193,7 +195,7 @@ function ShopPanel() {
   return (
     <>
       <div className="spread">
-        <div className="muted">너굴상점에 온 걸 환영해! 🪙 코인은 경기를 뛰면 모여.</div>
+        <div className="muted">셔틀마트에 온 걸 환영해! 🪙 코인은 경기를 뛰면 모여.</div>
         <div className="ac-chip">🪙 {coins.toLocaleString()}</div>
       </div>
       <div className="tabs" style={{ marginTop: 10 }}>
@@ -227,36 +229,126 @@ function ShopPanel() {
 // -----------------------------------------------------------------------------------
 // ⭐ 나
 // -----------------------------------------------------------------------------------
+/** 트레이너 카드에 들어가는 작은 도트 초상 */
+function MiniPortrait({ look, gender, size = 3 }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const cv = ref.current
+    if (!cv || !look) return
+    const g = cv.getContext('2d')
+    g.clearRect(0, 0, cv.width, cv.height)
+    drawBig(g, look, gender, 0, 0, 0, 0, size)
+  }, [look, gender, size])
+  return <canvas ref={ref} width={16 * size} height={24 * size} className="tc-portrait" />
+}
+
 function MePanel() {
   const me = useGame((s) => s.me)
   const meP = useGame((s) => s.players.me)
   const addStat = useGame((s) => s.addStat)
   const career = useGame((s) => s.career)
   const players = useGame((s) => s.players)
+  const metPartners = useGame((s) => s.metPartners)
+  const streak = useGame((s) => s.streak)
+  const achievements = useGame((s) => s.achievements)
+  const bestLift = useGame((s) => s.bestLift)
+  const coins = useGame((s) => s.coins)
   const setPanel = useGame((s) => s.setPanel)
   const need = expToNext(me.lv)
-  const titles = TITLES.filter((t) => t.cond({ career, me }))
-  const friends = Object.values(players).filter((p) => !p.isMe && p.affinity > 0).sort((a, b) => b.affinity - a.affinity).slice(0, 8)
-  const winRate = career.games ? Math.round((career.wins / career.games) * 100) : 0
+
+  const stateForCond = { career, me, streak, bestLift }
+  const titles = TITLES.filter((t) => t.cond(stateForCond))
+  const badges = BADGES.map((b) => ({ ...b, got: b.cond(stateForCond) }))
+  const gotCount = badges.filter((b) => b.got).length
+  const rival = pickRival(players, metPartners)
+  const ch = chapterOf(career.games)
+  const idNo = String((meP?.joinedAt || 0) % 100000).padStart(5, '0')
 
   return (
     <>
-      <div className="row">
-        <div style={{ fontSize: 40 }}>{meP?.gender === '여' ? '👧' : '👦'}</div>
-        <div style={{ flex: 1 }}>
-          <div className="row">
-            <b style={{ fontSize: 19 }}>{meP?.name}</b>
-            <span className="lv-tag" style={{ background: LEVEL_COLOR[meP?.level] }}>{meP?.level}</span>
+      {/* ── 트레이너 카드 ── */}
+      <div className="trainer-card">
+        <div className="tc-head">
+          <span>트레이너 카드</span>
+          <b>No. {idNo}</b>
+        </div>
+        <div className="tc-body">
+          <MiniPortrait look={meP?.look} gender={meP?.gender} />
+          <div className="tc-info">
+            <div className="row wrap">
+              <b style={{ fontSize: 17 }}>{meP?.name}</b>
+              <span className="lv-tag" style={{ background: LEVEL_COLOR[meP?.level] }}>{meP?.level}</span>
+            </div>
+            <div className="tc-rows">
+              <span>Lv.</span><b>{me.lv}</b>
+              <span>경기</span><b>{career.games}판</b>
+              <span>도감</span><b>{career.partners}명</b>
+              <span>배지</span><b>{gotCount}/{BADGES.length}</b>
+              <span>코인</span><b>{coins.toLocaleString()}</b>
+            </div>
+            <div className="expbar" style={{ width: '100%', marginTop: 6 }}>
+              <i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} />
+            </div>
+            <div className="muted">EXP {me.exp}/{need}</div>
           </div>
-          <div className="expbar" style={{ width: '100%', marginTop: 5 }}>
-            <i style={{ width: `${Math.min(100, (me.exp / need) * 100)}%` }} />
-          </div>
-          <div className="muted">Lv.{me.lv} · EXP {me.exp}/{need}</div>
         </div>
       </div>
-      <button className="ac-btn yellow wide" style={{ marginTop: 10 }} onClick={() => setPanel('closet')}>✨ 옷장 열기 (모습 바꾸기)</button>
 
-      <div className="sect">💪 능력치 {me.statPoints > 0 && <span className="ac-chip">포인트 {me.statPoints}</span>}</div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="pk-btn primary" style={{ flex: 1 }} onClick={() => setPanel('closet')}>✨ 옷장</button>
+        <button className="pk-btn" style={{ flex: 1 }} onClick={() => setPanel('dex')}>📖 도감</button>
+      </div>
+
+      {/* ── 배지 케이스 ── */}
+      <div className="sect">🎖️ 배지 케이스 <span className="pk-chip">{gotCount}/{BADGES.length}</span></div>
+      <div className="badge-case">
+        {badges.map((b) => (
+          <div key={b.id} className={`badge-slot ${b.got ? 'got' : ''}`} title={b.desc}>
+            <span className="bs-icon">{b.got ? b.icon : '　'}</span>
+            <span className="bs-label">{b.got ? b.label.replace(' 배지', '') : b.hint}</span>
+          </div>
+        ))}
+      </div>
+      <div className="muted" style={{ marginTop: 6 }}>
+        배지는 이긴 판 수가 아니라 <b>얼마나 뛰었고 누구를 만났는지</b>로 얻어.
+      </div>
+
+      {/* ── 이야기 진행 ── */}
+      <div className="sect">📘 {ch.n}장 · {ch.label}</div>
+      <div className="court-mini">
+        <div className="muted">{ch.desc}</div>
+        {ch.next && (
+          <>
+            <div className="qbar" style={{ marginTop: 8 }}>
+              <i style={{ width: `${Math.min(100, (career.games / ch.next.need) * 100)}%` }} />
+            </div>
+            <div className="muted" style={{ marginTop: 4 }}>
+              다음 장 「{ch.next.label}」까지 {Math.max(0, ch.next.need - career.games)}경기
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── 라이벌 ── */}
+      {rival && (
+        <>
+          <div className="sect">⚔️ 나의 라이벌</div>
+          <div className="court-mini live">
+            <div className="row">
+              <MiniPortrait look={rival.player.look} gender={rival.player.gender} size={2} />
+              <div style={{ flex: 1 }}>
+                <div className="row wrap">
+                  <b>{rival.player.name}</b>
+                  <span className="lv-tag" style={{ background: LEVEL_COLOR[rival.player.level] }}>{rival.player.level}</span>
+                </div>
+                <div className="muted">같은 코트에 {rival.games}번 섰다 · 친밀도 {rival.player.affinity}</div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div className="sect">💪 능력치 {me.statPoints > 0 && <span className="pk-chip">포인트 {me.statPoints}</span>}</div>
       {STAT_KEYS.map((s) => (
         <div key={s.key} className="stat-row">
           <span className="lbl">{s.icon} {s.label}</span>
@@ -265,32 +357,96 @@ function MePanel() {
           <button className="ac-btn sm green" disabled={me.statPoints <= 0} onClick={() => addStat(s.key)}>＋</button>
         </div>
       ))}
-      <div className="muted">능력치를 올리면 경기에서 점수를 딸 확률이 올라가.</div>
+      <div className="muted">능력치는 트레이너 카드에 남는 내 스타일이야. 라켓 성능과 합쳐져서 표시돼.</div>
 
       <div className="sect">📊 통산 기록</div>
-      <div className="grid3">
-        <div className="court-mini"><div className="muted">경기</div><b>{career.games}</b></div>
-        <div className="court-mini"><div className="muted">승리</div><b>{career.wins}</b></div>
-        <div className="court-mini"><div className="muted">승률</div><b>{winRate}%</b></div>
+      <div className="grid2">
+        <div className="court-mini"><div className="muted">내 경기</div><b>{career.games}</b></div>
+        <div className="court-mini"><div className="muted">도감</div><b>{career.partners}명</b></div>
+        <div className="court-mini"><div className="muted">마을에서 열린 경기</div><b>{career.matchesHosted}</b></div>
+        <div className="court-mini"><div className="muted">누적 코인</div><b>{career.earned.toLocaleString()}</b></div>
+      </div>
+      <div className="muted" style={{ marginTop: 6 }}>
+        승패는 기록하지 않아. 코트에 선 시간이 그대로 내 기록이야.
       </div>
 
       <div className="sect">🏅 칭호</div>
       <div className="row wrap">
-        {titles.map((t) => <span key={t.id} className="ac-chip">{t.label}</span>)}
+        {titles.map((t) => <span key={t.id} className="pk-chip">{t.label}</span>)}
       </div>
       <div className="muted" style={{ marginTop: 6 }}>
         잠긴 칭호: {TITLES.filter((t) => !titles.includes(t)).map((t) => t.label).join(' · ') || '전부 모았어! 🎉'}
       </div>
+    </>
+  )
+}
 
-      <div className="sect">💛 친한 주민</div>
-      <div className="plist">
-        {friends.map((p) => (
-          <div key={p.id} className="pcard">
-            <span className="lv-tag" style={{ background: LEVEL_COLOR[p.level] }}>{p.level}</span>
-            <div className="nm">{p.name}<div className="sub">{'💛'.repeat(Math.floor(p.affinity / 20))}{'🤍'.repeat(Math.max(0, 5 - Math.floor(p.affinity / 20)))} {p.affinity}</div></div>
+// -----------------------------------------------------------------------------------
+// 📖 선수 도감 — 포켓몬 도감의 그 화면
+// 「이긴 사람」이 아니라 「같은 코트에 서 본 사람」을 모은다.
+// -----------------------------------------------------------------------------------
+function DexPanel() {
+  const players = useGame((s) => s.players)
+  const order = useGame((s) => s.order)
+  const metPartners = useGame((s) => s.metPartners)
+  const [q, setQ] = useState('')
+  const [onlyMet, setOnlyMet] = useState(false)
+
+  const list = useMemo(() => dexList(players, order, metPartners), [players, order, metPartners])
+  const met = list.filter((e) => e.met).length
+  const shown = list
+    .filter((e) => (onlyMet ? e.met : true))
+    .filter((e) => !q || e.player.name.includes(q))
+    .sort((a, b) => (b.met - a.met) || (b.games - a.games) || a.player.name.localeCompare(b.player.name, 'ko'))
+
+  const pct = list.length ? Math.round((met / list.length) * 100) : 0
+
+  return (
+    <>
+      <div className="dex-head">
+        <div className="dex-count">
+          <b>{met}</b><span>/ {list.length}</span>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div className="qbar"><i style={{ width: `${pct}%` }} /></div>
+          <div className="muted" style={{ marginTop: 4 }}>
+            도감 완성도 {pct}% · 아직 못 만난 사람 {list.length - met}명
+          </div>
+        </div>
+      </div>
+
+      <div className="row" style={{ marginTop: 10 }}>
+        <input className="pk-input" placeholder="이름 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className={`pk-btn sm ${onlyMet ? 'primary' : ''}`} onClick={() => setOnlyMet((v) => !v)}>
+          {onlyMet ? '만난 사람만' : '전체'}
+        </button>
+      </div>
+
+      <div className="dex-grid">
+        {shown.map(({ player: p, met: m, games }) => (
+          <div key={p.id} className={`dex-cell ${m ? 'met' : ''}`}>
+            {m ? (
+              <MiniPortrait look={p.look} gender={p.gender} size={2} />
+            ) : (
+              <div className="dex-unknown">?</div>
+            )}
+            <b>{m ? p.name : '？？？'}</b>
+            {m ? (
+              <span className="dex-sub">
+                <i className="lv-tag" style={{ background: LEVEL_COLOR[p.level] }}>{p.level}</i>
+                {games > 0 && <em>{games}번 함께</em>}
+              </span>
+            ) : (
+              <span className="dex-sub"><em>아직 못 만남</em></span>
+            )}
           </div>
         ))}
-        {!friends.length && <div className="muted">아직 친해진 주민이 없어. 같이 경기를 뛰면 친밀도가 올라가!</div>}
+        {!shown.length && <div className="muted">해당하는 사람이 없어.</div>}
+      </div>
+
+      <div className="muted" style={{ marginTop: 12 }}>
+        같은 코트에서 한 판이라도 뛰면 도감에 올라. 자동 매칭은 아직 안 만난 사람을 먼저 붙여 주니까,
+        계속 뛰다 보면 도감이 저절로 채워져!
       </div>
     </>
   )
@@ -345,7 +501,7 @@ function QuestPanel() {
       <div className="sect">오늘의 활동</div>
       <div className="grid3">
         <div className="court-mini"><div className="muted">내 경기</div><b>{today.games}</b></div>
-        <div className="court-mini"><div className="muted">승리</div><b>{today.wins}</b></div>
+        <div className="court-mini"><div className="muted">새 얼굴</div><b>{today.newPartners}</b></div>
         <div className="court-mini"><div className="muted">진행한 경기</div><b>{today.matches}</b></div>
       </div>
     </>
@@ -364,19 +520,18 @@ function RecordPanel() {
       <div className="muted">마을에서 있었던 경기들이야.</div>
       <div className="plist" style={{ marginTop: 10 }}>
         {history.map((g) => {
-          const winA = g.winner === 0
+          const mins = g.duration ? Math.max(1, Math.round(g.duration / 60000)) : null
+          const mine = [...g.teamA, ...g.teamB].includes('me')
           return (
-            <div key={g.id} className="pcard">
-              <span className="ac-chip">{g.courtId + 1}코트</span>
+            <div key={g.id} className={`pcard ${mine ? 'me' : ''}`}>
+              <span className="pk-chip">{g.courtId + 1}코트</span>
               <div className="nm">
-                <span style={{ color: winA ? '#4f9d55' : undefined }}>
-                  {winA && '🏆 '}{nameOf(g.teamA[0])}·{nameOf(g.teamA[1])}
-                </span>
-                <b> {g.score[0]}:{g.score[1]} </b>
-                <span style={{ color: !winA ? '#4f9d55' : undefined }}>
-                  {!winA && '🏆 '}{nameOf(g.teamB[0])}·{nameOf(g.teamB[1])}
-                </span>
-                <div className="sub">{ago(g.at)} 전</div>
+                <span>{nameOf(g.teamA[0])}·{nameOf(g.teamA[1])}</span>
+                <b> vs </b>
+                <span>{nameOf(g.teamB[0])}·{nameOf(g.teamB[1])}</span>
+                <div className="sub">
+                  {ago(g.at)} 전{mins ? ` · ${mins}분 경기` : ''}{mine ? ' · ⭐ 내 경기' : ''}
+                </div>
               </div>
             </div>
           )
@@ -435,11 +590,9 @@ function SettingsPanel() {
       </div>
 
       <div className="sect">🎮 경기</div>
-      <div className="row wrap" style={{ marginBottom: 8 }}>
-        <span className="muted">목표 점수</span>
-        {[11, 15, 21].map((n) => (
-          <button key={n} className={`ac-btn sm ${s.targetScore === n ? 'green' : ''}`} onClick={() => setSetting({ targetScore: n })}>{n}</button>
-        ))}
+      <div className="muted" style={{ marginBottom: 8 }}>
+        승패와 점수는 기록하지 않아. 관리자가 매 경기 결과를 일일이 물어봐야 하니까.
+        대신 <b>누구와 몇 판 뛰었는지</b>가 그대로 성장이 돼.
       </div>
       <div className="row wrap">
         <span className="muted">속도</span>
@@ -616,18 +769,41 @@ function TrophyPanel() {
 // -----------------------------------------------------------------------------------
 function RankPanel() {
   const players = useGame((s) => s.players)
+  const bestLift = useGame((s) => s.bestLift)
+  const board = todayBoard(players, bestLift)
   const [tab, setTab] = useState('games')
   const list = Object.values(players)
   const sorted = [...list].sort((a, b) =>
-    tab === 'games' ? b.todayGames - a.todayGames
-      : tab === 'wins' ? b.todayWins - a.todayWins
-      : b.affinity - a.affinity
+    tab === 'games' ? b.todayGames - a.todayGames : b.affinity - a.affinity
   ).slice(0, 20)
 
   return (
     <>
-      <div className="tabs">
-        {[['games', '🏸 경기수'], ['wins', '🏆 승리'], ['affinity', '💛 친밀도']].map(([k, l]) => (
+      {/* 오늘의 기록판 — 승패 대신 「누가 제일 많이 뛰었나」 */}
+      <div className="board-today">
+        <div className="bt-head">📋 오늘의 기록판</div>
+        <div className="bt-rows">
+          <div className="bt-row">
+            <span>🏸 최다 출전</span>
+            <b>{board.mvp ? `${board.mvp.name} (${board.mvp.todayGames}경기)` : '아직 없음'}</b>
+          </div>
+          <div className="bt-row">
+            <span>💛 가장 친해진 사람</span>
+            <b>{board.closest ? `${board.closest.name} (💛${board.closest.affinity})` : '아직 없음'}</b>
+          </div>
+          <div className="bt-row">
+            <span>🪶 리프팅 최고</span>
+            <b>{board.bestLift ? `${board.bestLift}개` : '기록 없음'}</b>
+          </div>
+          <div className="bt-row">
+            <span>🎯 오늘 마을 총 출전</span>
+            <b>{board.totalGames}회</b>
+          </div>
+        </div>
+      </div>
+
+      <div className="tabs" style={{ marginTop: 12 }}>
+        {[['games', '🏸 오늘 경기수'], ['affinity', '💛 친밀도']].map(([k, l]) => (
           <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -637,7 +813,7 @@ function RankPanel() {
             <div className="rank-no">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</div>
             <span className="lv-tag" style={{ background: LEVEL_COLOR[p.level] }}>{p.level}</span>
             <div style={{ flex: 1 }}>{p.isMe ? `⭐ ${p.name}` : p.name}</div>
-            <b>{tab === 'games' ? `${p.todayGames}경기` : tab === 'wins' ? `${p.todayWins}승` : `💛${p.affinity}`}</b>
+            <b>{tab === 'games' ? `${p.todayGames}경기` : `💛${p.affinity}`}</b>
           </div>
         ))}
       </div>
@@ -692,7 +868,7 @@ export default function Panels() {
   const TITLE = {
     roster: '👥 마을 주민',
     match: '🏸 경기 운영',
-    shop: '🛍️ 너굴상점',
+    shop: '🛍️ 셔틀마트',
     me: '⭐ 내 정보',
     more: '☰ 더보기',
     quests: '📜 오늘의 할 일',
@@ -701,6 +877,8 @@ export default function Panels() {
     record: '📖 경기 기록',
     rank: '🥇 마을 랭킹',
     gacha: '🎁 셔틀콕 뽑기',
+    dex: '📖 선수 도감',
+    rooms: '📡 셔틀넷 경기방',
     settings: '⚙️ 마을 설정',
   }[panel]
 
@@ -717,6 +895,8 @@ export default function Panels() {
       {panel === 'record' && <RecordPanel />}
       {panel === 'rank' && <RankPanel />}
       {panel === 'gacha' && <GachaPanel />}
+      {panel === 'dex' && <DexPanel />}
+      {panel === 'rooms' && <RoomList onClose={() => setPanel('rooms')} />}
       {panel === 'settings' && <SettingsPanel />}
     </Sheet>
   )

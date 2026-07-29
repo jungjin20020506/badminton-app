@@ -194,22 +194,66 @@ export const COURT_SKINS = [
 // 육성 / 보상
 // -----------------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------------
+// 성장 — 승패는 기록하지 않는다.
+// 실제 클럽에서 관리자가 매 경기 승패를 물어보고 누르는 건 불가능하기 때문에,
+// 이 게임의 모든 성장 지표는 「얼마나 뛰었고 누구와 뛰었는가」로만 이뤄진다.
+// -----------------------------------------------------------------------------------
+
 export const TITLES = [
-  { id: 'rookie', label: '🐣 새내기', cond: (s) => true },
+  { id: 'rookie', label: '🐣 새내기', cond: () => true },
   { id: 'ten', label: '🏸 10경기 클럽', cond: (s) => s.career.games >= 10 },
-  { id: 'winner', label: '🔥 승리의 아이콘', cond: (s) => s.career.wins >= 10 },
   { id: 'social', label: '💛 마당발', cond: (s) => s.career.partners >= 8 },
+  { id: 'regular', label: '📅 개근왕', cond: (s) => (s.streak?.count || 0) >= 7 },
+  { id: 'dex', label: '📖 도감 수집가', cond: (s) => s.career.partners >= 20 },
   { id: 'rich', label: '💰 코인 부자', cond: (s) => s.career.earned >= 3000 },
   { id: 'host', label: '🏡 클럽 매니저', cond: (s) => s.career.matchesHosted >= 20 },
   { id: 'star', label: '⭐ 마을의 별', cond: (s) => s.me.lv >= 10 },
 ]
 
+/** 오늘의 미션 — track 은 today 안의 필드 이름 */
 export const DAILY_QUESTS = [
-  { id: 'play3', label: '오늘 3경기 뛰기', target: 3, coin: 180, exp: 60, track: 'todayGames' },
-  { id: 'win2', label: '2승 달성하기', target: 2, coin: 260, exp: 90, track: 'todayWins' },
-  { id: 'newpartner', label: '새로운 파트너와 경기', target: 1, coin: 200, exp: 70, track: 'newPartners' },
-  { id: 'host5', label: '경기 5판 진행하기', target: 5, coin: 220, exp: 80, track: 'todayMatches' },
+  { id: 'play3', label: '오늘 3경기 뛰기', icon: '🏸', target: 3, coin: 180, exp: 60, track: 'games' },
+  { id: 'newpartner', label: '처음 만나는 사람과 경기', icon: '📖', target: 1, coin: 240, exp: 90, track: 'newPartners' },
+  { id: 'host5', label: '마을에서 5판 진행하기', icon: '🏟️', target: 5, coin: 220, exp: 80, track: 'matches' },
+  { id: 'talk3', label: '주민 3명과 이야기하기', icon: '💬', target: 3, coin: 160, exp: 50, track: 'talks' },
 ]
+
+/**
+ * 체육관 배지 — 포켓몬의 그 배지 케이스.
+ * 전부 「참여·수집·꾸준함」으로만 얻는다. 이긴 판 수는 조건에 없다.
+ */
+export const BADGES = [
+  { id: 'b_first', icon: '🏸', label: '첫걸음 배지', desc: '첫 경기를 뛰었다', hint: '경기 1판', cond: (s) => s.career.games >= 1 },
+  { id: 'b_ten', icon: '🔟', label: '열 판 배지', desc: '10경기를 뛰었다', hint: '경기 10판', cond: (s) => s.career.games >= 10 },
+  { id: 'b_friend', icon: '💛', label: '마당발 배지', desc: '10명과 함께 뛰었다', hint: '도감 10명', cond: (s) => s.career.partners >= 10 },
+  { id: 'b_dex', icon: '📖', label: '도감 배지', desc: '도감에 25명을 등록했다', hint: '도감 25명', cond: (s) => s.career.partners >= 25 },
+  { id: 'b_streak', icon: '📅', label: '개근 배지', desc: '7일 연속 마을에 왔다', hint: '연속 출석 7일', cond: (s) => (s.streak?.count || 0) >= 7 },
+  { id: 'b_lift', icon: '🪶', label: '리프팅 배지', desc: '셔틀 리프팅 30개', hint: '리프팅 30개', cond: (s) => (s.bestLift || 0) >= 30 },
+  { id: 'b_host', icon: '🏟️', label: '운영 배지', desc: '마을에서 50판이 열렸다', hint: '마을 경기 50판', cond: (s) => s.career.matchesHosted >= 50 },
+  { id: 'b_level', icon: '⭐', label: '베테랑 배지', desc: 'Lv.15 를 달성했다', hint: 'Lv.15', cond: (s) => s.me.lv >= 15 },
+]
+
+/** 이야기의 장(章) — 실제로 뛴 경기 수로 열린다 */
+export const CHAPTERS = [
+  { n: 1, need: 0, label: '셔틀타운에 오다', desc: '마을에 도착해 첫 경기방에 들어갔다.' },
+  { n: 2, need: 5, label: '라이벌', desc: '자꾸 같은 코트에 서는 사람이 눈에 들어온다.' },
+  { n: 3, need: 20, label: '배지 도전', desc: '관장에게 실력을 인정받을 때가 됐다.' },
+  { n: 4, need: 50, label: '소문난 마을', desc: '셔틀타운이 근처에 소문나기 시작했다.' },
+  { n: 5, need: 120, label: '전설의 셔틀타운', desc: '이제 이 마을을 모르는 사람이 없다.' },
+]
+
+/** 지금 받을 수 있는(달성했지만 아직 안 받은) 미션 목록 */
+export function readyQuests(today = {}, quests = {}) {
+  return DAILY_QUESTS.filter((q) => (today[q.track] || 0) >= q.target && !quests[q.id]?.claimed)
+}
+
+export const chapterOf = (games) => {
+  let cur = CHAPTERS[0]
+  for (const c of CHAPTERS) if ((games || 0) >= c.need) cur = c
+  const next = CHAPTERS.find((c) => c.n === cur.n + 1) || null
+  return { ...cur, next }
+}
 
 /** 레벨업 필요 경험치 */
 export const expToNext = (lv) => Math.round(120 * Math.pow(1.18, lv - 1))
