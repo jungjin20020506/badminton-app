@@ -749,6 +749,12 @@ export default function Character({
   const shoeMat = useMemo(() => glossMaterial(look.shoes), [look.shoes])
   const soleMat = useMemo(() => charMaterial({ color: '#f4f4f5', roughness: 0.8 }), [])
   const whiteMat = useMemo(() => clothMaterial('#ffffff'), [])
+  // 신발 장식 — 신발이 밝으면 어둡게, 어두우면 밝게. 안 그러면 흰 신발에서 무늬가 사라진다
+  const shoeAccentMat = useMemo(() => {
+    const c = new THREE.Color(look.shoes || '#ffffff')
+    const lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+    return glossMaterial(lum > 0.55 ? '#2b3446' : '#fdfdfd')
+  }, [look.shoes])
   const browMat = useMemo(() => charMaterial({ color: look.hairColor, roughness: 0.7 }), [look.hairColor])
   const mouthMat = useMemo(() => charMaterial({ color: '#8d4a4f', roughness: 0.5 }), [])
   const blushMat = useMemo(
@@ -940,28 +946,42 @@ export default function Character({
           </mesh>
           {/* 하이탑 — 발목까지 올라온다 */}
           {shoeStyle === 'high' && (
-            <mesh position={[0, 0.075, -0.005]} material={shoeMat} castShadow>
-              <cylinderGeometry args={[0.072, 0.078, 0.1, 14]} />
-            </mesh>
-          )}
-          {!simple && shoeStyle === 'stripe' && (
-            <mesh position={[0, 0.03, 0.0]} rotation={[0, 0, 0]} material={whiteMat}>
-              <boxGeometry args={[0.17, 0.022, 0.13]} />
-            </mesh>
-          )}
-          {!simple && shoeStyle === 'pro' && (
             <>
-              <mesh position={[0, 0.005, 0.035]} material={whiteMat}>
-                <boxGeometry args={[0.162, 0.022, 0.265]} />
+              {/* 종아리(반지름 0.078~0.084)보다 굵어야 발목을 감싼 게 보인다 */}
+              <mesh position={[0, 0.055, -0.005]} material={shoeMat} castShadow>
+                <cylinderGeometry args={[0.086, 0.09, 0.09, 16]} />
               </mesh>
-              <mesh position={[0, 0.052, 0.06]} rotation={[0.3, 0, 0]} material={whiteMat}>
-                <boxGeometry args={[0.1, 0.018, 0.07]} />
-              </mesh>
+              {/* 발목 테두리 — 하이탑이라는 걸 한눈에 알아보게.
+                  종아리가 테두리 가장자리에서 뚫고 나오지 않게 목을 낮게 잡는다 */}
+              {!simple && (
+                <mesh position={[0, 0.088, -0.005]} material={shoeAccentMat}>
+                  <cylinderGeometry args={[0.092, 0.088, 0.028, 16]} />
+                </mesh>
+              )}
             </>
           )}
-          {!simple && shoeStyle === 'basic' && (
-            <mesh position={[0, 0.035, 0.075]} material={whiteMat}>
-              <boxGeometry args={[0.09, 0.02, 0.05]} />
+          {/* 장식은 신발 곡면을 그대로 따라가는 띠로 얹는다 — 각진 상자는 신발을 뚫는다 */}
+          {!simple && (shoeStyle === 'stripe' || shoeStyle === 'pro') && (
+            <mesh position={[0, 0.018, 0.024]} scale={[1, 0.9, 1.35]} material={shoeAccentMat}>
+              <sphereGeometry
+                args={[0.0818, 20, 12, 0, Math.PI * 2, Math.PI * 0.4, Math.PI * 0.14]}
+              />
+            </mesh>
+          )}
+          {/* 앞코 — 기본화·프로화의 구분점 */}
+          {!simple && (shoeStyle === 'basic' || shoeStyle === 'pro') && (
+            <mesh position={[0, 0.018, 0.024]} scale={[1, 0.9, 1.35]} material={shoeAccentMat}>
+              <sphereGeometry
+                args={[0.0815, 20, 12, Math.PI * 0.5 - 0.4, 0.8, Math.PI * 0.32, Math.PI * 0.3]}
+              />
+            </mesh>
+          )}
+          {/* 프로 코트화 — 뒤꿈치 보강까지 들어간다 */}
+          {!simple && shoeStyle === 'pro' && (
+            <mesh position={[0, 0.018, 0.024]} scale={[1, 0.9, 1.35]} material={shoeAccentMat}>
+              <sphereGeometry
+                args={[0.0815, 20, 12, Math.PI * 1.5 - 0.42, 0.84, Math.PI * 0.06, Math.PI * 0.34]}
+              />
             </mesh>
           )}
         </group>
