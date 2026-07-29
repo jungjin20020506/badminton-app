@@ -7,6 +7,7 @@ import { OrbitControls, Sky, Stars, Environment, Lightformer, Cloud, AdaptiveDpr
 import { EffectComposer, Bloom, DepthOfField, Vignette, HueSaturation, SMAA, SSAO, BrightnessContrast } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
 import { timeUniform } from './materials.js'
+import './curve.js' // 지평선이 둥글게 말리는 동물의 숲식 월드 커브 (전역 셰이더 패치)
 import * as THREE from 'three'
 import Village from './Village.jsx'
 import Court from './Court.jsx'
